@@ -42,14 +42,15 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
 
     useEffect(() => {
         if (isOpen) {
-            setProgress(task.dailyProgress || 0);
+            const currentP = task.dailyProgress || 0;
+            setProgress(currentP < minProgress ? minProgress : currentP);
             setNote('');
             setLabor([]);
             setPhotos([]);
             setLaborPhotos([]);
             setType('Normal');
         }
-    }, [isOpen, task]);
+    }, [isOpen, task, minProgress]);
 
     if (!isOpen) return null;
 
@@ -167,9 +168,34 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
         }
     };
 
+    // Calculate min and max allowed progress based on selected reportDate and history
+    const { minProgress, maxProgress } = useMemo(() => {
+        if (!task.history || task.history.length === 0) return { minProgress: 0, maxProgress: 100 };
+        
+        // Find history entries strictly BEFORE and strictly AFTER the selected reportDate
+        const historyBefore = task.history.filter(h => h.date < reportDate).sort((a, b) => b.date.localeCompare(a.date));
+        const historyAfter = task.history.filter(h => h.date > reportDate).sort((a, b) => a.date.localeCompare(b.date));
+
+        const min = historyBefore.length > 0 ? historyBefore[0].progress : 0;
+        const max = historyAfter.length > 0 ? historyAfter[0].progress : 100;
+
+        return { minProgress: min, maxProgress: max };
+    }, [task.history, reportDate]);
+
+    // Ensure progress is within bounds
+    useEffect(() => {
+        if (progress < minProgress) setProgress(minProgress);
+        if (progress > maxProgress) setProgress(maxProgress);
+    }, [minProgress, maxProgress]);
+
     const handleSubmit = async () => {
         if (photos.length === 0) {
             alert('กรุณาอัปโหลดรูปภาพงานอย่างน้อย 1 รูป');
+            return;
+        }
+
+        if (progress < minProgress || progress > maxProgress) {
+            alert(`ความคืบหน้าต้องอยู่ระหว่าง ${minProgress}% ถึง ${maxProgress}%`);
             return;
         }
 
@@ -501,15 +527,52 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
                                     </span>
                                 </div>
                                 <input
-                                    type="range" min="0" max="100" step="5" value={progress}
+                                    type="range" 
+                                    min={minProgress} 
+                                    max={maxProgress} 
+                                    step="5" 
+                                    value={progress}
                                     onChange={(e) => setProgress(Number(e.target.value))}
-                                    style={{ width: '100%', height: '8px', borderRadius: '4px', appearance: 'none', background: '#e2e8f0', cursor: 'pointer', outline: 'none' }}
+                                    style={{ 
+                                        width: '100%', 
+                                        height: '10px', 
+                                        borderRadius: '6px', 
+                                        appearance: 'none', 
+                                        background: `linear-gradient(to right, #94a3b8 0%, #94a3b8 ${(minProgress / maxProgress) * 100}%, #e2e8f0 ${(minProgress / maxProgress) * 100}%, #e2e8f0 100%)`, 
+                                        cursor: 'pointer', 
+                                        outline: 'none',
+                                        transition: 'all 0.2s'
+                                    }}
                                 />
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
-                                    {[0, 25, 50, 75, 100].map(val => (
-                                        <button key={val} onClick={() => setProgress(val)} style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8', border: 'none', background: 'none', cursor: 'pointer' }}>{val}%</button>
-                                    ))}
+                                    {[0, 25, 50, 75, 100].map(val => {
+                                        const isDisabled = val < minProgress || val > maxProgress;
+                                        return (
+                                            <button 
+                                                key={val} 
+                                                onClick={() => !isDisabled && setProgress(val)} 
+                                                disabled={isDisabled}
+                                                style={{ 
+                                                    fontSize: '0.75rem', 
+                                                    fontWeight: 800, 
+                                                    color: isDisabled ? '#e2e8f0' : '#94a3b8', 
+                                                    border: 'none', 
+                                                    background: 'none', 
+                                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                                    textDecoration: isDisabled ? 'line-through' : 'none'
+                                                }}
+                                            >
+                                                {val}%
+                                            </button>
+                                        );
+                                    })}
                                 </div>
+                                {(minProgress > 0 || maxProgress < 100) && (
+                                    <div style={{ marginTop: '12px', fontSize: '0.75rem', color: '#ef4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <AlertCircle size={12} />
+                                        * ความคืบหน้าต้องอยู่ระหว่าง {minProgress}% ถึง {maxProgress}%
+                                    </div>
+                                )}
                             </div>
                             {progress === 100 && (
                                 <div style={{ marginTop: '12px', padding: '12px 16px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #dbeafe', display: 'flex', gap: '10px', alignItems: 'center' }}>

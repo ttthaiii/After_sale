@@ -5,6 +5,7 @@ export interface User {
     name: string;
     role: UserRole;
     avatar?: string;
+    employeeId?: string;
     assignedProjects?: string[];
 }
 
@@ -61,6 +62,9 @@ export interface DailyReport {
     }[];
     progress?: number;
     notes?: string;
+    labor?: LaborRecord[]; // ✅ Added for compatibility with Dashboard/DailyReport pages
+    type?: string;         // ✅ Added for compatibility
+    reportDate?: string;   // ✅ Added for compatibility
     photoUrl?: string; // ✅ New: Support for daily progress photo
     laborPhotos?: string[]; // ✅ New: Support for labor proof photos
     createdAt: string;
@@ -87,6 +91,7 @@ export interface MasterTask {
     responsibleStaffIds?: string[];
     baselineSla?: 'Immediately' | '24h' | '1-3d' | '3-7d' | '7-14d' | '14-30d';
     slaCategory?: 'Immediately' | '24h' | '1-3d' | '3-7d' | '7-14d' | '14-30d' | null;
+    estimatedSla?: 'Immediately' | '24h' | '1-3d' | '3-7d' | '7-14d' | '14-30d' | null;
     actualCompletionTime?: number;
     evaluationStatus?: 'Pending' | 'Evaluated';
     position?: string;

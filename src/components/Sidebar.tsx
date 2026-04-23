@@ -151,7 +151,9 @@ const Sidebar = () => {
                                         <p style={{ margin: 0, fontSize: '0.85rem' }}>ไม่มีการแจ้งเตือน</p>
                                     </div>
                                 ) : (
-                                    notifications.map(n => (
+                                    notifications.map(n => {
+                                        const isRead = n.recipientRole ? n.readBy?.includes(user?.id) : n.isRead;
+                                        return (
                                         <div 
                                             key={n.id} 
                                             onClick={() => {
@@ -185,11 +187,11 @@ const Sidebar = () => {
                                                 borderRadius: '10px',
                                                 marginBottom: '4px',
                                                 cursor: 'pointer',
-                                                background: n.isRead ? 'transparent' : '#f0f7ff',
+                                                background: isRead ? 'transparent' : '#f0f7ff',
                                                 transition: 'all 0.2s'
                                             }}
-                                            onMouseOver={(e) => e.currentTarget.style.background = n.isRead ? '#f9fafb' : '#e0efff'}
-                                            onMouseOut={(e) => e.currentTarget.style.background = n.isRead ? 'transparent' : '#f0f7ff'}
+                                            onMouseOver={(e) => e.currentTarget.style.background = isRead ? '#f9fafb' : '#e0efff'}
+                                            onMouseOut={(e) => e.currentTarget.style.background = isRead ? 'transparent' : '#f0f7ff'}
                                         >
                                             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginBottom: '2px' }}>{n.title}</div>
                                             <div style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.4 }}>{n.message}</div>
@@ -197,7 +199,7 @@ const Sidebar = () => {
                                                 จาก {n.senderName} • {n.createdAt?.seconds ? new Date(n.createdAt.seconds * 1000).toLocaleTimeString('th-TH') : 'เมื่อครู่'}
                                             </div>
                                         </div>
-                                    ))
+                                    )})
                                 )}
                             </div>
                         </div>

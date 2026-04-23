@@ -3,8 +3,9 @@ import { db, storage } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Staff, Project, Contractor } from '../types';
-import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2 } from 'lucide-react';
+import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { AnalogTimePicker } from '../components/AnalogTimePicker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
@@ -229,8 +230,9 @@ const BatchAddModal = ({
 
 
 const DailyReport = () => {
-    const { workOrders, addTaskUpdate } = useWorkOrders();
+    const { workOrders, addTaskUpdate, updateTask, updateWorkOrderStatus } = useWorkOrders();
     const { user } = useAuth(); // ✅ Use authenticated user
+    const { sendNotification } = useNotifications();
     const navigate = useNavigate();
     const location = useLocation();
     const foremanId = user?.id || 'admin-initial';
@@ -291,8 +293,16 @@ const DailyReport = () => {
             setLaborPhotos(existingReport.laborPhotos || []);
             setIsEditingExisting(false); // ✅ Reset to locked mode when switching dates
         } else {
-            // Reset form for a new entry on this date
-            setProgress(0); 
+            // Reset form for a new entry on this date, defaulting to the latest valid progress
+            const history = selectedTaskInfo.task.history || [];
+            let min = 0;
+            history.forEach(h => {
+                const hDate = h.date?.split('T')[0] || '';
+                if (hDate && hDate < reportDate && h.progress > min) {
+                    min = h.progress;
+                }
+            });
+            setProgress(min); 
             setNote('');
             setLabor([]);
             setPhotos([]);
@@ -383,12 +393,19 @@ const DailyReport = () => {
     }, [location.search, newTasks, inProgressTasks]);
 
     const handleSelectTask = (task: MasterTask, wo: WorkOrder, categoryId: string) => {
-        // ✅ Ensure we use the best known progress for this task
-        const historyMax = task.history?.reduce((max, h) => Math.max(max, h.progress), 0) || 0;
-        const actualProgress = Math.max(task.dailyProgress || 0, historyMax);
+        // ✅ 1. Find the history-based minimum progress for the current date
+        const history = task.history || [];
+        const todayStr = new Date().toISOString().split('T')[0];
+        const historyBeforeToday = history
+            .filter(h => (h.date?.split('T')[0] || '') < todayStr)
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        
+        const minP = historyBeforeToday.length > 0 ? historyBeforeToday[0].progress : 0;
+        const currentP = task.dailyProgress || 0;
 
-        setSelectedTaskInfo({ task: { ...task, dailyProgress: actualProgress }, wo, categoryId });
-        setProgress(actualProgress);
+        setSelectedTaskInfo({ task, wo, categoryId });
+        // ✅ 2. Force initial progress to be at least minP
+        setProgress(currentP < minP ? minP : currentP);
         setNote('');
         setLabor([]);
         setPhotos([]);
@@ -397,19 +414,17 @@ const DailyReport = () => {
     };
 
     const progressBounds = useMemo(() => {
-        if (!selectedTaskInfo || !selectedTaskInfo.task.history) return { min: 0, max: 100 };
-        
-        // Sort history by date to ensure we compare logically
-        const history = [...selectedTaskInfo.task.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const targetDate = new Date(reportDate).getTime();
+        if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
+        const history = selectedTaskInfo.task.history || [];
+        const targetDate = reportDate; // YYYY-MM-DD
         
         let min = 0;
         let max = 100;
         
         history.forEach(h => {
-            const hDateStr = h.date?.split('T')[0] || ''; 
-            const hDate = new Date(hDateStr).getTime();
-            
+            const hDate = h.date?.split('T')[0] || '';
+            if (!hDate) return;
+
             if (hDate < targetDate) {
                 if (h.progress > min) min = h.progress;
             } else if (hDate > targetDate) {
@@ -417,12 +432,13 @@ const DailyReport = () => {
             }
         });
         
-        // Block 100% if backdated (unless it's today)
         const isToday = reportDate === new Date().toISOString().split('T')[0];
         const effectiveMax = isToday ? 100 : Math.min(max, 99);
         
         return { min, max: effectiveMax, isToday };
     }, [selectedTaskInfo, reportDate]);
+
+    // Redundant force-sync removed, handled by onChange constraints and initialization
 
     const getTaskImage = (task: MasterTask) => {
         // Check all possible image fields in order of priority
@@ -631,6 +647,53 @@ const DailyReport = () => {
         }
     };
 
+    const handleBounceBackSLA = async (workOrderId: string, categoryId: string, taskId: string) => {
+        if (!window.confirm('คุณต้องการตีกลับใบงานนี้เพื่อให้แอดมินประเมิน SLA ใหม่ใช่หรือไม่?\n(งานจะถูกถอดออกจากการมอบหมายและส่งกลับไปที่แอดมิน)')) return;
+        
+        setIsSubmitting(true);
+        try {
+            // 1. Reset task status to Pending and clear assignment/SLA
+            await updateTask(workOrderId, categoryId, taskId, {
+                status: 'Pending',
+                slaCategory: null,
+                responsibleStaffIds: []
+            });
+
+            // 1.5 Update Work Order status back to Evaluating so Admin can see it
+            await updateWorkOrderStatus(workOrderId, 'Evaluating');
+
+            // 2. Send Notification to Admin
+            await sendNotification({
+                recipientRole: 'Admin',
+                senderId: user?.id || 'foreman',
+                senderName: user?.name || 'Foreman',
+                title: 'ใบงานถูกตีกลับ (SLA Mismatch)',
+                message: `งาน "${selectedTaskInfo?.task.name}" ถูกตีกลับโดยโฟร์แมนเพื่อขอประเมิน SLA ใหม่`,
+                type: 'warning',
+                targetPath: `/evaluation?id=${workOrderId}`
+            });
+
+            // 3. Activity Log
+            logService.trackAction({
+                userId: user?.id || 'unknown',
+                userName: user?.name || 'Unknown',
+                role: user?.role || 'Foreman',
+                action: 'UPDATE', // Match existing ActivityLog['action'] type
+                module: 'REPORTING',
+                details: `Foreman rejected SLA (${selectedTaskInfo?.task.slaCategory}) and requested re-evaluation. Expected: ${selectedTaskInfo?.task.estimatedSla}`,
+                targetId: taskId
+            });
+
+            alert('ตีกลับใบงานเรียบร้อยแล้ว');
+            setSelectedTaskInfo(null);
+        } catch (err) {
+            console.error("Bounce back error:", err);
+            alert('เกิดข้อผิดพลาดในการตีกลับใบงาน');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleSubmit = async () => {
         if (!selectedTaskInfo) return;
         if (photos.length === 0) return alert('กรุณาถ่ายรูปอัปเดตหน้างานอย่างน้อย 1 รูป');
@@ -648,16 +711,17 @@ const DailyReport = () => {
         }
 
         // ✅ 2. Prevent Duplicate Date Entry
-        const hasDuplicateDate = selectedTaskInfo.task.history?.some(h => (h.date?.split('T')[0]) === reportDate);
-        if (hasDuplicateDate && isEditingExisting && !selectedTaskInfo.task.history?.some(h => (h.date?.split('T')[0]) === reportDate && isEditingExisting)) {
-            alert(`คุณเคยส่งรายงานของวันที่ ${new Date(reportDate).toLocaleDateString('th-TH')} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณาติดต่อแอดมินหรือลบรายการเดิมในประวัติออกก่อน`);
+        const existingHistory = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+        if (existingHistory && !isEditingExisting) {
+            alert(`คุณเคยส่งรายงานของวันที่ ${new Date(reportDate).toLocaleDateString('th-TH')} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`);
             return;
         }
 
         setIsSubmitting(true);
         try {
+                const updateId = (isEditingExisting && existingHistory) ? existingHistory.id : `h-${Date.now()}`;
                 const newUpdate: TaskUpdate = {
-                    id: `h-${Date.now()}`,
+                    id: updateId,
                     date: `${reportDate}T${new Date().toISOString().split('T')[1]}`, // Use Report Date with current time
                     note,
                     progress,
@@ -913,6 +977,58 @@ const DailyReport = () => {
                         </div>
 
                         <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
+                            {/* SLA MISMATCH WARNING & BOUNCE BACK */}
+                            {selectedTaskInfo.task.estimatedSla && 
+                             selectedTaskInfo.task.slaCategory && 
+                             selectedTaskInfo.task.estimatedSla !== selectedTaskInfo.task.slaCategory && 
+                             (selectedTaskInfo.task.dailyProgress || 0) === 0 && (
+                                <div style={{ 
+                                    background: '#fff7ed', 
+                                    border: '1px solid #fed7aa', 
+                                    borderRadius: '12px', 
+                                    padding: '1.25rem', 
+                                    marginBottom: '2rem',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+                                }}>
+                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                        <div style={{ background: '#ffedd5', padding: '10px', borderRadius: '12px', color: '#f97316' }}>
+                                            <AlertTriangle size={24} />
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: '0 0 4px 0', color: '#9a3412', fontSize: '0.95rem', fontWeight: 900 }}>SLA ไม่ตรงตามที่คาดการณ์</h4>
+                                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#c2410c', fontWeight: 500 }}>
+                                                คุณขอ: <span style={{ fontWeight: 800 }}>{selectedTaskInfo.task.estimatedSla}</span> | 
+                                                แอดมินระบุ: <span style={{ fontWeight: 800 }}>{selectedTaskInfo.task.slaCategory}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleBounceBackSLA(selectedTaskInfo.wo.id, selectedTaskInfo.categoryId, selectedTaskInfo.task.id)}
+                                        disabled={isSubmitting}
+                                        style={{
+                                            background: '#ef4444',
+                                            color: '#fff',
+                                            border: 'none',
+                                            padding: '10px 18px',
+                                            borderRadius: '10px',
+                                            fontSize: '0.85rem',
+                                            fontWeight: 800,
+                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <XCircle size={18} /> ตีกลับให้ประเมินใหม่
+                                    </button>
+                                </div>
+                            )}
+
                             <section style={{ marginBottom: '2.5rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
                                     <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={20} color="#3b82f6" /> การจัดการคนงาน (Labor)</h3>
@@ -1029,8 +1145,20 @@ const DailyReport = () => {
                                                     max="100"
                                                     step="5"
                                                     value={progress}
-                                                    onChange={(e) => setProgress(Number(e.target.value))}
-                                                    style={{ width: '100%', cursor: 'pointer', height: '6px', borderRadius: '3px' }}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setProgress(Math.min(progressBounds.max, Math.max(progressBounds.min, val)));
+                                                    }}
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        height: '10px', 
+                                                        borderRadius: '6px', 
+                                                        appearance: 'none', 
+                                                        background: `linear-gradient(to right, #475569 0%, #475569 ${progressBounds.min}%, #3b82f6 ${progressBounds.min}%, #3b82f6 ${progress}%, #e2e8f0 ${progress}%, #e2e8f0 100%)`, 
+                                                        cursor: 'pointer', 
+                                                        outline: 'none',
+                                                        transition: 'all 0.2s'
+                                                    }}
                                                 />
                                             </div>
                                             <div style={{ position: 'relative', width: '100px' }}>
@@ -1040,7 +1168,7 @@ const DailyReport = () => {
                                                     max="100"
                                                     value={progress}
                                                     disabled={!isEditingExisting}
-                                                    onChange={(e) => setProgress(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                                                    onChange={(e) => setProgress(Math.min(progressBounds.max, Math.max(progressBounds.min, parseInt(e.target.value) || 0)))}
                                                     style={{
                                                         width: '100%',
                                                         padding: '8px 30px 8px 12px',
@@ -1075,29 +1203,33 @@ const DailyReport = () => {
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '1rem', pointerEvents: isEditingExisting ? 'auto' : 'none', opacity: isEditingExisting ? 1 : 0.6 }}>
-                                            {[0, 25, 50, 75, 100].map(v => (
+                                            {[0, 25, 50, 75, 100].map(v => {
+                                                const isLocked = v < progressBounds.min || v > progressBounds.max;
+                                                return (
                                                 <button
                                                     key={v}
                                                     onClick={() => setProgress(v)}
-                                                    disabled={v > progressBounds.max}
+                                                    disabled={isLocked}
                                                     style={{
                                                         flex: 1,
                                                         padding: '8px 0',
                                                         borderRadius: '8px',
                                                         border: '1px solid',
                                                         borderColor: progress === v ? '#3b82f6' : '#e2e8f0',
-                                                        background: progress === v ? '#eff6ff' : v > progressBounds.max ? '#f1f5f9' : '#fff',
-                                                        color: progress === v ? '#2563eb' : v > progressBounds.max ? '#94a3b8' : '#64748b',
+                                                        background: progress === v ? '#eff6ff' : isLocked ? '#f1f5f9' : '#fff',
+                                                        color: progress === v ? '#2563eb' : isLocked ? '#94a3b8' : '#64748b',
                                                         fontSize: '0.75rem',
                                                         fontWeight: 800,
-                                                        cursor: v > progressBounds.max ? 'not-allowed' : 'pointer',
+                                                        cursor: isLocked ? 'not-allowed' : 'pointer',
                                                         transition: 'all 0.2s',
-                                                        opacity: v > progressBounds.max ? 0.6 : 1
+                                                        opacity: isLocked ? 0.6 : 1,
+                                                        textDecoration: isLocked ? 'line-through' : 'none'
                                                     }}
                                                 >
                                                     {v === 0 ? 'ล้าง' : v === 100 ? 'เสร็จสิ้น' : `${v}%`}
                                                 </button>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                     {progress === 100 && reportDate !== new Date().toISOString().split('T')[0] && (

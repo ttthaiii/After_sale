@@ -324,6 +324,16 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                             <label style={labelStyle}>
                                 <Clock size={16} color="#6b7280" /> SLA / ความเร่งด่วน
                             </label>
+                            {task.estimatedSla && (
+                                <div style={{ marginBottom: '8px', fontSize: '0.8rem', color: '#d97706', background: '#fffbeb', padding: '6px 12px', borderRadius: '6px', border: '1px solid #fcd34d', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                    <Clock size={14} /> SLA คาดการณ์จากโฟร์แมน: 
+                                    {task.estimatedSla === 'Immediately' ? 'ด่วนที่สุด (ทันที)' : 
+                                     task.estimatedSla === '24h' ? 'ภายใน 24 ชม. (ด่วน)' : 
+                                     task.estimatedSla === '1-3d' ? '1-3 วัน (ปานกลาง)' : 
+                                     task.estimatedSla === '3-7d' ? '3-7 วัน (ทั่วไป)' : 
+                                     task.estimatedSla === '7-14d' ? '7-14 วัน' : '14-30 วัน (งานใหญ่)'}
+                                </div>
+                            )}
                             <select
                                 style={inputStyle}
                                 value={formData.sla}
@@ -333,7 +343,8 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                                 <option value="24h">ภายใน 24 ชม. (ด่วน)</option>
                                 <option value="1-3d">1 - 3 วัน (ปกติ)</option>
                                 <option value="3-7d">3 - 7 วัน</option>
-                                <option value="7-14d">มากกว่า 7 วัน</option>
+                                <option value="7-14d">7 - 14 วัน</option>
+                                <option value="14-30d">14 - 30 วัน (งานใหญ่)</option>
                             </select>
                         </div>
 

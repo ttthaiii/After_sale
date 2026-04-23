@@ -4,7 +4,7 @@ import { Contractor, Staff, Project } from '../types';
 import MasterDataModal from '../components/MasterDataModal';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { migrateAll, migrateStaffFields } from '../services/migrationService'; // Import migration
+import { migrateAll } from '../services/migrationService'; // Import migration
 import { performUniversalStaffMigration, clearAllNotifications } from '../services/staffSystemMigration';
 import ActivityLogTable from '../components/ActivityLogTable';
 import { useWorkOrders } from '../context/WorkOrderContext';

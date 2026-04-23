@@ -14,7 +14,6 @@ import {
     Zap,
     ChevronDown,
     X,
-    PieChart as PieChartIcon,
     Edit2,
     Check
 } from 'lucide-react';
@@ -69,7 +68,7 @@ const ProgressDeltaBar = ({ prev, delta, isTask = false }: any) => {
 
 const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onUpdate }: any) => {
     const { user } = useAuth();
-    const { addTaskUpdate, workOrders, staff } = useWorkOrders();
+    const { addTaskUpdate, workOrders } = useWorkOrders();
     const [isLaborExpanded, setIsLaborExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [tempLabor, setTempLabor] = useState<any[]>([]);
@@ -78,7 +77,7 @@ const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onU
     // ✅ Find actual Work Order to check ownership or Admin/Manager status
     const workOrder = workOrders.find((wo: any) => wo.id === workOrderId);
     const isAdminOrManager = user?.role === 'Admin' || user?.role === 'Manager';
-    const isOwner = workOrder?.assignedTo === user?.id || workOrder?.assignedToId === user?.id;
+    const isOwner = workOrder?.reporterId === user?.id || task?.responsibleStaffIds?.includes(user?.id);
     const canEditLabor = isAdminOrManager || isOwner;
 
     // Console log for debugging if needed (remove before production if preferred)
@@ -104,17 +103,22 @@ const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onU
 
             // ✅ Core Safety: We ONLY update labor. We keep original progress and note from the history entry.
             // addTaskUpdate handles finding the correct history date and merging.
+            const reportPayload: any = {
+                id: `h-${reportDate}-${task.id}`, // Unique ID for this date/task combination
+                date: reportDate,
+                progress: task.dailyProgress || 0,
+                notes: task.note || "",
+                labor: tempLabor,
+                type: 'Update',
+                createdAt: new Date().toISOString(),
+                createdBy: user?.id || 'system'
+            };
+
             await addTaskUpdate(
                 workOrder.id,
                 category.id,
                 task.id,
-                {
-                    progress: task.progress || 0, // Keep existing
-                    note: task.note || "",      // Keep existing
-                    labor: tempLabor,           // New Labor data
-                    type: 'Update',
-                    reportDate: reportDate
-                }
+                reportPayload
             );
             
             setIsEditing(false);
@@ -238,7 +242,7 @@ const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onU
                                     </thead>
                                     <tbody>
                                         {data.map((lab: any, dIdx: number) => {
-                                            const originalIdx = laborData.findIndex(l => l.id === lab.id);
+                                            const originalIdx = laborData.findIndex((l: any) => l.id === lab.id);
                                             return (
                                                 <tr key={dIdx} style={{ borderBottom: dIdx === data.length - 1 ? 'none' : '1px solid #f1f5f9' }}>
                                                     <td style={{ padding: '12px 16px', fontWeight: 800, color: '#1e293b' }}>
@@ -335,30 +339,6 @@ const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onU
     );
 };
 
-const WOGroupCard = ({ group }: any) => (
-    <div style={{ background: '#f8fafc', borderRadius: '28px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-        <div style={{ background: '#fff', padding: '1.5rem 2rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ background: '#4f46e5', color: '#fff', padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '6px' }}>WO</div>
-                <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
-                    #{group.woId}
-                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, marginLeft: '8px', background: '#f1f5f9', padding: '4px 8px', borderRadius: '8px' }}>
-                        ทั้งหมด {group.totalTasks} งานย่อย
-                    </span>
-                </h4>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>Overall Progress Delta</div>
-                <ProgressDeltaBar prev={group.prevOverall} delta={group.delta} isTask={false} />
-            </div>
-        </div>
-        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {group.tasks.map((task: any, tIdx: number) => (
-                <TaskItemCard key={tIdx} task={task} isSingleTask={group.totalTasks === 1} />
-            ))}
-        </div>
-    </div>
-);
 
 const renderSCurveLegend = (props: any) => {
     const { payload } = props;
@@ -610,7 +590,7 @@ const Dashboard = () => {
     const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver' || (user?.role as any) === 'BackOffice';
     const isForeman = user?.role === 'Foreman';
 
-    const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'comparison'>(() => {
+    const [adminActiveTab] = useState<'overview' | 'comparison'>(() => {
         if (!isAdminOrManager) return 'overview';
         return (localStorage.getItem('dashboard_active_tab') as any) || 'overview';
     });

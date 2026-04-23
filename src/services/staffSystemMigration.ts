@@ -1,5 +1,5 @@
 import { db } from '../lib/firebase';
-import { collection, doc, getDocs, setDoc, deleteDoc, writeBatch, query, where, collectionGroup } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 
 /**
  * 🚨 ปฏิบัติการย้ายไอดีพนักงานทั้งระบบ (Universal Staff ID Migration)

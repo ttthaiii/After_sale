@@ -26,9 +26,10 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfMonth = new Date(year, month, 1).getDay();
 
-    const { dailyData, taskFirstDayMap } = useMemo(() => {
+    const { dailyData, taskFirstDayMap, taskLastDayMap } = useMemo(() => {
         const tempMap: Record<string, Record<string, any>> = {};
         const firstDayMap: Record<string, string> = {};
+        const lastDayMap: Record<string, string> = {};
 
         workOrders.forEach(wo => {
             if (!wo.categories) return;
@@ -44,6 +45,9 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                 const ds = new Date(h.date).toISOString().split('T')[0];
                                 if (!firstDayMap[task.id] || ds < firstDayMap[task.id]) {
                                     firstDayMap[task.id] = ds;
+                                }
+                                if (!lastDayMap[task.id] || ds > lastDayMap[task.id]) {
+                                    lastDayMap[task.id] = ds;
                                 }
 
                                 if (!tempMap[ds]) tempMap[ds] = {};
@@ -75,6 +79,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                         progressDelta,
                                         note: h.notes || h.note || '',
                                         photos: h.photos || [],
+                                        laborPhotos: h.laborPhotos || [],
                                         labor: h.labor || [],
                                         type: h.type || 'Normal',
                                         normalHours, otHours, manpower,
@@ -93,7 +98,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
             data[dateStr] = Object.values(tempMap[dateStr]).sort((a, b) => b.timestamp - a.timestamp);
         });
 
-        return { dailyData: data, taskFirstDayMap: firstDayMap };
+        return { dailyData: data, taskFirstDayMap: firstDayMap, taskLastDayMap: lastDayMap };
     }, [workOrders, currentUserId, projects]);
 
     const PALETTE = [
@@ -215,7 +220,8 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                 whiteSpace: 'nowrap', 
                                 textOverflow: 'ellipsis', 
                                 marginBottom: '1px',
-                                borderLeft: `3px solid ${item.color?.border || 'transparent'}`,
+                                borderLeft: dateStr === taskFirstDayMap[item.taskId] ? `3px solid ${item.color?.border || 'transparent'}` : 'none',
+                                borderRight: dateStr === taskLastDayMap[item.taskId] && item.progress === 100 ? `3px solid ${item.color?.border || 'transparent'}` : 'none',
                                 opacity: (highlightedWOId && item.woId?.toString().trim() !== highlightedWOId?.toString().trim()) || (highlightProjectId && item.projectId !== highlightProjectId) ? 0.15 : 1
                             }}>
                                 {label}
@@ -239,7 +245,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                 {dayNames.map((day, idx) => <div key={day} style={{ padding: '10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: idx === 0 || idx === 6 ? '#ef4444' : '#64748b' }}>{day}</div>)}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>{calendarCells}</div>
-            {selectedDateStr && <DailyDetailDrawer dateStr={selectedDateStr} events={dailyData[selectedDateStr] || []} taskRowMap={taskRowMap} onClose={() => setSelectedDateStr(null)} />}
+            {selectedDateStr && <DailyDetailDrawer dateStr={selectedDateStr} events={(dailyData[selectedDateStr] || []).map(e => ({ ...e, color: getColorForTask(woColorMap[e.woId]) }))} taskRowMap={taskRowMap} onClose={() => setSelectedDateStr(null)} />}
         </div>
     );
 };
@@ -367,13 +373,81 @@ const DailyDetailDrawer = ({ dateStr, events, taskRowMap, onClose }: { dateStr: 
             <div style={{ position: 'relative', width: '100%', maxWidth: '550px', height: '100%', background: '#ffffff', boxShadow: '-10px 0 30px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', animation: 'slide-in 0.3s ease-out' }}>
                 <style>{`@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
 
-                <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
-                    <div>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', position: 'relative' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <h3 style={{ fontSize: '1.2rem', fontWeight: 950, color: '#0f172a', margin: 0 }}>รายละเอียดรายวัน</h3>
                         <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>{formattedDate}</div>
                     </div>
-                    <button onClick={onClose} style={{ background: '#fff', border: '1px solid #e2e8f0', width: '36px', height: '36px', borderRadius: '12px', cursor: 'pointer' }}><X size={18} /></button>
+                    {/* Hard-coded absolute Close Button with high z-index */}
+                    <button 
+                        onClick={onClose} 
+                        style={{ 
+                            position: 'absolute',
+                            top: '20px',
+                            right: '24px',
+                            zIndex: 9999,
+                            background: '#f1f5f9', 
+                            border: '1px solid #e2e8f0', 
+                            width: '40px', 
+                            height: '40px', 
+                            borderRadius: '12px', 
+                            cursor: 'pointer', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }} 
+                    >
+                        <div style={{ position: 'relative', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ position: 'absolute', width: '20px', height: '3px', background: '#334155', transform: 'rotate(45deg)', borderRadius: '4px' }}></div>
+                            <div style={{ position: 'absolute', width: '20px', height: '3px', background: '#334155', transform: 'rotate(-45deg)', borderRadius: '4px' }}></div>
+                        </div>
+                    </button>
                 </div>
+
+                {/* Stats Summary Boxes */}
+                {(() => {
+                    let totalNormal = 0;
+                    let totalOT = 0;
+                    let totalOutsource = 0;
+
+                    events.forEach(ev => {
+                        ev.labor?.forEach((l: any) => {
+                            const count = l.amount || 1;
+                            const isOutsource = l.membership === 'Outsource';
+                            
+                            if (l.shifts?.normal) {
+                                totalNormal += (count * 8);
+                                if (isOutsource) totalOutsource += (count * 8);
+                            }
+                            
+                            let ot = 0;
+                            if (l.shifts?.otMorning) ot += (count * 2);
+                            if (l.shifts?.otNoon) ot += (count * 1);
+                            if (l.shifts?.otEvening) ot += (count * 3);
+                            
+                            totalOT += ot;
+                            if (isOutsource) totalOutsource += ot;
+                        });
+                    });
+
+                    return (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', padding: '16px 24px', background: '#ffffff', borderBottom: '1px solid #f1f5f9' }}>
+                            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '16px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', marginBottom: '4px' }}>ชม. ปกติ</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}>{totalNormal} <span style={{ fontSize: '0.7rem' }}>ชม.</span></div>
+                            </div>
+                            <div style={{ background: '#f0f9ff', padding: '12px', borderRadius: '16px', border: '1px solid #e0f2fe', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369a1', marginBottom: '4px' }}>ชม. ผรม. นอก</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0369a1' }}>{totalOutsource} <span style={{ fontSize: '0.7rem' }}>ชม.</span></div>
+                            </div>
+                            <div style={{ background: '#f5f3ff', padding: '12px', borderRadius: '16px', border: '1px solid #ddd6fe', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', marginBottom: '4px' }}>โอที</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#6d28d9' }}>{totalOT} <span style={{ fontSize: '0.7rem' }}>ชม.</span></div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -382,16 +456,52 @@ const DailyDetailDrawer = ({ dateStr, events, taskRowMap, onClose }: { dateStr: 
                             const currentLabor = isEditing ? tempLabor : (ev.labor || []);
 
                             return (
-                                <div key={idx} style={{ background: '#fff', borderRadius: '20px', border: isEditing ? '2px solid #6366f1' : '1px solid #e2e8f0', padding: '24px', boxShadow: isEditing ? '0 15px 40px -10px rgba(99, 102, 241, 0.2)' : 'none' }}>
+                                <div key={idx} style={{ background: '#fff', borderRadius: '20px', border: isEditing ? `2px solid ${ev.color?.border || '#6366f1'}` : '1px solid #e2e8f0', borderLeft: `6px solid ${ev.color?.border || '#6366f1'}`, padding: '24px', boxShadow: isEditing ? `0 15px 40px -10px ${ev.color?.border || '#6366f1'}40` : 'none' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                                         <div>
-                                            <span style={{ fontSize: '0.7rem', fontWeight: 900, color: '#6366f1', background: '#eef2ff', padding: '4px 10px', borderRadius: '8px' }}>{ev.projectName}</span>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 900, color: ev.color?.text || '#6366f1', background: ev.color?.bg || '#eef2ff', border: `1px solid ${ev.color?.border || '#c7d2fe'}`, padding: '4px 10px', borderRadius: '8px' }}>{ev.projectName}</span>
                                             <h4 style={{ fontSize: '1.15rem', fontWeight: 950, color: '#0f172a', margin: '6px 0 0' }}>{ev.taskName}</h4>
                                         </div>
-                                        {!isEditing && (
-                                            <button onClick={() => startEditing(ev)} style={{ background: '#fff', border: '1px solid #e2e8f0', color: '#6366f1', padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 850, cursor: 'pointer' }}>
-                                                <Edit2 size={14} style={{ marginRight: '6px' }} /> แก้ไข
-                                            </button>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                                            {!isEditing && (
+                                                <button onClick={() => startEditing(ev)} style={{ background: '#fff', border: '1px solid #e2e8f0', color: '#6366f1', padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 850, cursor: 'pointer' }}>
+                                                    <Edit2 size={14} style={{ marginRight: '6px' }} /> แก้ไข
+                                                </button>
+                                            )}
+                                            {ev.laborPhotos && ev.laborPhotos.length > 0 && !isEditing && (
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    {ev.laborPhotos.slice(0, 3).map((photoUrl: string, idx: number) => (
+                                                        <img key={idx} src={photoUrl} alt="Labor" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #e2e8f0', cursor: 'pointer', background: '#f1f5f9' }} onClick={() => setPreviewImage(photoUrl)} />
+                                                    ))}
+                                                    {ev.laborPhotos.length > 3 && (
+                                                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 900, color: '#64748b', cursor: 'pointer' }} onClick={() => setPreviewImage(ev.laborPhotos[3])}>
+                                                            +{ev.laborPhotos.length - 3}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Task Notes & Problems Section */}
+                                    <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {ev.note && ev.type !== 'Problem' && (
+                                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                    <FileText size={14} color="#64748b" />
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>หมายเหตุ:</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 700, lineHeight: 1.5 }}>{ev.note}</div>
+                                            </div>
+                                        )}
+                                        {ev.type === 'Problem' && (
+                                            <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '12px', padding: '12px 16px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                    <AlertCircle size={14} color="#ef4444" />
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#ef4444' }}>พบปัญหา/อุปสรรค:</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.9rem', color: '#991b1b', fontWeight: 850, lineHeight: 1.5 }}>{ev.note}</div>
+                                            </div>
                                         )}
                                     </div>
 

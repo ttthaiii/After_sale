@@ -103,7 +103,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         {
             id: crypto.randomUUID(),
             category: CATEGORIES_LIST[0],
-            items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [] }]
+            items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
         }
     ]);
 
@@ -163,7 +163,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 setGroups([{
                     id: crypto.randomUUID(),
                     category: CATEGORIES_LIST[0],
-                    items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [] }]
+                    items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
                 }]);
             }
         }
@@ -174,7 +174,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         setGroups([...groups, {
             id: crypto.randomUUID(),
             category: CATEGORIES_LIST[0],
-            items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [] }]
+            items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
         }]);
     };
 
@@ -193,7 +193,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             if (g.id === groupId) {
                 return {
                     ...g,
-                    items: [...g.items, { id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [] }]
+                    items: [...g.items, { id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
                 };
             }
             return g;
@@ -351,7 +351,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                     position: position,
                     amount: amount,
                     unit: unit,
-                    images: images,
+                    estimatedSla: (item as any).estimatedSla,
                     beforePhotoUrl: images.length > 0 ? images[0] : (item.beforePhotoUrl || null),
                     latestPhotoUrl: images.length > 0 ? images[0] : (item.latestPhotoUrl || null),
                     dailyProgress: item.dailyProgress || 0,
@@ -805,8 +805,30 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                         borderBottom: idx !== group.items.length - 1 ? '1px dashed #e2e8f0' : 'none',
                                                         paddingBottom: idx !== group.items.length - 1 ? '32px' : '0'
                                                     }}>
-                                                        {/* SYMMETRICAL GRID: 1.5fr 1fr 0.5fr 0.8fr */}
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.5fr 0.8fr', gap: '16px', marginBottom: '20px' }}>
+                                                        {group.items.length > 1 && (
+                                                            <button
+                                                                onClick={() => removeItemFromGroup(group.id, item.id)}
+                                                                style={{ 
+                                                                    position: 'absolute', 
+                                                                    top: '0', 
+                                                                    right: '0', 
+                                                                    color: '#ef4444', 
+                                                                    background: 'none', 
+                                                                    border: 'none', 
+                                                                    cursor: 'pointer', 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    justifyContent: 'center',
+                                                                    padding: '4px',
+                                                                    zIndex: 10
+                                                                }}
+                                                                title="ลบรายการ"
+                                                            >
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        )}
+                                                        {/* SYMMETRICAL GRID: Updated for 5 columns */}
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr', gap: '16px', marginBottom: '20px' }}>
                                                             <div>
                                                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จุดที่พบ (Position)</label>
                                                                 <input
@@ -843,18 +865,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 />
                                                             </div>
                                                             <div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                                                    <label style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: 600 }}>หน่วย</label>
-                                                                    {group.items.length > 1 && (
-                                                                        <button
-                                                                            onClick={() => removeItemFromGroup(group.id, item.id)}
-                                                                            style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}
-                                                                            title="ลบรายการ"
-                                                                        >
-                                                                            <Trash2 size={16} />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
+                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>หน่วย</label>
                                                                 <select
                                                                     value={item.unit}
                                                                     onChange={(e) => updateItem(group.id, item.id, 'unit', e.target.value)}
@@ -863,6 +874,23 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                                                                 >
                                                                     {['จุด', 'ตำแหน่ง', 'ชั้น', 'ตรม.', 'แผ่น', 'บาน', 'เครื่อง', 'เมตร', 'เซนติเมตร'].map(u => <option key={u} value={u}>{u}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>SLA คาดการณ์</label>
+                                                                <select
+                                                                    value={(item as any).estimatedSla || '24h'}
+                                                                    onChange={(e) => updateItem(group.id, item.id, 'estimatedSla', e.target.value)}
+                                                                    style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', outline: 'none', fontSize: '0.9rem' }}
+                                                                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+                                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                                >
+                                                                    <option value="Immediately">ด่วนที่สุด (ทันที)</option>
+                                                                    <option value="24h">ภายใน 24 ชม. (ด่วน)</option>
+                                                                    <option value="1-3d">1-3 วัน (ปานกลาง)</option>
+                                                                    <option value="3-7d">3-7 วัน (ทั่วไป)</option>
+                                                                    <option value="7-14d">7-14 วัน</option>
+                                                                    <option value="14-30d">14-30 วัน (งานใหญ่)</option>
                                                                 </select>
                                                             </div>
                                                         </div>
