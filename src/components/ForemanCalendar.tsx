@@ -1,7 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Calendar as CalendarIcon, FileText, X, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock } from 'lucide-react';
-import { WorkOrder, Project, Staff, Contractor, LaborRecord } from '../types';
-import { useAuth } from '../context/AuthContext';
+import React, { useState, useMemo } from 'react';
+import { Calendar as CalendarIcon, FileText, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock, X } from 'lucide-react';
+import { WorkOrder, Project } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import ImageOverlay from './ImageOverlay';
 import { AnalogTimePicker } from './AnalogTimePicker';
@@ -77,7 +76,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                         taskName: task.name,
                                         progress: h.progress,
                                         progressDelta,
-                                        note: h.notes || h.note || '',
+                                        note: (h as any).notes || h.note || '',
                                         photos: h.photos || [],
                                         laborPhotos: h.laborPhotos || [],
                                         labor: h.labor || [],
@@ -112,7 +111,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
 
     const getColorForTask = (rowIdx: number) => PALETTE[rowIdx % PALETTE.length];
 
-    const { taskRowMap, woColorMap, monthTasks, maxRows } = useMemo(() => {
+    const { taskRowMap, woColorMap, maxRows } = useMemo(() => {
         const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
         const taskDetails: Record<string, { start: string, end: string, woId: string }> = {};
 
@@ -245,13 +244,12 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                 {dayNames.map((day, idx) => <div key={day} style={{ padding: '10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: idx === 0 || idx === 6 ? '#ef4444' : '#64748b' }}>{day}</div>)}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>{calendarCells}</div>
-            {selectedDateStr && <DailyDetailDrawer dateStr={selectedDateStr} events={(dailyData[selectedDateStr] || []).map(e => ({ ...e, color: getColorForTask(woColorMap[e.woId]) }))} taskRowMap={taskRowMap} onClose={() => setSelectedDateStr(null)} />}
+            {selectedDateStr && <DailyDetailDrawer dateStr={selectedDateStr} events={(dailyData[selectedDateStr] || []).map(e => ({ ...e, color: getColorForTask(woColorMap[e.woId]) }))} onClose={() => setSelectedDateStr(null)} />}
         </div>
     );
 };
 
-const DailyDetailDrawer = ({ dateStr, events, taskRowMap, onClose }: { dateStr: string, events: any[], taskRowMap: Record<string, number>, onClose: () => void }) => {
-    const { user } = useAuth();
+const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, events: any[], onClose: () => void }) => {
     const { addTaskUpdate, workOrders, staff: masterStaff, contractors: masterContractors } = useWorkOrders();
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isEditingId, setIsEditingId] = useState<string | null>(null);
@@ -281,13 +279,13 @@ const DailyDetailDrawer = ({ dateStr, events, taskRowMap, onClose }: { dateStr: 
         try {
             const wo = workOrders.find(w => w.id === ev.woId);
             const category = wo?.categories?.find(c => c.tasks.some(t => t.id === ev.taskId));
-            if (!wo || !category) throw new Error("WorkOrder not found");
+            const task = category?.tasks.find(t => t.id === ev.taskId);
+            const historyEntry = task?.history?.find((h: any) => h.date.startsWith(dateStr));
+            if (!wo || !category || !historyEntry) throw new Error("WorkOrder, Category, or History entry not found");
+            
             await addTaskUpdate(wo.id, category.id, ev.taskId, {
-                progress: ev.progress,
-                note: ev.note || "",
-                labor: tempLabor,
-                type: 'Update',
-                reportDate: dateStr
+                ...(historyEntry as any),
+                labor: tempLabor
             });
             setIsEditingId(null);
             alert("บันทึกแก้ไขค่าแรงเรียบร้อยแล้ว");
@@ -524,8 +522,6 @@ const DailyDetailDrawer = ({ dateStr, events, taskRowMap, onClose }: { dateStr: 
                                                     {['normal', 'otMorning', 'otNoon', 'otEvening'].map(s => {
                                                         const active = lab.shifts?.[s];
                                                         if (!isEditing && !active) return null;
-                                                        const timeKey = s === 'normal' ? 'day' : s;
-                                                        const timeVal = lab.shiftTimes?.[timeKey] || '00:00 - 00:00';
 
                                                         return (
                                                             <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: isEditing ? '#fff' : 'none', padding: isEditing ? '8px 12px' : 0, borderRadius: '10px', border: isEditing ? '1px solid #e2e8f0' : 'none' }}>

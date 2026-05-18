@@ -51,7 +51,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     id: taskDoc.id, 
                     dailyreports,
                     history: dailyreports // ✅ Backward compatibility for legacy UI components
-                } as MasterTask);
+                } as unknown as MasterTask);
             }
             categories.push({ ...catData, id: catDoc.id, tasks } as Category);
         }
@@ -173,7 +173,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         
         if (taskDoc) {
             const isCompleted = report.progress === 100 || (taskDoc.dailyProgress === 100);
-            const newProgress = Math.max(taskDoc.dailyProgress || 0, report.progress);
+            const newProgress = Math.max(taskDoc.dailyProgress || 0, report.progress || 0);
             
             await updateDoc(taskRef, {
                 dailyProgress: newProgress,
@@ -205,7 +205,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         try {
             await updateDoc(doc(db, 'workOrders', id), { 
                 reviewedByAdmin: true,
-                reviewedAt: new Date().toISOString()
+                reviewedAt: new Date().toISOString(),
+                adminReviewedAt: new Date().toISOString()
             });
         } catch (err) {
             console.error("Failed to mark as reviewed:", err);

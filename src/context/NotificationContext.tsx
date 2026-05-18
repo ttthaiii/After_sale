@@ -2,14 +2,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
     collection, 
     query, 
-    where, 
     onSnapshot, 
     limit,
     addDoc,
     updateDoc,
     doc,
-    serverTimestamp,
-    orderBy
+    serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';

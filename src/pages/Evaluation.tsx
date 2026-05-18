@@ -8,12 +8,10 @@ import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useNotifications } from '../context/NotificationContext';
 
 const Evaluation = () => {
     const { user } = useAuth();
     const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed } = useWorkOrders();
-    const { sendNotification } = useNotifications();
     const location = useLocation();
     const navigate = useNavigate();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -59,15 +57,28 @@ const Evaluation = () => {
     const pendingWorkOrders = workOrders
         .filter(wo => {
             const isPending = wo.status === 'Evaluating';
-            const matchesSearch = wo.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                wo.id.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
-            const woDate = new Date(wo.submittedAt || wo.createdAt).toISOString().split('T')[0];
-            const matchesStartDate = startDate ? woDate >= startDate : true;
-            const matchesEndDate = endDate ? woDate <= endDate : true;
+            let woDate = '';
+            const rawDate = wo.submittedAt || wo.createdAt;
+            if (rawDate) {
+                const parsed = new Date(rawDate);
+                if (!isNaN(parsed.getTime())) {
+                    woDate = parsed.toISOString().split('T')[0];
+                }
+            }
+            const matchesStartDate = startDate ? (woDate ? woDate >= startDate : false) : true;
+            const matchesEndDate = endDate ? (woDate ? woDate <= endDate : false) : true;
             return isPending && matchesSearch && matchesProject && matchesStartDate && matchesEndDate;
         })
-        .sort((a, b) => new Date(b.submittedAt || b.createdAt).getTime() - new Date(a.submittedAt || a.createdAt).getTime()); // Sort Newest Submitted First
+        .sort((a, b) => {
+            const timeA = new Date(a.submittedAt || a.createdAt).getTime();
+            const timeB = new Date(b.submittedAt || b.createdAt).getTime();
+            const validA = isNaN(timeA) ? 0 : timeA;
+            const validB = isNaN(timeB) ? 0 : timeB;
+            return validB - validA;
+        }); // Sort Newest Submitted First
 
     // ✅ Track Page View
     useEffect(() => {

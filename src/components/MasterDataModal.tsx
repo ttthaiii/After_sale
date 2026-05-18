@@ -24,7 +24,7 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
 
     useEffect(() => {
         if (initialData) {
-            const data = { ...initialData };
+            const data = { ...initialData } as any;
             // ✅ Auto-fill Employee ID from password if employeeId is missing (Transition support)
             if (type === 'Staff' && !data.employeeId && data.password) {
                 data.employeeId = data.password;

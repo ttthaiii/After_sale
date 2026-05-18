@@ -40,7 +40,7 @@ interface ForemanReportModalProps {
 }
 
 const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkType = 'AfterSale', editWorkOrder }: ForemanReportModalProps) => {
-    const { addWorkOrder, staff: allStaff } = useWorkOrders();
+    const { addWorkOrder } = useWorkOrders();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
     const [allProjects, setAllProjects] = useState<Project[]>([]);

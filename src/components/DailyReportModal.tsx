@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { MasterTask, WorkOrder, Staff, LaborRecord, TaskUpdate } from '../types';
+import { useState, useEffect, useMemo } from 'react';
+import { MasterTask, WorkOrder, Staff, LaborRecord, DailyReport } from '../types';
 import { X, Camera, Plus, Trash2, Users, HardHat, Info, CheckCircle2, AlertCircle, User, Loader2 } from 'lucide-react';
 import { MOCK_STAFF, MOCK_CONTRACTORS, MOCK_PROJECTS } from '../data/mockData';
 import LoadingOverlay from './LoadingOverlay';
@@ -10,7 +10,7 @@ import { compressImage } from '../utils/imageCompression';
 interface DailyReportModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (taskId: string, woId: string, update: TaskUpdate) => void;
+    onSubmit: (taskId: string, woId: string, update: DailyReport) => void;
     task: MasterTask;
     wo: WorkOrder;
 }
@@ -39,6 +39,20 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
     // Filter staff by project affiliation
     const availableStaff = MOCK_STAFF.filter(s => s.affiliation === projectAffiliation || !projectAffiliation);
     const assignedContractor = MOCK_CONTRACTORS.find(c => c.id === task.contractorId);
+
+    // Calculate min and max allowed progress based on selected reportDate and history
+    const { minProgress, maxProgress } = useMemo(() => {
+        if (!task.history || task.history.length === 0) return { minProgress: 0, maxProgress: 100 };
+        
+        // Find history entries strictly BEFORE and strictly AFTER the selected reportDate
+        const historyBefore = task.history.filter(h => h.date < reportDate).sort((a, b) => b.date.localeCompare(a.date));
+        const historyAfter = task.history.filter(h => h.date > reportDate).sort((a, b) => a.date.localeCompare(b.date));
+
+        const min = historyBefore.length > 0 ? historyBefore[0].progress : 0;
+        const max = historyAfter.length > 0 ? historyAfter[0].progress : 100;
+
+        return { minProgress: min, maxProgress: max };
+    }, [task.history, reportDate]);
 
     useEffect(() => {
         if (isOpen) {
@@ -168,19 +182,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
         }
     };
 
-    // Calculate min and max allowed progress based on selected reportDate and history
-    const { minProgress, maxProgress } = useMemo(() => {
-        if (!task.history || task.history.length === 0) return { minProgress: 0, maxProgress: 100 };
-        
-        // Find history entries strictly BEFORE and strictly AFTER the selected reportDate
-        const historyBefore = task.history.filter(h => h.date < reportDate).sort((a, b) => b.date.localeCompare(a.date));
-        const historyAfter = task.history.filter(h => h.date > reportDate).sort((a, b) => a.date.localeCompare(b.date));
 
-        const min = historyBefore.length > 0 ? historyBefore[0].progress : 0;
-        const max = historyAfter.length > 0 ? historyAfter[0].progress : 100;
-
-        return { minProgress: min, maxProgress: max };
-    }, [task.history, reportDate]);
 
     // Ensure progress is within bounds
     useEffect(() => {
@@ -201,7 +203,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
 
         setIsSubmitting(true);
         try {
-            const update: TaskUpdate = {
+            const update: DailyReport = {
                 id: `REP-${Date.now()}`,
                 date: reportDate, // ✅ Use user-selected date
                 workType: 'regular',
@@ -215,7 +217,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
                 notes: note,
                 photos: photos,
                 laborPhotos: laborPhotos, // ✅ Include labor proof photos
-                type: type,
+                type: type === 'Problem' ? 'Problem' : 'Update',
                 createdAt: new Date().toISOString(),
                 createdBy: 'user-id' 
             };
@@ -270,7 +272,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
                             display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'right', minWidth: '160px'
                         }}>
                             <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>
-                                เป้าหมาย (SLA) <span style={{ color: '#0f172a', marginLeft: '4px' }}>{task.duration || 24} ชม.</span>
+                                เป้าหมาย (SLA) <span style={{ color: '#0f172a', marginLeft: '4px' }}>{(task as any).estimatedSla || '24h'}</span>
                             </div>
                             <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }} />
                             <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f59e0b' }}>

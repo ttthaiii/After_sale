@@ -353,9 +353,9 @@ const DailyReport = () => {
                             const hasProgress = actualProgress > 0;
                             
                             if (searchTerm) {
-                                const match = task.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                             wo.locationName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                             wo.id.toLowerCase().includes(searchTerm.toLowerCase());
+                                const match = (task.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                             (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                             (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
                                 if (!match) return;
                             }
 

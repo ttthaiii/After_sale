@@ -15,7 +15,9 @@ import {
     ChevronDown,
     X,
     Edit2,
-    Check
+    Check,
+    FileText,
+    MapPin
 } from 'lucide-react';
 import {
     XAxis,
@@ -834,6 +836,44 @@ const Dashboard = () => {
         return base;
     }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters]);
 
+    // ✅ Phase 1: Flat-map tasks for Task-Centric Dashboard
+    const flatTasks = useMemo(() => {
+        const tasks: any[] = [];
+        const matchesUser = (id: string) => {
+            if (!user) return false;
+            return id === user.id || (user.employeeId && id === user.employeeId);
+        };
+
+        filteredData.forEach((wo: any) => {
+            wo.categories?.forEach((cat: any) => {
+                cat.tasks?.forEach((task: any) => {
+                    const isReporter = matchesUser(wo.reporterId || '');
+                    const isResponsible = task.responsibleStaffIds?.some((id: string) => matchesUser(id));
+                    
+                    // Filter tasks where the user is involved
+                    if (isReporter || isResponsible) {
+                        tasks.push({
+                            ...task,
+                            woId: wo.id,
+                            woStatus: wo.status,
+                            locationName: wo.locationName,
+                            projectId: wo.projectId,
+                            projectName: getProjectName(wo.projectId),
+                            categoryName: cat.name,
+                            parentWO: wo
+                        });
+                    }
+                });
+            });
+        });
+        
+        // Sort by WO ID to facilitate grouping, then by task name
+        return tasks.sort((a, b) => {
+            if (a.woId !== b.woId) return a.woId.localeCompare(b.woId);
+            return (a.name || '').localeCompare(b.name || '');
+        });
+    }, [filteredData, user, projects]);
+
     // Comparison Dashboard specific broad filtering
     const comparisonFilteredData = useMemo(() => {
         let base = [...allAccessibleWOs];
@@ -879,10 +919,22 @@ const Dashboard = () => {
         const total = allAccessibleWOs.length;
         const totalAssignments = filteredWOs.length;
 
-        let closed = filteredWOs.filter((wo: any) => isWorkOrderCompleted(wo)).length;
-        let open = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)).length;
-        let evaluating = allAccessibleWOs.filter((wo: any) => wo.status === 'Evaluating').length;
+        let closed = 0;
+        let open = 0;
+        let evaluating = 0;
         let highRisk = 0, slaMetCount = 0, totalTaskCount = 0;
+
+        // ✅ Count tasks instead of Work Orders for core metrics
+        allAccessibleWOs.forEach((wo: any) => {
+            (wo.categories || []).forEach((c: any) => {
+                (c.tasks || []).forEach((t: any) => {
+                    const isCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
+                    if (isCompleted) closed++;
+                    else if (wo.status === 'Evaluating') evaluating++;
+                    else if (['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) open++;
+                });
+            });
+        });
 
         filteredWOs.forEach((wo: any) => {
             const isFocusMatch = !highlightedWOId || wo.id?.toString().trim() === highlightedWOId?.toString().trim();
@@ -1091,13 +1143,30 @@ const Dashboard = () => {
                 inProgress: 0, evaluating: 0, categories: {},
                 completedJobs: [], evaluatingJobs: [], inProgressJobs: []
             };
-            projectsMap[pId].total++;
-            const isCompleted = isWorkOrderCompleted(wo);
-            if (isCompleted) {
-                projectsMap[pId].completed++;
+
+            // ✅ Count tasks instead of Work Orders for project statistics
+            (wo.categories || []).forEach((c: any) => {
+                (c.tasks || []).forEach((t: any) => {
+                    projectsMap[pId].total++;
+                    const isTaskCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
+                    if (isTaskCompleted) {
+                        projectsMap[pId].completed++;
+                    } else {
+                        projectsMap[pId].active++;
+                        if (wo.status === 'Evaluating') projectsMap[pId].evaluating++;
+                        else projectsMap[pId].inProgress++;
+                    }
+                });
+
+                if (!projectsMap[pId].categories[c.name]) projectsMap[pId].categories[c.name] = { name: c.name, total: 0, completed: 0, slaMet: 0, stalled: 0 };
+                projectsMap[pId].categories[c.name].total += (c.tasks || []).length;
+                projectsMap[pId].categories[c.name].completed += (c.tasks || []).filter((t: any) => t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified').length;
+            });
+
+            const isWOCompleted = isWorkOrderCompleted(wo);
+            if (isWOCompleted) {
                 projectsMap[pId].completedJobs.push({ id: wo.id, name: wo.locationName });
             } else {
-                projectsMap[pId].active++;
                 let lastUpdateTime = new Date(wo.createdAt).getTime();
                 (wo.categories || []).forEach((c: any) => c.tasks.forEach((t: any) => (t.history || []).forEach((h: any) => {
                     const dt = new Date(h.date).getTime();
@@ -1105,22 +1174,15 @@ const Dashboard = () => {
                 })));
                 const isStalled = now - lastUpdateTime > 48 * 3600 * 1000;
                 if (isStalled) projectsMap[pId].stalled++;
-                else if (wo.status === 'Evaluating') {
-                    projectsMap[pId].evaluating++;
+                
+                if (wo.status === 'Evaluating') {
                     projectsMap[pId].evaluatingJobs.push({ id: wo.id, name: wo.locationName });
                 } else {
-                    projectsMap[pId].inProgress++;
                     projectsMap[pId].inProgressJobs.push({ id: wo.id, name: wo.locationName });
                 }
                 const slaStatus = getSLATimeStatus(wo);
                 if (slaStatus && (slaStatus.level === 'critical' || slaStatus.level === 'warning')) projectsMap[pId].highRisk++;
             }
-
-            (wo.categories || []).forEach((c: any) => {
-                if (!projectsMap[pId].categories[c.name]) projectsMap[pId].categories[c.name] = { name: c.name, total: 0, completed: 0, slaMet: 0, stalled: 0 };
-                projectsMap[pId].categories[c.name].total++;
-                if (isCompleted) projectsMap[pId].categories[c.name].completed++;
-            });
 
             if (!laborByProject[pId]) laborByProject[pId] = { name: getProjectName(pId), internalWorkers: 0, outsourceWorkers: 0 };
 
@@ -1134,7 +1196,14 @@ const Dashboard = () => {
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
                     (t.history || []).forEach((log: any) => {
-                        const dateStr = new Date(log.date).toISOString().split('T')[0];
+                        let dateStr = '';
+                        if (log.date) {
+                            const parsed = new Date(log.date);
+                            if (!isNaN(parsed.getTime())) {
+                                dateStr = parsed.toISOString().split('T')[0];
+                            }
+                        }
+                        if (!dateStr) return;
                         const key = `${wo.id}_${t.id || t.name}_${dateStr}`;
                         if (!taskMapByDate[key] || new Date(log.date).getTime() > taskMapByDate[key].timestamp) {
                             taskMapByDate[key] = { timestamp: new Date(log.date).getTime(), dateStr, labor: log.labor || [] };
@@ -1303,19 +1372,48 @@ const Dashboard = () => {
         const dataPoints = [];
         for (let d = startDay; d <= endDay; d++) {
             const dateStr = `${year}-${monthNum.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-            const opened = allAccessibleWOs.filter((wo: any) => {
-                if (!wo.createdAt) return false;
-                try { return new Date(wo.createdAt).toISOString().split('T')[0] === dateStr; } catch { return wo.createdAt.startsWith(dateStr); }
+            
+            let openedTasksCount = 0;
+            let closedTasksCount = 0;
+            let isRelatedDay = false;
+
+            allAccessibleWOs.forEach((wo: any) => {
+                let woCreatedDate = '';
+                if (wo.createdAt) {
+                    const parsed = new Date(wo.createdAt);
+                    if (!isNaN(parsed.getTime())) {
+                        woCreatedDate = parsed.toISOString().split('T')[0];
+                    }
+                }
+                const isWOCreatedToday = woCreatedDate === dateStr;
+                const isTargetWO = wo.id?.toString().trim() === highlightedWOId?.toString().trim();
+
+                (wo.categories || []).forEach((c: any) => {
+                    (c.tasks || []).forEach((t: any) => {
+                        // Task "opened" when WO is created
+                        if (isWOCreatedToday) {
+                            openedTasksCount++;
+                            if (isTargetWO) isRelatedDay = true;
+                        }
+
+                        // Task "closed" when it reaches 100% progress
+                        const history = t.history || [];
+                        const completionUpdate = history.find((h: any) => h.progress === 100 && h.date.startsWith(dateStr));
+                        if (completionUpdate) {
+                            closedTasksCount++;
+                            if (isTargetWO) isRelatedDay = true;
+                        }
+                    });
+                });
             });
-            const closed = allAccessibleWOs.filter((wo: any) => {
-                if (!isWorkOrderCompleted(wo)) return false;
-                const completionTime = wo.completedAt || wo.lastUpdate || wo.createdAt;
-                if (!completionTime) return false;
-                try { return new Date(completionTime).toISOString().split('T')[0] === dateStr; } catch { return completionTime.startsWith(dateStr); }
+
+            dataPoints.push({ 
+                day: d, 
+                name: `${d} ${new Date(year, monthNum - 1).toLocaleDateString('th-TH', { month: 'short' })}`, 
+                openedCount: openedTasksCount, 
+                closedCount: closedTasksCount,
+                isHighlighted: isRelatedDay 
             });
-            const isRelatedDay = opened.some((wo: any) => wo.id?.toString().trim() === highlightedWOId?.toString().trim()) ||
-                closed.some((wo: any) => wo.id?.toString().trim() === highlightedWOId?.toString().trim());
-            dataPoints.push({ day: d, name: `${d} ${new Date(year, monthNum - 1).toLocaleDateString('th-TH', { month: 'short' })}`, openedCount: opened.length, closedCount: closed.length, openedWOs: opened, closedWOs: closed, isHighlighted: isRelatedDay });
         }
         return dataPoints;
     }, [allAccessibleWOs, selectedMonth, selectedWeek, highlightedWOId]);
@@ -1454,6 +1552,32 @@ const Dashboard = () => {
 
     return (
         <div style={{ width: '100%', margin: 0, paddingBottom: '3rem' }}>
+            <style>{`
+                .task-row-premium {
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    cursor: default;
+                }
+                .task-row-premium:hover {
+                    background: #fdfdfd !important;
+                    transform: translateY(-2px);
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+                    z-index: 10;
+                }
+                .premium-action-btn {
+                    transition: all 0.2s ease;
+                }
+                .premium-action-btn:hover {
+                    background: #4f46e5 !important;
+                    color: #ffffff !important;
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
+                    transform: translateY(-1px);
+                    border-color: #4f46e5 !important;
+                }
+                .section-highlight {
+                    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+                    border-color: #4f46e5 !important;
+                }
+            `}</style>
             {/* Sticky Header */}
             <div style={{ position: 'sticky', top: '-2rem', zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 1)', backdropFilter: 'blur(12px)', paddingTop: '1rem', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', margin: '-2rem -2rem 2.5rem -2rem', paddingLeft: '2rem', paddingRight: '2rem', transition: 'all 0.3s ease' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
@@ -2061,9 +2185,9 @@ const Dashboard = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', marginBottom: '2.5rem' }}>
                                 <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
                                     <SectionHeader
-                                        title="สถิติการเปิด-ปิดใบงาน (Work Order Stats)"
+                                        title="สถิติการเปิด-ปิดรายการงาน (Task Statistics)"
                                         icon={<TrendingUp size={22} />}
-                                        subtitle={`สรุปจำนวนการเปิดงานใหม่และปิดงานสำเร็จราย${selectedWeek === 0 ? 'เดือน' : `สัปดาห์ที่ ${selectedWeek}`}`}
+                                        subtitle={`สรุปจำนวนรายการงานที่เปิดใหม่และทำเสร็จสำเร็จราย${selectedWeek === 0 ? 'เดือน' : `สัปดาห์ที่ ${selectedWeek}`}`}
                                         actions={
                                             <div style={{ padding: '6px 14px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
                                                 <span style={{ color: '#f59e0b' }}>เปิด {timelineData.reduce((acc, d) => acc + d.openedCount, 0)}</span>
@@ -2357,88 +2481,230 @@ const Dashboard = () => {
                                 </div>
 
                                 {/* Job Performance Details */}
-                                <div id="job-details-section" className={highlightedSection === 'job-details-section' ? 'section-highlight' : ''} style={{ gridColumn: '1/-1', background: '#ffffff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
-                                    <SectionHeader title="รายละเอียดงานที่ดำเนินการ (Job Performance Details)" icon={<Activity size={24} />} subtitle="รายการใบงานทั้งหมดที่คุณรับผิดชอบในช่วงเวลาที่เลือก" />
+                                <div id="job-details-section" className={highlightedSection === 'job-details-section' ? 'section-highlight' : ''} style={{ gridColumn: '1/-1', background: '#ffffff', padding: '1.5rem 2rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
+                                    <SectionHeader title="รายละเอียดรายการงานที่ดำเนินการ (Task Performance Details)" icon={<Activity size={24} />} subtitle="รายการงานย่อยทั้งหมดที่คุณรับผิดชอบ แยกตามใบงานอ้างอิง" />
                                     <div style={{ overflowX: 'auto' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                                             <thead>
-                                                <tr style={{ textAlign: 'left', color: '#64748b', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase' }}>
-                                                    <th style={{ padding: '0 1rem' }}>ID งาน</th>
-                                                    <th>โครงการ / สถานที่</th>
+                                                <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                                    <th style={{ padding: '0 1.5rem' }}>รายการงาน</th>
+                                                    <th>ตำแหน่ง / สถานที่</th>
                                                     <th>หมวดหมู่</th>
                                                     <th>สถานะ</th>
                                                     <th>ความคืบหน้า</th>
-                                                    <th style={{ textAlign: 'right' }}>ดำเนินการ</th>
+                                                    <th style={{ textAlign: 'right', paddingRight: '1.5rem' }}>จัดการ</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {filteredData.map((wo: any) => {
-                                                    let totalP = 0, tCount = 0;
-                                                    wo.categories?.forEach((c: any) => c.tasks.forEach((t: any) => {
-                                                        if (t.status !== 'Rejected') { totalP += t.dailyProgress || 0; tCount++; }
-                                                    }));
-                                                    const p = tCount > 0 ? Math.round(totalP / tCount) : 0;
-                                                    const isCancelled = wo.isArchived || wo.status === 'Rejected' || wo.status === 'Cancelled';
-                                                    const isCompleted = wo.status === 'Completed' || (p === 100 && tCount > 0);
-                                                    const label = isCancelled ? 'ยกเลิก' : isCompleted ? 'เสร็จสิ้น' : wo.status === 'Evaluating' ? 'รอประเมิน' : 'กำลังดำเนินการ';
-                                                    const statusColor = isCancelled ? '#991b1b' : isCompleted ? '#166534' : wo.status === 'Evaluating' ? '#0369a1' : '#92400e';
-                                                    const statusBg = isCancelled ? '#fee2e2' : isCompleted ? '#dcfce7' : wo.status === 'Evaluating' ? '#e0f2fe' : '#fef3c7';
-                                                    const hasProblem = wo.categories?.some((c: any) => c.tasks.some((t: any) => t.history?.some((h: any) => h.type === 'Problem')));
-                                                    const isHighlightedTarget = highlightedWOId?.toString().trim() === wo.id?.toString().trim();
-                                                    return (
-                                                        <tr
-                                                            key={wo.id}
-                                                            style={{
-                                                                background: isHighlightedTarget ? '#eff6ff' : '#f8fafc',
-                                                                borderRadius: '12px',
-                                                                boxShadow: isHighlightedTarget ? '0 0 0 2px #3b82f6 inset' : 'none',
-                                                                transition: 'all 0.3s ease',
-                                                                transform: isHighlightedTarget ? 'scale(1.002)' : 'none',
-                                                                zIndex: isHighlightedTarget ? 2 : 1,
-                                                                position: 'relative'
-                                                            }}
-                                                        >
-                                                            <td style={{ padding: '1rem', fontWeight: 800, color: '#0f172a', borderRadius: '12px 0 0 12px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    {hasProblem && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 0 2px #fff, 0 0 8px rgba(239, 68, 68, 0.4)' }} />}
-                                                                    {wo.id}
-                                                                </div>
-                                                            </td>
-                                                            <td>
-                                                                <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.85rem' }}>{getProjectName(wo.projectId)}</div>
-                                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{wo.locationName}</div>
-                                                            </td>
-                                                            <td style={{ fontWeight: 600, color: '#475569', fontSize: '0.85rem' }}>{wo.categories?.[0]?.name || '-'}</td>
-                                                            <td>
-                                                                <span style={{ fontSize: '0.75rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', color: statusColor, backgroundColor: statusBg }}>
-                                                                    {label}
-                                                                </span>
-                                                            </td>
-                                                            <td>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '3px', width: '80px' }}>
-                                                                        <div style={{ width: `${p}%`, height: '100%', background: p === 100 ? '#10b981' : '#4f46e5', borderRadius: '3px' }} />
+                                                {(() => {
+                                                    let lastWoId = '';
+                                                    if (flatTasks.length === 0) {
+                                                        return (
+                                                            <tr>
+                                                                <td colSpan={6} style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8' }}>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+                                                                        <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                            <AlertCircle size={40} opacity={0.3} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <p style={{ fontSize: '1.1rem', fontWeight: 700, color: '#64748b', margin: 0 }}>ไม่พบรายการงาน</p>
+                                                                            <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '4px' }}>ลองปรับเปลี่ยนช่วงเวลาหรือฟิลเตอร์ของคุณ</p>
+                                                                        </div>
                                                                     </div>
-                                                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e293b' }}>{p}%</span>
-                                                                </div>
-                                                            </td>
-                                                            <td style={{ textAlign: 'right', paddingRight: '1rem', borderRadius: '0 12px 12px 0' }}>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        const allHistory: any[] = [];
-                                                                        wo.categories?.forEach((c: any) => { c.tasks.forEach((t: any) => { if (t.history) t.history.forEach((h: any) => allHistory.push({ ...h, taskName: t.name })); }); });
-                                                                        setSelectedTaskHistory({ taskName: `ใบงาน #${wo.id}`, projectName: getProjectName(wo.projectId), locationName: wo.locationName, history: allHistory });
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    }
+
+                                                    return flatTasks.map((task: any, index: number) => {
+                                                        const showHeader = task.woId !== lastWoId;
+                                                        lastWoId = task.woId;
+                                                        const p = task.dailyProgress || 0;
+                                                        const isCancelled = task.woStatus === 'Cancelled' || task.woStatus === 'Rejected';
+                                                        const nextTask = flatTasks[index + 1];
+                                                        const isLastInGroup = !nextTask || nextTask.woId !== task.woId;
+
+                                                        return (
+                                                            <React.Fragment key={`${task.woId}-${task.id}`}>
+                                                                {showHeader && (
+                                                                    <tr>
+                                                                        <td colSpan={6} style={{ padding: '12px 12px 4px 12px' }}>
+                                                                            <div style={{ 
+                                                                                display: 'flex', 
+                                                                                alignItems: 'center', 
+                                                                                justifyContent: 'space-between',
+                                                                                padding: '8px 16px',
+                                                                                background: 'linear-gradient(90deg, #f8fafc 0%, #ffffff 100%)',
+                                                                                borderRadius: '12px',
+                                                                                border: '1px solid #e2e8f0',
+                                                                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                                                            }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                                    <div style={{ 
+                                                                                        width: '32px', 
+                                                                                        height: '32px', 
+                                                                                        borderRadius: '8px', 
+                                                                                        background: '#eef2ff', 
+                                                                                        display: 'flex', 
+                                                                                        alignItems: 'center', 
+                                                                                        justifyContent: 'center' 
+                                                                                    }}>
+                                                                                        <FileText size={16} color="#4f46e5" />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                            <span style={{ fontWeight: 900, color: '#1e293b', fontSize: '1rem', letterSpacing: '-0.01em' }}>{task.woId}</span>
+                                                                                            <span style={{ 
+                                                                                                padding: '2px 8px', 
+                                                                                                background: '#4f46e5', 
+                                                                                                color: '#fff', 
+                                                                                                borderRadius: '6px', 
+                                                                                                fontSize: '0.7rem', 
+                                                                                                fontWeight: 800,
+                                                                                                textTransform: 'uppercase'
+                                                                                            }}>CASE</span>
+                                                                                        </div>
+                                                                                        <div style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 600, marginTop: '2px' }}>
+                                                                                            {task.projectName} <span style={{ opacity: 0.5, margin: '0 4px' }}>•</span> {task.locationName}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
+                                                                                    สถานะใบงาน: <span style={{ color: isCancelled ? '#ef4444' : '#10b981' }}>{task.woStatus}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                <tr 
+                                                                    className="task-row-premium"
+                                                                    style={{ 
+                                                                        background: '#ffffff', 
+                                                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                                        opacity: isCancelled ? 0.5 : 1,
+                                                                        position: 'relative'
                                                                     }}
-                                                                    style={{ padding: '8px 16px', borderRadius: '10px', background: '#6366f1', border: 'none', color: '#ffffff', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.2)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                                                    onMouseOver={(e) => { e.currentTarget.style.background = '#4f46e5'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                                                                    onMouseOut={(e) => { e.currentTarget.style.background = '#6366f1'; e.currentTarget.style.transform = 'translateY(0)'; }}
                                                                 >
-                                                                    <Activity size={14} />ดูประวัติการทำงาน
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
+                                                                    <td style={{ padding: '0.75rem 1rem', position: 'relative' }}>
+                                                                        {/* Group Connector Line */}
+                                                                        {!isLastInGroup && (
+                                                                            <div style={{ 
+                                                                                position: 'absolute', 
+                                                                                left: '26px', 
+                                                                                top: '1.5rem', 
+                                                                                bottom: '-0.5rem', 
+                                                                                width: '2px', 
+                                                                                background: '#f1f5f9',
+                                                                                zIndex: 0
+                                                                            }} />
+                                                                        )}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative', zIndex: 1 }}>
+                                                                            <div style={{ 
+                                                                                width: '10px', 
+                                                                                height: '10px', 
+                                                                                borderRadius: '50%', 
+                                                                                background: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#cbd5e1',
+                                                                                border: '2px solid #fff',
+                                                                                boxShadow: '0 0 0 1px #f1f5f9'
+                                                                            }} />
+                                                                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>
+                                                                                {task.name || 'ไม่ระบุชื่อรายการ'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <div style={{ padding: '6px', borderRadius: '8px', background: '#f8fafc' }}>
+                                                                                <MapPin size={14} color="#94a3b8" />
+                                                                            </div>
+                                                                            {task.position || '-'}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td>
+                                                                        <div style={{ 
+                                                                            display: 'inline-flex',
+                                                                            padding: '6px 12px', 
+                                                                            background: '#f1f5f9', 
+                                                                            color: '#475569', 
+                                                                            borderRadius: '10px', 
+                                                                            fontSize: '0.75rem',
+                                                                            fontWeight: 700,
+                                                                            border: '1px solid #e2e8f0'
+                                                                        }}>
+                                                                            {task.categoryName}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td>
+                                                                        <span style={{ 
+                                                                            padding: '6px 14px', 
+                                                                            background: p === 100 ? '#ecfdf5' : p > 0 ? '#eff6ff' : '#f8fafc',
+                                                                            color: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#64748b',
+                                                                            borderRadius: '12px',
+                                                                            fontSize: '0.75rem',
+                                                                            fontWeight: 800,
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px',
+                                                                            border: `1px solid ${p === 100 ? '#d1fae5' : p > 0 ? '#dbeafe' : '#f1f5f9'}`
+                                                                        }}>
+                                                                            {p === 100 ? <CheckCircle2 size={14} /> : p > 0 ? <Clock size={14} /> : <AlertCircle size={14} />}
+                                                                            {p === 100 ? 'เสร็จสมบูรณ์' : p > 0 ? 'กำลังดำเนินการ' : 'ยังไม่เริ่ม'}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td style={{ width: '180px' }}>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>PROGRESS</span>
+                                                                                <span style={{ fontSize: '0.8rem', fontWeight: 900, color: p === 100 ? '#10b981' : '#1e293b' }}>{p}%</span>
+                                                                            </div>
+                                                                            <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '10px', overflow: 'hidden' }}>
+                                                                                <div 
+                                                                                    style={{ 
+                                                                                        width: `${p}%`, 
+                                                                                        height: '100%', 
+                                                                                        background: p === 100 ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)', 
+                                                                                        borderRadius: '10px',
+                                                                                        transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)'
+                                                                                    }} 
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td style={{ textAlign: 'right', paddingRight: '1rem' }}>
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setSelectedTaskHistory({ 
+                                                                                    taskName: task.name, 
+                                                                                    projectName: task.projectName, 
+                                                                                    locationName: task.locationName, 
+                                                                                    history: task.history || [] 
+                                                                                });
+                                                                            }}
+                                                                            className="premium-action-btn"
+                                                                            style={{ 
+                                                                                padding: '10px 18px', 
+                                                                                background: '#ffffff', 
+                                                                                border: '1px solid #e2e8f0',
+                                                                                borderRadius: '12px',
+                                                                                color: '#4f46e5',
+                                                                                fontSize: '0.75rem',
+                                                                                fontWeight: 800,
+                                                                                cursor: 'pointer',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '8px',
+                                                                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                                                                transition: 'all 0.2s'
+                                                                            }}
+                                                                        >
+                                                                            <Activity size={16} /> ดูประวัติงาน
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            </React.Fragment>
+                                                        );
+                                                    });
+                                                })()}
                                             </tbody>
                                         </table>
                                     </div>

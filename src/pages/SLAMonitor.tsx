@@ -146,7 +146,8 @@ const SLAMonitor = () => {
 
         const slaHoursMap = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
         const limit = slaHoursMap[task.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
-        const start = task.slaStartTime ? new Date(task.slaStartTime).getTime() : new Date(woCreatedAt).getTime();
+        const parsedStart = task.slaStartTime ? new Date(task.slaStartTime).getTime() : (woCreatedAt ? new Date(woCreatedAt).getTime() : Date.now());
+        const start = isNaN(parsedStart) ? Date.now() : parsedStart;
         const diffMs = (start + (limit * 60 * 60 * 1000)) - Date.now();
 
         if (diffMs < 0) {
@@ -196,6 +197,14 @@ const SLAMonitor = () => {
         if (wo) {
             const task = wo.categories.flatMap(c => c.tasks).find(t => t.id === taskId);
             if (task) setAssigningTask({ task, woId });
+        }
+    };
+
+    const handleAssignTask = async (woId: string, taskId: string, updates: Partial<MasterTask>) => {
+        const wo = workOrders.find(w => w.id === woId);
+        const category = wo?.categories?.find(c => c.tasks.some(t => t.id === taskId));
+        if (category) {
+            await updateTask(woId, category.id, taskId, updates);
         }
     };
 
@@ -262,9 +271,9 @@ const SLAMonitor = () => {
 
         // 4. Filtering
         const filtered = allTasks.filter(task => {
-            const matchesSearch = task.woId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.woLocation.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = (task.woId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (task.woLocation || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (task.name || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = !selectedProjectId || task.woProjectId === selectedProjectId;
             const matchesStaff = !selectedStaffId || (
                 task.responsibleStaffIds?.includes(selectedStaffId) ||
@@ -272,7 +281,9 @@ const SLAMonitor = () => {
             );
             const matchesSla = !activeSlaFilter || task.slaType === activeSlaFilter;
 
-            const taskDate = new Date(task.woCreatedAt).toISOString().split('T')[0];
+            const taskDate = task.woCreatedAt && !isNaN(new Date(task.woCreatedAt).getTime())
+                ? new Date(task.woCreatedAt).toISOString().split('T')[0]
+                : '';
             const matchesStart = !startDate || taskDate >= startDate;
             const matchesEnd = !endDate || taskDate <= endDate;
 
@@ -647,7 +658,7 @@ const SLAMonitor = () => {
                                                                                         <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#10b981', marginBottom: '8px' }}>LATEST UPDATE</div>
                                                                                         <div style={{ aspectRatio: '4/3', borderRadius: '12px', background: '#f8fafc', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                                                                                             {(() => {
-                                                                                                const photoUrl = [...(task.history || [])].reverse().find(h => h.photos?.length > 0)?.photos[0];
+                                                                                                const photoUrl = task.history && [...task.history].reverse().find(h => h && h.photos && h.photos.length > 0)?.photos?.[0];
                                                                                                 return photoUrl
                                                                                                     ? <img loading="lazy" src={photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onClick={() => setZoomImage(photoUrl)} />
                                                                                                     : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '0.8rem' }}>ยังไม่มีรูปอัปเดต</div>;
@@ -736,7 +747,7 @@ const SLAMonitor = () => {
 
             {/* Modals */}
             {closingWorkOrder && <CloseJobModal isOpen={!!closingWorkOrder} workOrder={closingWorkOrder} targetTaskId={verifyingTaskId || undefined} onClose={() => { setClosingWorkOrder(null); setVerifyingTaskId(null); }} onConfirm={handleConfirmClose} />}
-            {assigningTask && <AdminAssignModal isOpen={!!assigningTask} onClose={() => setAssigningTask(null)} task={assigningTask.task} workOrderId={assigningTask.woId} staffList={staff} contractors={contractors} onAssign={updateTask} />}
+            {assigningTask && <AdminAssignModal isOpen={!!assigningTask} onClose={() => setAssigningTask(null)} task={assigningTask.task} workOrderId={assigningTask.woId} staffList={staff} contractors={contractors} onAssign={handleAssignTask} />}
 
             {/* Evaluation Modals */}
             {selectedEvalWO && (

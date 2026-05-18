@@ -2,7 +2,7 @@
 import { db } from './lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 
-async function checkIds() {
+export async function checkIds() {
     console.log("--- Users (Auth Fallback) ---");
     // We can't easily check localStorage, but we can check staff
     

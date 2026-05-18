@@ -4,9 +4,10 @@ import { ChevronDown, Phone, Building2, User, AlertCircle, CheckCircle2, Calenda
 
 interface TrackingCardProps {
     wo: WorkOrder;
-    role: UserRole;
+    role: UserRole | 'Director';
     onVerifyTask?: (taskId: string, woId: string) => void;
     onAssignTask?: (taskId: string, woId: string) => void;
+    onCloseJob?: (id: string) => void;
     staffList?: Staff[];
     contractors?: Contractor[];
     projects?: Project[];
@@ -423,7 +424,7 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
                                                                             {/* Visual Comparison: Show latest progress photo if exists */}
                                                                             {(() => {
                                                                                 const latestPhoto = task.history && task.history.length > 0
-                                                                                    ? [...task.history].reverse().find(h => h.photos && h.photos.length > 0)?.photos[0]
+                                                                                    ? [...task.history].reverse().find(h => h && h.photos && h.photos.length > 0)?.photos?.[0]
                                                                                     : null;
 
                                                                                 if (!latestPhoto) return null;

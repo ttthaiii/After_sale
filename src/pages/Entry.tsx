@@ -79,7 +79,7 @@ const Entry = () => {
         return workOrders.filter(wo => 
             wo.status === 'Draft' && 
             (user?.role === 'Admin' || wo.reporterId === user?.id) &&
-            (searchQuery === '' || wo.locationName.toLowerCase().includes(searchQuery.toLowerCase()) || wo.id.toLowerCase().includes(searchQuery.toLowerCase()))
+            (searchQuery === '' || (wo.locationName || '').toLowerCase().includes(searchQuery.toLowerCase()) || (wo.id || '').toLowerCase().includes(searchQuery.toLowerCase()))
         );
     }, [workOrders, user, searchQuery]);
 
@@ -89,7 +89,7 @@ const Entry = () => {
                 (wo.status === 'Evaluating' || wo.status === 'Rejected') && 
                 !wo.isArchived &&
                 (user?.role === 'Admin' || wo.reporterId === user?.id) &&
-                (searchQuery === '' || wo.locationName.toLowerCase().includes(searchQuery.toLowerCase()) || wo.id.toLowerCase().includes(searchQuery.toLowerCase()))
+                (searchQuery === '' || (wo.locationName || '').toLowerCase().includes(searchQuery.toLowerCase()) || (wo.id || '').toLowerCase().includes(searchQuery.toLowerCase()))
             )
             .sort((a, b) => {
                 const dateA = new Date(a.submittedAt || a.createdAt).getTime();

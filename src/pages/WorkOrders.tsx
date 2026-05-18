@@ -4,7 +4,7 @@ import WorkTypeSwitcher from '../components/WorkTypeSwitcher';
 import ForemanReportModal from '../components/ForemanReportModal';
 import TaskUpdateModal from '../components/TaskUpdateModal';
 import { WorkOrderType, MasterTask } from '../types';
-import { FolderOpen, MapPin, ChevronDown, ChevronRight, CheckCircle2, Clock, Plus, Activity, Phone } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronRight, Plus, Activity, Phone } from 'lucide-react';
 
 const WorkOrders = () => {
     const { workOrders } = useWorkOrders();

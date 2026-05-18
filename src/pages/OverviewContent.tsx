@@ -8,9 +8,7 @@ import {
     BarChart3,
     Users,
     Zap,
-    X,
     ChevronDown,
-    AlertCircle
 } from 'lucide-react';
 import {
     XAxis,

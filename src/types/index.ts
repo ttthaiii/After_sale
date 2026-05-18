@@ -66,6 +66,7 @@ export interface DailyReport {
     type?: string;         // ✅ Added for compatibility
     reportDate?: string;   // ✅ Added for compatibility
     photoUrl?: string; // ✅ New: Support for daily progress photo
+    photos?: string[]; // ✅ Added for compatibility with TaskUpdate/TaskUpdateModal
     laborPhotos?: string[]; // ✅ New: Support for labor proof photos
     createdAt: string;
     createdBy: string;

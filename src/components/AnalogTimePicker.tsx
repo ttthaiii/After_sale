@@ -23,7 +23,7 @@ export const AnalogTimePicker: React.FC<AnalogTimePickerProps> = ({ value, onCha
         }
     }, [value]);
 
-    const updateTimeFromPointer = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent, isFinal = false) => {
+    const updateTimeFromPointer = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
         if (!clockRef.current) return;
         const rect = clockRef.current.getBoundingClientRect();
         const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
@@ -90,7 +90,7 @@ export const AnalogTimePicker: React.FC<AnalogTimePickerProps> = ({ value, onCha
 
     const handleMouseUp = (e: React.MouseEvent) => {
         setIsDragging(false);
-        updateTimeFromPointer(e, true);
+        updateTimeFromPointer(e);
         if (mode === 'hour') {
             setMode('minute');
         }

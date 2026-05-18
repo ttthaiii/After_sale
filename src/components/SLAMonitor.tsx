@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import TrackingCard from '../components/TrackingCard';
-import { Clock, Search, Building2, Calendar, LayoutDashboard, User2, Briefcase, Filter, ArrowUpRight } from 'lucide-react';
+import { Search, Building2, Calendar, LayoutDashboard, User2, Filter } from 'lucide-react';
 import { MOCK_PROJECTS, MOCK_STAFF } from '../data/mockData';
 
 type Role = 'Foreman' | 'Director';
@@ -39,8 +39,8 @@ const SLAMonitor = () => {
             // Let's show all for tracking history.
 
             // 3. General Filters
-            const matchesSearch = wo.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                wo.id.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
 
             const matchesStaff = selectedStaffId ? wo.categories.some(cat =>

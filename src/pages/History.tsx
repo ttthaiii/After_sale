@@ -76,8 +76,8 @@ const History = () => {
     // Filtered result for the table
     const archivedWorkOrders = useMemo(() => {
         return baseHistoryWorkOrders.filter(wo => {
-            const matchesSearch = wo.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                wo.id.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
             const matchesStaff = selectedStaffId ? (
                 wo.reporterId === selectedStaffId ||
