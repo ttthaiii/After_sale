@@ -82,7 +82,38 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         });
 
         onSnapshot(collection(db, 'projects'), s => setProjects(s.docs.map(d => ({ ...d.data(), id: d.id }) as Project)));
-        onSnapshot(collection(db, 'staff'), s => setStaff(s.docs.map(d => ({ ...d.data(), id: d.id }) as Staff)));
+        onSnapshot(collection(db, 'users'), s => {
+            const mappedStaff = s.docs.map(docSnapshot => {
+                const userData = docSnapshot.data();
+                const empId = docSnapshot.id;
+                
+                let role: 'Foreman' | 'Admin' | 'Manager' | 'BackOffice' | 'Approver' = 'Foreman';
+                
+                // Align roles according to Labor Standard (Image 3): AM = Admin, FM = Foreman
+                if (userData.roleId === 'AM' || userData.roleId === 'PE' || empId === '100051' || empId === '101485' || empId === 'admin1') {
+                    role = 'Admin';
+                } else if (userData.roleId === 'FM' || userData.roleId === 'GOD' || empId === '101527') {
+                    role = 'Foreman';
+                }
+                
+                return {
+                    id: empId,
+                    employeeId: userData.employeeId || empId,
+                    name: userData.name || '',
+                    role: role,
+                    department: userData.department || '',
+                    phone: userData.phone || '',
+                    affiliation: userData.department || 'T.T.S. ENGINEERING',
+                    profileImage: userData.profileImage || '',
+                    username: userData.username || '',
+                    password: userData.password || '',
+                    assignedProjects: userData.projectLocationIds || [],
+                    projectLocationIds: userData.projectLocationIds || [],
+                    systemCode: userData.systemCode || ''
+                } as Staff;
+            }).filter(st => st.systemCode === 'AS'); // Only show users belonging to After Sale (systemCode: "AS")
+            setStaff(mappedStaff);
+        });
         onSnapshot(collection(db, 'contractors'), s => setContractors(s.docs.map(d => ({ ...d.data(), id: d.id }) as Contractor)));
 
         return () => unsubscribeWO();

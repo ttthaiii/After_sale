@@ -1,0 +1,197 @@
+{
+  "workOrders/WO-2026-1599/categories/CAT-6690": {
+    "exists": true,
+    "data": {
+      "id": "CAT-6690",
+      "name": "งานกระเบื้อง/สุขภัณฑ์"
+    },
+    "subcollections": {
+      "tasks": [
+        {
+          "id": "TASK-1776666855804-229",
+          "data": {
+            "system": "AfterSale",
+            "images": [
+              "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/work_orders%2FWO-2026-1599%2Fdefects%2Fdefect_1776666832836.jpg?alt=media&token=262d8344-7aec-4527-a9a9-dfa3e53439e0"
+            ],
+            "history": [],
+            "name": "พ",
+            "latestPhotoUrl": "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/work_orders%2FWO-2026-1599%2Fdefects%2Fdefect_1776666832836.jpg?alt=media&token=262d8344-7aec-4527-a9a9-dfa3e53439e0",
+            "description": "พ",
+            "amount": 1,
+            "position": "พ",
+            "beforePhotoUrl": "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/work_orders%2FWO-2026-1599%2Fdefects%2Fdefect_1776666832836.jpg?alt=media&token=262d8344-7aec-4527-a9a9-dfa3e53439e0",
+            "unit": "จุด",
+            "id": "TASK-1776666855804-229",
+            "rootCause": "",
+            "dailyreports": [],
+            "slaCategory": "24h",
+            "costType": "Warranty",
+            "startDate": "2026-04-20",
+            "slaStartTime": "2026-04-20T01:00:00.000Z",
+            "dailyProgress": 100,
+            "status": "completed",
+            "updatedAt": "2026-04-20T06:48:10.431Z",
+            "responsibleStaffIds": [
+              "101527"
+            ]
+          }
+        },
+        {
+          "id": "TASK-1776666855804-871",
+          "data": {
+            "latestPhotoUrl": "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/work_orders%2FWO-2026-1599%2Fdefects%2Fdefect_1776666847378.jpg?alt=media&token=ddecfb49-a029-4a49-acdc-685112ad84d7",
+            "description": "พ",
+            "system": "AfterSale",
+            "images": [
+              "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/work_orders%2FWO-2026-1599%2Fdefects%2Fdefect_1776666847378.jpg?alt=media&token=ddecfb49-a029-4a49-acdc-685112ad84d7"
+            ],
+            "name": "พ",
+            "history": [],
+            "unit": "จุด",
+            "id": "TASK-1776666855804-871",
+            "rootCause": "",
+            "amount": 1,
+            "position": "พ",
+            "beforePhotoUrl": "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/work_orders%2FWO-2026-1599%2Fdefects%2Fdefect_1776666847378.jpg?alt=media&token=ddecfb49-a029-4a49-acdc-685112ad84d7",
+            "dailyreports": [],
+            "slaCategory": "24h",
+            "costType": "Warranty",
+            "startDate": "2026-04-20",
+            "slaStartTime": "2026-04-20T01:00:00.000Z",
+            "dailyProgress": 100,
+            "status": "Completed",
+            "updatedAt": "2026-04-20T07:40:39.873Z",
+            "responsibleStaffIds": [
+              "101527"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "workOrders/WH-2026-0004-PD/categories/PD-0001": {
+    "exists": true,
+    "data": {
+      "catId": "PD-0001",
+      "catName": "ผลิตแบบปั้มคอนกรีต",
+      "updatedAt": {
+        "_seconds": 1777868848,
+        "_nanoseconds": 382000000
+      }
+    },
+    "subcollections": {
+      "tasks": [
+        {
+          "id": "PD-0001-0000001",
+          "data": {
+            "workOrderCode": "PD",
+            "dueDate": {
+              "_seconds": 1779210000,
+              "_nanoseconds": 0
+            },
+            "assignees": [
+              {
+                "employeeId": "100274",
+                "name": "แสงสุรีย์ ปัดถามัย",
+                "roleId": "FM"
+              }
+            ],
+            "description": null,
+            "isActive": true,
+            "categoryName": "ผลิตแบบปั้มคอนกรีต",
+            "createdAt": {
+              "_seconds": 1777864785,
+              "_nanoseconds": 312000000
+            },
+            "attachmentsCount": 0,
+            "createdBy": "101527",
+            "projectCode": "WH",
+            "taskName": "เข้าแบบปั้มคอนกรีต",
+            "workOrderId": "WH-2026-0004-PD",
+            "projectName": "คลังสินค้าและบริการ",
+            "projectId": "P002",
+            "categoryId": "PD-0001",
+            "taskId": "PD-0001-0000001",
+            "unlockedDates": {
+              "2026-05-03": {
+                "unlockedUntil": {
+                  "_seconds": 1778313747,
+                  "_nanoseconds": 117000000
+                },
+                "unlockedBy": "100154"
+              }
+            },
+            "supportDailyProgress": 0,
+            "supportTaskName": null,
+            "historicalAssigneeIds": [
+              "100274",
+              "100154"
+            ],
+            "revisionId": "rev01",
+            "currentRevision": "rev01",
+            "revisionName": "ลองของ",
+            "isPickedUpBySupport": false,
+            "revisionCreatedAt": {
+              "_seconds": 1778654639,
+              "_nanoseconds": 907000000
+            },
+            "supportAssignees": [],
+            "isSupportRequest": false,
+            "updatedBy": "100274",
+            "dailyProgress": 100,
+            "status": "for-checking",
+            "updatedAt": {
+              "_seconds": 1778743093,
+              "_nanoseconds": 35000000
+            }
+          }
+        },
+        {
+          "id": "PD-0001-0000002",
+          "data": {
+            "workOrderCode": "PD",
+            "dueDate": {
+              "_seconds": 1779382800,
+              "_nanoseconds": 0
+            },
+            "assignees": [
+              {
+                "employeeId": "100274",
+                "name": "แสงสุรีย์ ปัดถามัย",
+                "roleId": "FM"
+              }
+            ],
+            "description": null,
+            "isActive": true,
+            "categoryName": "ผลิตแบบปั้มคอนกรีต",
+            "createdAt": {
+              "_seconds": 1777868848,
+              "_nanoseconds": 382000000
+            },
+            "currentRevision": "rev00",
+            "attachmentsCount": 0,
+            "createdBy": "100154",
+            "projectCode": "WH",
+            "taskName": "ผลิตอย่างเดียว",
+            "workOrderId": "WH-2026-0004-PD",
+            "projectName": "คลังสินค้าและบริการ",
+            "projectId": "P002",
+            "categoryId": "PD-0001",
+            "taskId": "PD-0001-0000002",
+            "historicalAssigneeIds": [
+              "100274"
+            ],
+            "dailyProgress": 100,
+            "updatedBy": "100154",
+            "status": "completed",
+            "updatedAt": {
+              "_seconds": 1778654392,
+              "_nanoseconds": 323000000
+            }
+          }
+        }
+      ]
+    }
+  }
+}

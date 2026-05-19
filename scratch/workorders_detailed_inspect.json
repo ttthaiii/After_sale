@@ -1,0 +1,101 @@
+{
+  "LR-2026-0016-STR": {
+    "exists": true,
+    "data": {
+      "workOrderCode": "STR",
+      "workOrderName": "งานโครงสร้าง",
+      "workOrderId": "LR-2026-0016-STR",
+      "projectId": "P003",
+      "updatedAt": {
+        "_seconds": 1778214093,
+        "_nanoseconds": 609000000
+      }
+    },
+    "subcollections": {
+      "categories": [
+        {
+          "id": "STR-0001",
+          "data": {
+            "catId": "STR-0001",
+            "catName": "โครงสร้างเสา",
+            "updatedAt": {
+              "_seconds": 1778214093,
+              "_nanoseconds": 609000000
+            }
+          }
+        }
+      ]
+    }
+  },
+  "WH-2026-0004-PD": {
+    "exists": true,
+    "data": {
+      "workOrderCode": "PD",
+      "workOrderId": "WH-2026-0004-PD",
+      "projectId": "P002",
+      "workOrderName": "งานผลิต",
+      "updatedAt": {
+        "_seconds": 1779072407,
+        "_nanoseconds": 312000000
+      }
+    },
+    "subcollections": {
+      "categories": [
+        {
+          "id": "PD-0001",
+          "data": {
+            "catId": "PD-0001",
+            "catName": "ผลิตแบบปั้มคอนกรีต",
+            "updatedAt": {
+              "_seconds": 1777868848,
+              "_nanoseconds": 382000000
+            }
+          }
+        },
+        {
+          "id": "PD-0002",
+          "data": {
+            "catId": "PD-0002",
+            "catName": "ผลิตแบบ Alufrom",
+            "updatedAt": {
+              "_seconds": 1779072407,
+              "_nanoseconds": 312000000
+            }
+          }
+        }
+      ]
+    }
+  },
+  "WO-2026-1599": {
+    "exists": true,
+    "data": {
+      "id": "WO-2026-1599",
+      "projectId": "0001",
+      "reporterName": "คุณ ฐิติ มังกร",
+      "reporterPhone": "พ",
+      "reportDate": "2026-04-20",
+      "locationName": "พ พ พ",
+      "type": "AfterSale",
+      "createdAt": "2026-04-20T06:34:15.804Z",
+      "submittedAt": "2026-04-20T06:34:15.804Z",
+      "building": "พ",
+      "floor": "พ",
+      "room": "พ",
+      "initialProblem": "พ",
+      "status": "Approved",
+      "lastUpdate": "2026-04-20T07:40:40.389Z",
+      "reporterId": "101527"
+    },
+    "subcollections": {
+      "categories": [
+        {
+          "id": "CAT-6690",
+          "data": {
+            "id": "CAT-6690",
+            "name": "งานกระเบื้อง/สุขภัณฑ์"
+          }
+        }
+      ]
+    }
+  }
+}

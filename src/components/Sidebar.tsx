@@ -169,7 +169,7 @@ const Sidebar = () => {
 
                                                     // Fallback: If targetPath doesn't have an ID but the message does, extract it
                                                     if (!finalPath.includes('?id=')) {
-                                                        const idMatch = (n.message || '').match(/WO-\d{4}-\d+/) || (n.title || '').match(/WO-\d{4}-\d+/);
+                                                        const idMatch = (n.message || '').match(/[A-Za-z0-9]+-\d{4}-\d+(?:-WO)?/) || (n.title || '').match(/[A-Za-z0-9]+-\d{4}-\d+(?:-WO)?/);
                                                         if (idMatch) {
                                                             const separator = finalPath.includes('?') ? '&' : '?';
                                                             finalPath += `${separator}id=${idMatch[0]}`;

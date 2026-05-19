@@ -1,0 +1,335 @@
+{
+  "DailyEmployeeTimesheets": {
+    "documentCountSample": 3,
+    "fields": {
+      "employeeNumber": [
+        "string"
+      ],
+      "date": [
+        "string"
+      ],
+      "isActive": [
+        "boolean"
+      ],
+      "expectedShifts": [
+        "object"
+      ],
+      "expectedHours": [
+        "object"
+      ],
+      "shiftTimes": [
+        "object"
+      ],
+      "workLogs": [
+        "array"
+      ],
+      "lastUpdated": [
+        "string"
+      ],
+      "projectLocationId": [
+        "string"
+      ]
+    },
+    "sample": {
+      "employeeNumber": "200022",
+      "date": "2025-08-25",
+      "isActive": true,
+      "expectedShifts": {
+        "normal": true,
+        "otMorning": false,
+        "otNoon": false,
+        "otEvening": true
+      },
+      "expectedHours": {
+        "normal": 8,
+        "otMorning": 0,
+        "otNoon": 0,
+        "otEvening": 3
+      },
+      "shiftTimes": {
+        "day": "08:00 - 17:00",
+        "otEvening": "18:00 - 21:00"
+      },
+      "workLogs": [
+        {
+          "taskName": "ขึ้นแบบส่งรามอินทรา-เช็คแบบมาจากหน้างาน",
+          "location": "WH1 : คลังสินค้า MOTORWAY",
+          "otMorningTask": "",
+          "otNoonTask": "",
+          "otEveningTask": "ขัดแบบ-เตรียมส่งไทม์บางนา"
+        }
+      ],
+      "lastUpdated": "2026-04-22T06:24:27.882Z",
+      "projectLocationId": "P002"
+    }
+  },
+  "activity_logs": {
+    "documentCountSample": 3,
+    "fields": {
+      "userName": [
+        "string"
+      ],
+      "role": [
+        "string"
+      ],
+      "action": [
+        "string"
+      ],
+      "module": [
+        "string"
+      ],
+      "details": [
+        "string"
+      ],
+      "timestamp": [
+        "timestamp"
+      ],
+      "userId": [
+        "string"
+      ]
+    },
+    "sample": {
+      "userName": "คุณ ฐิติ มังกร",
+      "role": "Foreman",
+      "action": "VIEW_PAGE",
+      "module": "REPORTING",
+      "details": "เข้าดูหน้า: หน้าส่งงานรายวัน (Daily Report)",
+      "timestamp": {
+        "_seconds": 1776670903,
+        "_nanoseconds": 581000000
+      },
+      "userId": "101527"
+    }
+  },
+  "contractors": {
+    "documentCountSample": 3,
+    "fields": {
+      "id": [
+        "string"
+      ],
+      "name": [
+        "string"
+      ],
+      "specialty": [
+        "array",
+        "string"
+      ],
+      "phone": [
+        "string"
+      ]
+    },
+    "sample": {
+      "id": "C001",
+      "name": "บริษัท TRI-EN",
+      "specialty": [
+        "General"
+      ],
+      "phone": "02-111-2222"
+    }
+  },
+  "notifications": {
+    "documentCountSample": 3,
+    "fields": {
+      "recipientId": [
+        "string"
+      ],
+      "senderId": [
+        "string"
+      ],
+      "senderName": [
+        "string"
+      ],
+      "title": [
+        "string"
+      ],
+      "message": [
+        "string"
+      ],
+      "type": [
+        "string"
+      ],
+      "targetPath": [
+        "string"
+      ],
+      "createdAt": [
+        "timestamp"
+      ],
+      "isRead": [
+        "boolean"
+      ],
+      "recipientRole": [
+        "string"
+      ],
+      "readBy": [
+        "array"
+      ]
+    },
+    "sample": {
+      "recipientId": "101527",
+      "senderId": "101485",
+      "senderName": "คุณ กฤษณะพล มะริด",
+      "title": "งานใหม่ได้รับมอบหมาย",
+      "message": "คุณได้รับมอบหมายงาน: ย (ใบงาน WO-2026-6686) โปรดดำเนินการภายในเวลากำหนด (SLA: 24h)",
+      "type": "info",
+      "targetPath": "/daily-report?id=WO-2026-6686",
+      "createdAt": {
+        "_seconds": 1776850997,
+        "_nanoseconds": 445000000
+      },
+      "isRead": true
+    }
+  },
+  "projects": {
+    "documentCountSample": 3,
+    "fields": {
+      "imageUrl": [
+        "string"
+      ],
+      "affiliation": [
+        "string"
+      ],
+      "code": [
+        "string"
+      ],
+      "name": [
+        "string"
+      ],
+      "id": [
+        "string"
+      ]
+    },
+    "sample": {
+      "imageUrl": "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/master_data%2Fprojectss%2Fprojects_1771927945750.png?alt=media&token=4e47ab64-fc4c-493a-9113-42a580221428",
+      "affiliation": "",
+      "code": "SSRB",
+      "name": "Bann Sansiri Bangna",
+      "id": "0001"
+    }
+  },
+  "staff": {
+    "documentCountSample": 3,
+    "fields": {
+      "username": [
+        "string"
+      ],
+      "affiliation": [
+        "string"
+      ],
+      "employeeId": [
+        "string"
+      ],
+      "assignedProjects": [
+        "array"
+      ],
+      "profileImage": [
+        "string"
+      ],
+      "role": [
+        "string"
+      ],
+      "name": [
+        "string"
+      ],
+      "password": [
+        "string"
+      ],
+      "phone": [
+        "string"
+      ]
+    },
+    "sample": {
+      "username": "Krissanapon.M",
+      "affiliation": "",
+      "employeeId": "101485",
+      "assignedProjects": [
+        "SSRB",
+        "DH2",
+        "PNN",
+        "ART",
+        "LRM",
+        "BMWH",
+        "ESNKR3",
+        "TTS2004",
+        "CH70",
+        "ICD",
+        "NRV",
+        "TPL56",
+        "SLE",
+        "EDS",
+        "TR9",
+        "ESW",
+        "MKT",
+        "NVN",
+        "TPL42",
+        "RCP "
+      ],
+      "profileImage": "https://firebasestorage.googleapis.com/v0/b/after-sale-system.firebasestorage.app/o/master_data%2Fstaffs%2Fstaff_1771928639536.png?alt=media&token=03a9b9b4-a03d-4e59-8a40-94bc8ab4b902",
+      "role": "Admin",
+      "name": "คุณ กฤษณะพล มะริด",
+      "password": "101485",
+      "phone": ""
+    }
+  },
+  "system_config": {
+    "documentCountSample": 1,
+    "fields": {
+      "statusRates": [
+        "object"
+      ]
+    },
+    "sample": {
+      "statusRates": {
+        "contractor": 400,
+        "staff": 450
+      }
+    }
+  },
+  "system_counters": {
+    "documentCountSample": 3,
+    "fields": {
+      "count": [
+        "number"
+      ],
+      "updatedAt": [
+        "timestamp"
+      ]
+    },
+    "sample": {
+      "count": 2,
+      "updatedAt": {
+        "_seconds": 1777888960,
+        "_nanoseconds": 117000000
+      }
+    }
+  },
+  "workOrders": {
+    "documentCountSample": 3,
+    "fields": {
+      "workOrderCode": [
+        "string"
+      ],
+      "workOrderName": [
+        "string"
+      ],
+      "workOrderId": [
+        "string"
+      ],
+      "projectId": [
+        "string"
+      ],
+      "updatedAt": [
+        "timestamp"
+      ]
+    },
+    "sample": {
+      "workOrderCode": "STR",
+      "workOrderName": "งานโครงสร้าง",
+      "workOrderId": "LR-2026-0016-STR",
+      "projectId": "P003",
+      "updatedAt": {
+        "_seconds": 1778214093,
+        "_nanoseconds": 609000000
+      }
+    }
+  }
+}

@@ -1,8 +1,20 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, UserRole, Staff } from '../types';
+import { User, UserRole } from '../types';
 import { db } from '../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { logService } from '../services/logService';
+import bcrypt from 'bcryptjs';
+
+const mapLaborUserToRole = (userData: any, empId: string): UserRole => {
+    // Align roles according to Labor Standard (Image 3): AM = Admin, FM = Foreman
+    if (userData.roleId === 'AM' || userData.roleId === 'PE' || empId === '100051' || empId === '101485' || empId === 'admin1') {
+        return 'Admin';
+    }
+    if (userData.roleId === 'FM' || userData.roleId === 'GOD' || empId === '101527') {
+        return 'Foreman';
+    }
+    return (userData.role || 'Foreman') as UserRole;
+};
 
 interface AuthContextType {
     user: User | null;
@@ -44,6 +56,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
     }, []);
 
+    // 🔄 Dynamic Real-time profile updates (for instant assignedProjects alignment)
+    useEffect(() => {
+        if (!user || user.id === 'admin-initial' || user.id === '100051') return;
+        
+        const unsub = onSnapshot(doc(db, 'users', user.id), (docSnap) => {
+            if (docSnap.exists()) {
+                const userData = docSnap.data();
+                const mappedRole = mapLaborUserToRole(userData, user.id);
+                setUser(prev => {
+                    if (!prev) return null;
+                    const updated = {
+                        ...prev,
+                        name: userData.name || prev.name,
+                        role: mappedRole,
+                        avatar: userData.profileImage || `https://ui-avatars.com/api/?background=random&name=${userData.name}`,
+                        assignedProjects: userData.projectLocationIds || []
+                    };
+                    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+                    return updated;
+                });
+            }
+        });
+        
+        return () => unsub();
+    }, [user?.id]);
+
     const login = async (username: string, password: string): Promise<boolean> => {
         try {
             setLoading(true);
@@ -55,11 +93,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             // ✅ Initial Admin Fallback (for first-time setup)
             if (cleanUsername === 'admin' && cleanPassword === 'admin123') {
                 const adminUser: User = {
-                    id: 'admin-initial',
-                    name: 'Initial Admin',
+                    id: '100051',
+                    name: 'System Admin (Prayuth)',
                     role: 'Admin',
                     avatar: 'https://ui-avatars.com/api/?background=4f46e5&color=fff&name=Admin',
-                    assignedProjects: []
+                    assignedProjects: ["P002"]
                 };
                 setUser(adminUser);
                 sessionStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser));
@@ -71,39 +109,58 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     role: adminUser.role,
                     action: 'LOGIN',
                     module: 'AUTH',
-                    details: 'เข้าสู่ระบบ (Initial Admin)'
+                    details: 'เข้าสู่ระบบ (Initial Admin Fallback)'
                 });
 
                 return true;
             }
 
-            const q = query(
-                collection(db, 'staff'),
-                where('username', '==', cleanUsername)
+            let q = query(
+                collection(db, 'users'),
+                where('username', '==', cleanUsername.toLowerCase())
             );
 
-            const querySnapshot = await getDocs(q);
+            let querySnapshot = await getDocs(q);
+
+            // Fallback for case-sensitive usernames (e.g. Wutchai.O)
+            if (querySnapshot.empty) {
+                q = query(
+                    collection(db, 'users'),
+                    where('username', '==', cleanUsername)
+                );
+                querySnapshot = await getDocs(q);
+            }
 
             if (!querySnapshot.empty) {
-                const staffData = querySnapshot.docs[0].data() as Staff;
+                const userData = querySnapshot.docs[0].data();
+                const empId = querySnapshot.docs[0].id;
                 
-                // ✅ Check password against either 'employeeId' or 'password' field
-                const isPasswordCorrect = 
-                    staffData.employeeId === cleanPassword || 
-                    staffData.password === cleanPassword;
+                let isPasswordCorrect = false;
+                if (userData.passwordHash) {
+                    try {
+                        isPasswordCorrect = bcrypt.compareSync(cleanPassword, userData.passwordHash);
+                    } catch (e) {
+                        console.error("Bcrypt compare error:", e);
+                    }
+                }
+                if (!isPasswordCorrect && (userData.password === cleanPassword || userData.employeeId === cleanPassword)) {
+                    isPasswordCorrect = true;
+                }
 
                 if (!isPasswordCorrect) {
                    console.warn("Password mismatch for:", cleanUsername);
                    return false;
                 }
 
+                const mappedRole = mapLaborUserToRole(userData, empId);
+
                 const loggedInUser: User = {
-                    id: querySnapshot.docs[0].id,
-                    employeeId: staffData.employeeId || staffData.password || staffData.id,
-                    name: staffData.name,
-                    role: staffData.role as UserRole,
-                    avatar: staffData.profileImage || `https://ui-avatars.com/api/?background=random&name=${staffData.name}`,
-                    assignedProjects: staffData.assignedProjects || []
+                    id: empId,
+                    employeeId: userData.employeeId || empId,
+                    name: userData.name || cleanUsername,
+                    role: mappedRole,
+                    avatar: userData.profileImage || `https://ui-avatars.com/api/?background=random&name=${userData.name || cleanUsername}`,
+                    assignedProjects: userData.projectLocationIds || []
                 };
 
                 setUser(loggedInUser);
@@ -121,19 +178,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
                 return true;
             } else {
-                // If not found, let's check ONLY username to see if user exists but password/case is wrong
-                const checkUserQuery = query(collection(db, 'staff'), where('username', '==', cleanUsername));
-                const userSnap = await getDocs(checkUserQuery);
-                if (userSnap.empty) {
-                    console.warn("User not found in DB:", cleanUsername);
-                } else {
-                    console.warn("User found but password mismatch for:", cleanUsername);
+                // Try querying doc ID directly
+                const directDocSnap = await getDocs(collection(db, 'users'));
+                const matchingDoc = directDocSnap.docs.find(d => d.id === cleanUsername);
+
+                if (matchingDoc) {
+                    const userData = matchingDoc.data();
+                    const empId = matchingDoc.id;
+                    
+                    let isPasswordCorrect = false;
+                    if (userData.passwordHash) {
+                        try {
+                            isPasswordCorrect = bcrypt.compareSync(cleanPassword, userData.passwordHash);
+                        } catch (e) {}
+                    }
+                    if (!isPasswordCorrect && (userData.password === cleanPassword || userData.employeeId === cleanPassword)) {
+                        isPasswordCorrect = true;
+                    }
+
+                    if (isPasswordCorrect) {
+                        const mappedRole = mapLaborUserToRole(userData, empId);
+                        const loggedInUser: User = {
+                            id: empId,
+                            employeeId: userData.employeeId || empId,
+                            name: userData.name,
+                            role: mappedRole,
+                            avatar: userData.profileImage || `https://ui-avatars.com/api/?background=random&name=${userData.name}`,
+                            assignedProjects: userData.projectLocationIds || []
+                        };
+
+                        setUser(loggedInUser);
+                        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
+                        return true;
+                    }
                 }
+                
+                console.warn("User not found or password incorrect in DB:", cleanUsername);
                 return false;
             }
         } catch (error: any) {
             console.error('Login error detail:', error);
-            // ✅ Show error directly for easier debugging of Rules/Index issues
             alert(`เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ${error.message || 'Unknown error'}`);
             return false;
         } finally {

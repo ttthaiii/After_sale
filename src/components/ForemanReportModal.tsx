@@ -4,7 +4,7 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { db, storage } from '../lib/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
 import { logService } from '../services/logService';
@@ -300,6 +300,55 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         setIsSubmitting(true);
 
         setShowProjectError(false);
+
+        // Determine dynamic WO ID
+        let finalId = formState.id;
+        const isNewOrTempId = !editWorkOrder || (!formState.id.includes('-WOA-') && !formState.id.includes('-WOP-'));
+
+        if (isNewOrTempId) {
+            try {
+                const selectedProject = allProjects.find(p => p.id === formState.projectId);
+                const projectCode = selectedProject?.projectCode || selectedProject?.id || 'WO';
+                const currentYear = new Date().getFullYear();
+                
+                // Determine Job Code: WOA for AfterSale (General Repair), WOP for PreHandover (Room Inspection)
+                const jobCode = formState.type === 'AfterSale' ? 'WOA' : 'WOP';
+
+                // Fetch existing work orders for this project
+                const q = query(collection(db, 'workOrders'), where('projectId', '==', formState.projectId));
+                const querySnapshot = await getDocs(q);
+
+                let maxSequence = 0;
+                querySnapshot.docs.forEach(docSnap => {
+                    const id = docSnap.id;
+                    const parts = id.split('-');
+                    if (parts.length === 4 && parts[2] === jobCode) {
+                        const year = parseInt(parts[1], 10);
+                        if (year === currentYear) {
+                            const seq = parseInt(parts[3], 10);
+                            if (!isNaN(seq) && seq > maxSequence) {
+                                maxSequence = seq;
+                            }
+                        }
+                    }
+                });
+
+                const nextSeq = maxSequence + 1;
+                const paddedSeq = String(nextSeq).padStart(4, '0');
+                finalId = `${projectCode}-${currentYear}-${jobCode}-${paddedSeq}`;
+                
+                // Keep formState in sync
+                setFormState(prev => ({ ...prev, id: finalId }));
+            } catch (err) {
+                console.error("Failed to generate dynamic WO ID:", err);
+                const currentYear = new Date().getFullYear();
+                const selectedProject = allProjects.find(p => p.id === formState.projectId);
+                const projectCode = selectedProject?.projectCode || selectedProject?.id || 'WO';
+                const jobCode = formState.type === 'AfterSale' ? 'WOA' : 'WOP';
+                finalId = `${projectCode}-${currentYear}-${jobCode}-${Date.now().toString().slice(-4)}`;
+            }
+        }
+
         // Determine submittedAt logic
         let finalSubmittedAt = editWorkOrder?.submittedAt || null;
         if (!isDraft) {
@@ -312,7 +361,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
         // Construct WorkOrder
         const newWorkOrder: WorkOrder = {
-            id: formState.id,
+            id: finalId,
             projectId: formState.projectId,
             reporterName: formState.reporterName,
             reporterId: editWorkOrder?.reporterId || user?.id || 'unknown',

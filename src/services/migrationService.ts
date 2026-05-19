@@ -67,7 +67,8 @@ export const migrateStaffFields = async () => {
 
 export const migrateAll = async () => {
     try {
-        await migrateProjects();
+        // Commented out to protect real projects synced from the Labor database
+        // await migrateProjects();
         await migrateStaff();
         await migrateContractors();
         await migrateWorkOrders();

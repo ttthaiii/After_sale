@@ -29,6 +29,10 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
             if (type === 'Staff' && !data.employeeId && data.password) {
                 data.employeeId = data.password;
             }
+            // ✅ Pre-fill password with employeeId if plain-text password is not saved yet
+            if (type === 'Staff' && !data.password && data.employeeId) {
+                data.password = data.employeeId;
+            }
             setFormData(data);
         } else {
             // Default empty state based on type
@@ -84,8 +88,8 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
         try {
             const dataToSave = { ...formData };
             
-            // ✅ Synchronize Employee ID and Password for login consistency
-            if (type === 'Staff' && dataToSave.employeeId) {
+            // For new staff, if password is not set, default it to the employeeId
+            if (type === 'Staff' && !dataToSave.password && dataToSave.employeeId) {
                 dataToSave.password = dataToSave.employeeId;
             }
 
@@ -184,9 +188,15 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
                                 type="text"
                                 value={formData.name || ''}
                                 onChange={(e) => handleChange('name', e.target.value)}
-                                style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box' }}
+                                style={{ 
+                                    width: '100%', padding: '10px 14px', borderRadius: '10px', 
+                                    border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box',
+                                    background: type === 'Projects' ? '#f1f5f9' : '#fff',
+                                    cursor: type === 'Projects' ? 'not-allowed' : 'text'
+                                }}
                                 placeholder="ระบุชื่อ..."
                                 required
+                                disabled={type === 'Projects'}
                             />
                         </div>
 
@@ -206,36 +216,57 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
                                     </div>
                                     <div className="form-group">
                                         <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>รหัสพนักงาน (Employee ID)</label>
-                                        <div style={{ position: 'relative' }}>
-                                            <input
-                                                type={showStaffPassword ? 'text' : 'password'}
-                                                value={formData.employeeId || ''}
-                                                onChange={(e) => handleChange('employeeId', e.target.value)}
-                                                style={{ width: '100%', padding: '10px 42px 10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box' }}
-                                                placeholder="เช่น 101527"
-                                                required
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowStaffPassword(!showStaffPassword)}
-                                                style={{
-                                                    position: 'absolute',
-                                                    right: '10px',
-                                                    top: '50%',
-                                                    transform: 'translateY(-50%)',
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    color: '#94a3b8',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    padding: '4px'
-                                                }}
-                                            >
-                                                {showStaffPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                            </button>
-                                        </div>
+                                        <input
+                                            type="text"
+                                            value={formData.employeeId || ''}
+                                            onChange={(e) => handleChange('employeeId', e.target.value)}
+                                            style={{ 
+                                                width: '100%', 
+                                                padding: '10px 14px', 
+                                                borderRadius: '10px', 
+                                                border: '1px solid #e2e8f0', 
+                                                fontSize: '0.95rem', 
+                                                boxSizing: 'border-box',
+                                                background: initialData ? '#f1f5f9' : '#fff',
+                                                color: initialData ? '#64748b' : '#0f172a',
+                                                cursor: initialData ? 'not-allowed' : 'text'
+                                            }}
+                                            disabled={!!initialData}
+                                            placeholder="เช่น 101527"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>รหัสผ่าน (Password)</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type={showStaffPassword ? 'text' : 'password'}
+                                            value={formData.password || ''}
+                                            onChange={(e) => handleChange('password', e.target.value)}
+                                            style={{ width: '100%', padding: '10px 42px 10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box' }}
+                                            placeholder="รหัสผ่าน (Password)"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowStaffPassword(!showStaffPassword)}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                color: '#94a3b8',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                padding: '4px'
+                                            }}
+                                        >
+                                            {showStaffPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="form-group">
@@ -300,16 +331,7 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
                                         {projects.length === 0 && <span style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center' }}>ไม่มีข้อมูลโครงการ</span>}
                                     </div>
                                 </div>
-                                <div className="form-group">
-                                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>สังกัด (Affiliation)</label>
-                                    <input
-                                        type="text"
-                                        value={formData.affiliation || ''}
-                                        onChange={(e) => handleChange('affiliation', e.target.value)}
-                                        style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box' }}
-                                        placeholder="เช่น Sammakorn, Life Asset"
-                                    />
-                                </div>
+                                
                                 <div className="form-group">
                                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>รูปโปรไฟล์ (Image URL)</label>
                                     <input
@@ -327,15 +349,20 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
                         {type === 'Projects' && (
                             <>
                                 <div className="form-group">
-                                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>ID</label>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>ID / Code</label>
                                     <input
                                         type="text"
-                                        value={formData.code || ''}
-                                        onChange={(e) => handleChange('code', e.target.value)}
-                                        style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box' }}
+                                        value={formData.projectCode ? `${formData.code} / ${formData.projectCode}` : (formData.code || '')}
+                                        style={{ 
+                                            width: '100%', padding: '10px 14px', borderRadius: '10px', 
+                                            border: '1px solid #e2e8f0', fontSize: '0.95rem', boxSizing: 'border-box',
+                                            background: '#f1f5f9', cursor: 'not-allowed'
+                                        }}
                                         placeholder="e.g. PRJ-001"
+                                        disabled
                                     />
                                 </div>
+                                
                                 <div className="form-group">
                                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>รูปโครงการ (Image URL)</label>
                                     <input

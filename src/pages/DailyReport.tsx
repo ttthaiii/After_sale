@@ -2,8 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { db, storage } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useWorkOrders } from '../context/WorkOrderContext';
-import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Staff, Project, Contractor } from '../types';
-import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2 } from 'lucide-react';
+import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Project, Contractor } from '../types';
+import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { AnalogTimePicker } from '../components/AnalogTimePicker';
@@ -78,6 +78,17 @@ const BatchAddModal = ({
     onAdd: (selectedIds: string[], config: any) => void;
 }) => {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredItems = useMemo(() => {
+        if (!searchQuery) return availableItems;
+        const query = searchQuery.toLowerCase();
+        return availableItems.filter(item => 
+            (item.name || '').toLowerCase().includes(query) || 
+            (item.employeeId || '').toLowerCase().includes(query)
+        );
+    }, [availableItems, searchQuery]);
+
     const [config, setConfig] = useState<any>({
         day: true,
         otMorning: false,
@@ -176,13 +187,31 @@ const BatchAddModal = ({
 
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '24px', width: '500px', maxWidth: '90%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                    <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: 900 }}>เลือก{type === 'Internal' ? 'คนงานบริษัท' : 'ผู้รับเหมา'}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: '12px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>เลือก{type === 'Internal' ? 'คนงานบริษัท' : 'ผู้รับเหมา'}</h3>
+                        <input
+                            type="text"
+                            placeholder="ค้นหาคนงาน..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            style={{
+                                padding: '6px 12px',
+                                borderRadius: '10px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '0.8rem',
+                                outline: 'none',
+                                width: '180px',
+                                fontWeight: 700,
+                                transition: 'border-color 0.2s'
+                            }}
+                        />
+                    </div>
 
                     <div style={{ flex: 1, overflowY: 'auto', marginBottom: '1.5rem', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.5rem', minHeight: '300px' }}>
-                        {availableItems.length === 0 ? (
+                        {filteredItems.length === 0 ? (
                             <div style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>ไม่พบรายการ</div>
                         ) : (
-                            availableItems.map(item => {
+                            filteredItems.map(item => {
                                 const isSelected = selectedIds.includes(item.id);
                                 return (
                                     <div
@@ -196,7 +225,9 @@ const BatchAddModal = ({
                                         }}
                                     >
                                         {isSelected ? <CheckSquare size={20} color="#3b82f6" /> : <Square size={20} color="#cbd5e1" />}
-                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>{item.name}</span>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>
+                                            {item.employeeId ? `[${item.employeeId}] ` : ''}{item.name}
+                                        </span>
                                     </div>
                                 );
                             })
@@ -256,24 +287,24 @@ const DailyReport = () => {
     const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
 
     // ✅ Real-time Sync Data from Firestore
-    const [realStaff, setRealStaff] = useState<Staff[]>([]);
     const [realContractors, setRealContractors] = useState<Contractor[]>([]);
     const [realProjects, setRealProjects] = useState<Project[]>([]);
+    const [dailyContractors, setDailyContractors] = useState<any[]>([]);
 
     useEffect(() => {
-        const unsubStaff = onSnapshot(collection(db, 'staff'), (snap) => {
-            setRealStaff(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Staff));
-        });
         const unsubContractors = onSnapshot(collection(db, 'contractors'), (snap) => {
             setRealContractors(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Contractor));
         });
         const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
             setRealProjects(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Project));
         });
+        const unsubDailyContractors = onSnapshot(collection(db, 'dailyContractors'), (snap) => {
+            setDailyContractors(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        });
         return () => {
-            unsubStaff();
             unsubContractors();
             unsubProjects();
+            unsubDailyContractors();
         };
     }, []);
 
@@ -288,7 +319,56 @@ const DailyReport = () => {
             // Fill form with existing data
             setProgress(existingReport.progress);
             setNote(existingReport.note || '');
-            setLabor(existingReport.labor || []);
+            
+            // Reconstruct/merge split labor and leave arrays back into unified labor state
+            const mergedLabor: LaborRecord[] = [];
+            const laborMap = new Map<string, any>();
+            const leaveMap = new Map<string, any>();
+
+            if (existingReport.labor) {
+                existingReport.labor.forEach((l: any) => laborMap.set(l.workerId || l.id, l));
+            }
+            const exLeave = (existingReport as any).leave;
+            if (exLeave) {
+                exLeave.forEach((l: any) => leaveMap.set(l.workerId || l.id, l));
+            }
+
+            const allWorkerIds = Array.from(new Set([...laborMap.keys(), ...leaveMap.keys()]));
+            allWorkerIds.forEach((wId) => {
+                const l = laborMap.get(wId);
+                const lv = leaveMap.get(wId);
+                const isInternal = wId.startsWith('DC-') || (l && !l.contractorId) || (lv && !lv.contractorId);
+                
+                mergedLabor.push({
+                    id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    membership: isInternal ? 'Internal' : 'Outsource',
+                    staffId: wId,
+                    staffName: l?.workerName || lv?.workerName || '',
+                    employeeId: l?.employeeId || lv?.employeeId || '',
+                    affiliation: l?.workerName ? (isInternal ? (l.shiftTimes?.day ? 'WH' : 'General') : l.workerName) : (lv?.workerName || 'General'),
+                    amount: 1,
+                    timeType: 'Normal',
+                    shifts: {
+                        normal: l?.shifts?.normal || false,
+                        otMorning: l?.shifts?.otMorning || false,
+                        otNoon: l?.shifts?.otNoon || false,
+                        otEvening: l?.shifts?.otEvening || false
+                    },
+                    shiftTimes: {
+                        day: l?.shiftTimes?.day || '08:00 - 17:00',
+                        otMorning: l?.shiftTimes?.otMorning || '06:00 - 08:00',
+                        otNoon: '12:00 - 13:00',
+                        otEvening: l?.shiftTimes?.otEvening || '18:00 - 21:00'
+                    },
+                    leave: {
+                        active: lv?.leaveShifts?.custom || false,
+                        time: lv?.leaveTimes?.custom || '08:00 - 17:00',
+                        medCertFileUrl: lv?.medCertFileUrl || ''
+                    }
+                });
+            });
+
+            setLabor(mergedLabor);
             setPhotos(existingReport.photos || []);
             setLaborPhotos(existingReport.laborPhotos || []);
             setIsEditingExisting(false); // ✅ Reset to locked mode when switching dates
@@ -460,14 +540,15 @@ const DailyReport = () => {
 
         if (activeModal === 'Internal') {
             selectedIds.forEach(id => {
-                // ✅ Handle DC placeholder
-                if (id === 'DC-TEAM') {
+                const contractor = dailyContractors.find(c => c.id === id);
+                if (contractor) {
                     newRecords.push({
-                        id: `L - ${Date.now()} -${Math.random().toString(36).substr(2, 9)} `,
+                        id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         membership: 'Internal',
-                        staffId: 'DC',
-                        staffName: 'DC',
-                        affiliation: 'DC',
+                        staffId: contractor.id,
+                        staffName: contractor.name,
+                        employeeId: contractor.employeeId || contractor.id.replace('DC-', ''),
+                        affiliation: contractor.skillId || 'General',
                         amount: 1,
                         timeType: 'Normal',
                         shifts: {
@@ -481,32 +562,11 @@ const DailyReport = () => {
                             otMorning: config.timeOtMorning,
                             otNoon: '12:00 - 13:00',
                             otEvening: config.timeOtEvening
-                        }
-                    });
-                    return;
-                }
-
-                const staff = realStaff.find(s => s.id === id);
-                if (staff) {
-                    newRecords.push({
-                        id: `L - ${Date.now()} -${Math.random().toString(36).substr(2, 9)} `,
-                        membership: 'Internal',
-                        staffId: staff.id,
-                        staffName: staff.name,
-                        affiliation: staff.affiliation || 'General',
-                        amount: 1,
-                        timeType: 'Normal',
-                        shifts: {
-                            normal: config.day,
-                            otMorning: config.otMorning,
-                            otNoon: config.otNoon,
-                            otEvening: config.otEvening
                         },
-                        shiftTimes: {
-                            day: config.timeDay,
-                            otMorning: config.timeOtMorning,
-                            otNoon: '12:00 - 13:00',
-                            otEvening: config.timeOtEvening
+                        leave: {
+                            active: false,
+                            time: '08:00 - 17:00',
+                            medCertFileUrl: ''
                         }
                     });
                 }
@@ -516,10 +576,11 @@ const DailyReport = () => {
                 const contractor = realContractors.find(c => c.id === id);
                 if (contractor) {
                     newRecords.push({
-                        id: `L - ${Date.now()} -${Math.random().toString(36).substr(2, 9)} `,
+                        id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         membership: 'Outsource',
                         affiliation: contractor.name,
                         contractorId: contractor.id,
+                        employeeId: '',
                         amount: 1,
                         timeType: 'Normal',
                         shifts: {
@@ -528,7 +589,12 @@ const DailyReport = () => {
                             otNoon: false,
                             otEvening: false
                         },
-                        shiftTimes: { day: '' }
+                        shiftTimes: { day: '' },
+                        leave: {
+                            active: false,
+                            time: '08:00 - 17:00',
+                            medCertFileUrl: ''
+                        }
                     });
                 }
             });
@@ -647,6 +713,60 @@ const DailyReport = () => {
         }
     };
 
+    const handleUploadLeaveCert = async (laborId: string, file: File | null) => {
+        if (!file || !selectedTaskInfo) return;
+
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `leave_${laborId}_${Date.now()}.${fileExt}`;
+            const storagePath = `work_orders/${selectedTaskInfo.wo.id}/leave_certs/${fileName}`;
+            const storageRef = ref(storage, storagePath);
+
+            const compressedFile = await compressImage(file, 1280, 0.7);
+            const metadata = {
+                cacheControl: 'public, max-age=31536000',
+                contentType: compressedFile.type || 'image/jpeg',
+            };
+
+            const snapshot = await uploadBytes(storageRef, compressedFile, metadata);
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            setLabor(prev => prev.map(l => {
+                if (l.id === laborId) {
+                    return {
+                        ...l,
+                        leave: {
+                            ...(l.leave || { active: true, time: '08:00 - 17:00' }),
+                            medCertFileUrl: downloadURL
+                        }
+                    };
+                }
+                return l;
+            }));
+        } catch (error) {
+            console.error('Leave cert upload failed:', error);
+            alert('อัปโหลดใบรับรองแพทย์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleRemoveLeaveCert = (laborId: string) => {
+        setLabor(prev => prev.map(l => {
+            if (l.id === laborId) {
+                return {
+                    ...l,
+                    leave: {
+                        ...(l.leave || { active: true, time: '08:00 - 17:00' }),
+                        medCertFileUrl: ''
+                    }
+                };
+            }
+            return l;
+        }));
+    };
+
     const handleBounceBackSLA = async (workOrderId: string, categoryId: string, taskId: string) => {
         if (!window.confirm('คุณต้องการตีกลับใบงานนี้เพื่อให้แอดมินประเมิน SLA ใหม่ใช่หรือไม่?\n(งานจะถูกถอดออกจากการมอบหมายและส่งกลับไปที่แอดมิน)')) return;
         
@@ -719,6 +839,42 @@ const DailyReport = () => {
 
         setIsSubmitting(true);
         try {
+                const laborPayload = labor
+                    .filter((l) => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
+                    .map((l) => ({
+                        workerId: l.staffId || l.id,
+                        workerName: l.staffName || '',
+                        employeeId: l.employeeId || '',
+                        shiftTimes: {
+                            day: l.shifts?.normal ? l.shiftTimes?.day || '08:00 - 17:00' : null,
+                            otEvening: l.shifts?.otEvening ? l.shiftTimes?.otEvening || '18:00 - 21:00' : null,
+                            otMorning: l.shifts?.otMorning ? l.shiftTimes?.otMorning || '06:00 - 08:00' : null,
+                            otNoon: l.shifts?.otNoon ? '12:00 - 13:00' : null,
+                        },
+                        shifts: {
+                            normal: l.shifts?.normal || false,
+                            otEvening: l.shifts?.otEvening || false,
+                            otMorning: l.shifts?.otMorning || false,
+                            otNoon: l.shifts?.otNoon || false,
+                        }
+                    }));
+
+                const leavePayload = labor
+                    .filter((l) => l.leave?.active)
+                    .map((l) => ({
+                        workerId: l.staffId || l.id,
+                        workerName: l.staffName || '',
+                        employeeId: l.employeeId || '',
+                        leaveTimes: {
+                            custom: l.leave?.time || '08:00 - 17:00'
+                        },
+                        leaveShifts: {
+                            custom: true
+                        },
+                        medCertFileUrl: l.leave?.medCertFileUrl || '',
+                        leaveType: l.leave?.medCertFileUrl ? 'Paid' : 'Unpaid'
+                    }));
+
                 const updateId = (isEditingExisting && existingHistory) ? existingHistory.id : `h-${Date.now()}`;
                 const newUpdate: TaskUpdate = {
                     id: updateId,
@@ -727,7 +883,8 @@ const DailyReport = () => {
                     progress,
                     photos,
                     laborPhotos,
-                    labor,
+                    labor: laborPayload as any,
+                    leave: leavePayload,
                     type: reportType
                 };
 
@@ -850,10 +1007,9 @@ const DailyReport = () => {
         );
     };
 
-    const availableStaff = [
-        { id: 'DC-TEAM', name: 'DC' },
-        ...realStaff
-    ].filter(s => !labor.some(l => l.staffId === (s.id === 'DC-TEAM' ? 'DC' : s.id)));
+    const availableStaff = dailyContractors
+        .filter(c => (c.department || '').toLowerCase().endsWith('wh'))
+        .filter(c => !labor.some(l => l.staffId === c.id));
 
     const availableContractors = realContractors.filter(c => !labor.some(l => l.contractorId === c.id));
 
@@ -1067,69 +1223,279 @@ const DailyReport = () => {
                                     </div>
                                 </div>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {labor.length === 0 ? <div style={{ padding: '2rem', textAlign: 'center', border: '2px dashed #e2e8f0', borderRadius: '20px', color: '#94a3b8' }}>ยังไม่มีข้อมูลแรงงาน</div> : labor.map(l => (
-                                        <div key={l.id} style={{ padding: '16px', borderRadius: '16px', background: '#fff', border: '1px solid #e2e8f0' }}>
-                                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
-                                                <div style={{ display: 'flex', gap: '12px' }}>
-                                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: l.membership === 'Internal' ? '#eff6ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{l.membership === 'Internal' ? <User size={22} color="#2563eb" /> : <HardHat size={22} color="#059669" />}</div>
-                                                    <div><div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{l.staffName || l.affiliation}</div><div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>{l.membership === 'Internal' ? 'คนงานบริษัท (Internal)' : 'ทีมงานผู้รับเหมา (Subio)'}</div></div>
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    {l.membership === 'Outsource' && (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                                            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>จำนวน (คน)</span>
-                                                            <input type="number" min="1" value={l.amount} onChange={(e) => setLabor(labor.map(item => item.id === l.id ? { ...item, amount: Math.max(1, parseInt(e.target.value) || 1) } : item))} disabled={!isEditingExisting} style={{ width: '60px', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', fontSize: '0.9rem', fontWeight: 700, outline: 'none', textAlign: 'center', color: '#15803d' }} />
-                                                        </div>
-                                                    )}
-                                                    {isEditingExisting && (
-                                                        <button onClick={() => setLabor(labor.filter(item => item.id !== l.id))} style={{
-                                                            background: '#fff',
-                                                            border: '1px solid #eff6ff',
-                                                            borderRadius: '50%',
-                                                            width: '36px', height: '36px',
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                            cursor: 'pointer', color: '#ef4444', transition: 'all 0.2s', padding: 0,
-                                                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                                                        }}
-                                                            onMouseOver={e => { e.currentTarget.style.background = '#ef4444'; e.currentTarget.style.color = '#fff'; }}
-                                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#ef4444'; }}
-                                                        >
-                                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                                                            </svg>
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', padding: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', opacity: isEditingExisting ? 1 : 0.7, pointerEvents: isEditingExisting ? 'auto' : 'none' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <div onClick={() => toggleShift(l.id, 'normal')} style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #2563eb', background: l.shifts?.normal ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>{l.shifts?.normal && <CheckCircle2 size={12} color="#fff" />}</div>
-                                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Day (ปกติ)</span>
-                                                    {l.shifts?.normal && l.membership === 'Internal' && renderTimeInput(l.id, 'normal', l.shiftTimes?.day || '08:00 - 17:00')}
-                                                </div>
-                                                <div style={{ width: 1, height: 24, background: '#cbd5e1' }} />
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f59e0b' }}>OT:</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <div onClick={() => toggleShift(l.id, 'otMorning')} style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #f59e0b', background: l.shifts?.otMorning ? '#f59e0b' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>{l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}</div>
-                                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>เช้า</span>
-                                                    {l.shifts?.otMorning && l.membership === 'Internal' && renderTimeInput(l.id, 'otMorning', l.shiftTimes?.otMorning || '06:00 - 08:00')}
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <div onClick={() => toggleShift(l.id, 'otNoon')} style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #f59e0b', background: l.shifts?.otNoon ? '#f59e0b' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>{l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}</div>
-                                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>เที่ยง</span>
-                                                    {l.shifts?.otNoon && l.membership === 'Internal' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}><Clock size={12} /> 12:00 - 13:00 (1 ชม.)</div>}
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <div onClick={() => toggleShift(l.id, 'otEvening')} style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #f59e0b', background: l.shifts?.otEvening ? '#f59e0b' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>{l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}</div>
-                                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>เย็น</span>
-                                                    {l.shifts?.otEvening && l.membership === 'Internal' && renderTimeInput(l.id, 'otEvening', l.shiftTimes?.otEvening || '18:00 - 21:00')}
-                                                </div>
-                                            </div>
+                                <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', overflowX: 'auto' }}>
+                                    {labor.length === 0 ? (
+                                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700 }}>
+                                            <Users size={32} color="#cbd5e1" style={{ marginBottom: '10px' }} />
+                                            <div>ยังไม่มีข้อมูลแรงงาน (กรุณากดปุ่มเพิ่มคนงานด้านบน)</div>
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '950px' }}>
+                                            <thead>
+                                                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '50px' }}>No.</th>
+                                                    <th style={{ padding: '12px 16px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', minWidth: '220px' }}>ชื่อแรงงาน</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>เวลาทำงานปกติ</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>OT : เช้า</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>OT : เที่ยง</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>OT : เย็น</th>
+                                                    <th style={{ padding: '12px 16px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', minWidth: '200px' }}>Leave : ลา</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '80px' }}>จัดการ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {labor.map((l, idx) => (
+                                                    <tr key={l.id} style={{ borderBottom: '1px solid #e2e8f0', transition: 'all 0.15s' }}>
+                                                        <td style={{ padding: '12px 10px', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', textAlign: 'center' }}>{idx + 1}</td>
+                                                        <td style={{ padding: '12px 16px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div style={{ width: 28, height: 28, borderRadius: 8, background: l.membership === 'Internal' ? '#eff6ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                                    {l.membership === 'Internal' ? <User size={14} color="#2563eb" /> : <HardHat size={14} color="#059669" />}
+                                                                </div>
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>
+                                                                        {l.employeeId ? `${l.employeeId} : ` : ''}{l.staffName || l.affiliation}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>
+                                                                        {l.membership === 'Internal' ? 'คนงานบริษัท (Internal)' : 'ทีมงานผู้รับเหมา (Subio)'}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        
+                                                        {/* Normal Shift */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && toggleShift(l.id, 'normal')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #2563eb', 
+                                                                        background: l.shifts?.normal ? '#2563eb' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: isEditingExisting ? 'pointer' : 'default',
+                                                                        opacity: isEditingExisting ? 1 : 0.6
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.normal && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.normal ? (
+                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'normal', l.shiftTimes?.day || '08:00 - 17:00') : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                            <Clock size={12} /> 08:00 - 17:00
+                                                                        </div>
+                                                                    )
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* OT Morning */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otMorning')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #f59e0b', 
+                                                                        background: l.shifts?.otMorning ? '#f59e0b' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
+                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.otMorning ? (
+                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'otMorning', l.shiftTimes?.otMorning || '06:00 - 08:00') : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                            <Clock size={12} /> 06:00 - 08:00
+                                                                        </div>
+                                                                    )
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* OT Noon */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otNoon')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #f59e0b', 
+                                                                        background: l.shifts?.otNoon ? '#f59e0b' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
+                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.otNoon ? (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                        <Clock size={12} /> 12:00 - 13:00
+                                                                    </div>
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* OT Evening */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otEvening')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #f59e0b', 
+                                                                        background: l.shifts?.otEvening ? '#f59e0b' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
+                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.otEvening ? (
+                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'otEvening', l.shiftTimes?.otEvening || '18:00 - 21:00') : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                            <Clock size={12} /> 18:00 - 21:00
+                                                                        </div>
+                                                                    )
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Leave : ลา */}
+                                                        <td style={{ padding: '12px 16px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div 
+                                                                    onClick={() => {
+                                                                        if (!isEditingExisting) return;
+                                                                        setLabor(prev => prev.map(item => {
+                                                                            if (item.id === l.id) {
+                                                                                const leaveActive = !item.leave?.active;
+                                                                                return {
+                                                                                    ...item,
+                                                                                    leave: {
+                                                                                        active: leaveActive,
+                                                                                        time: item.leave?.time || '08:00 - 17:00',
+                                                                                        medCertFileUrl: item.leave?.medCertFileUrl || ''
+                                                                                    }
+                                                                                };
+                                                                            }
+                                                                            return item;
+                                                                        }));
+                                                                    }} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #ef4444', 
+                                                                        background: l.leave?.active ? '#ef4444' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: isEditingExisting ? 'pointer' : 'default',
+                                                                        opacity: isEditingExisting ? 1 : 0.6
+                                                                    }}
+                                                                >
+                                                                    {l.leave?.active && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.leave?.active ? (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        {/* Leave Time */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff1f2', borderRadius: '8px', border: '1px solid #fecdd3', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#e11d48' }}>
+                                                                            <Clock size={12} /> 08:00 - 17:00
+                                                                        </div>
+                                                                        
+                                                                        {/* Attachment Upload & Action Icons */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                            {l.leave?.medCertFileUrl ? (
+                                                                                <>
+                                                                                    <a 
+                                                                                        href={l.leave.medCertFileUrl} 
+                                                                                        target="_blank" 
+                                                                                        rel="noreferrer" 
+                                                                                        style={{ 
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                                            width: '24px', height: '24px', borderRadius: '6px', 
+                                                                                            background: '#eff6ff', color: '#2563eb', transition: 'all 0.2s'
+                                                                                        }}
+                                                                                        title="ดูใบรับรองแพทย์"
+                                                                                    >
+                                                                                        <Eye size={12} />
+                                                                                    </a>
+                                                                                    {isEditingExisting && (
+                                                                                        <button 
+                                                                                            onClick={() => handleRemoveLeaveCert(l.id)} 
+                                                                                            style={{ 
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                                                width: '24px', height: '24px', borderRadius: '6px', 
+                                                                                                background: '#fef2f2', color: '#ef4444', border: 'none', 
+                                                                                                cursor: 'pointer', transition: 'all 0.2s', padding: 0
+                                                                                            }}
+                                                                                            title="ลบรูปแนบ"
+                                                                                        >
+                                                                                            <Trash2 size={12} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                isEditingExisting ? (
+                                                                                    <label 
+                                                                                        style={{ 
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                                            width: '24px', height: '24px', borderRadius: '6px', 
+                                                                                            background: '#f1f5f9', color: '#64748b', cursor: 'pointer',
+                                                                                            transition: 'all 0.2s'
+                                                                                        }}
+                                                                                        title="แนบใบรับรองแพทย์/หลักฐาน"
+                                                                                    >
+                                                                                        <Paperclip size={12} />
+                                                                                        <input
+                                                                                            type="file"
+                                                                                            accept="image/*"
+                                                                                            style={{ display: 'none' }}
+                                                                                            onChange={(e) => handleUploadLeaveCert(l.id, e.target.files?.[0] || null)}
+                                                                                        />
+                                                                                    </label>
+                                                                                ) : (
+                                                                                    <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>ไม่มีหลักฐาน</span>
+                                                                                )
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Actions (Delete Row) */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            {isEditingExisting ? (
+                                                                <button 
+                                                                    onClick={() => setLabor(labor.filter(item => item.id !== l.id))} 
+                                                                    style={{
+                                                                        background: 'none', border: 'none', cursor: 'pointer', 
+                                                                        color: '#ef4444', transition: 'all 0.2s', padding: '4px'
+                                                                    }}
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            ) : (
+                                                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8' }}>ล็อกแล้ว</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
                                 </div>
                             </section>
 

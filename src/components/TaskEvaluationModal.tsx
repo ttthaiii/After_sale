@@ -21,11 +21,29 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
     const { sendNotification } = useNotifications();
     const { user } = useAuth();
 
-    // ✅ Real-time Sync Staff from Firestore
+    // ✅ Real-time Sync Staff from Firestore (Unified users collection)
     useEffect(() => {
         if (!isOpen) return;
-        const unsub = onSnapshot(collection(db, 'staff'), (snap) => {
-            setStaffList(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Staff));
+        const unsub = onSnapshot(collection(db, 'users'), (snap) => {
+            const mappedStaff = snap.docs.map(docSnapshot => {
+                const userData = docSnapshot.data();
+                const empId = docSnapshot.id;
+                
+                let role: 'Foreman' | 'Admin' | 'Manager' | 'BackOffice' | 'Approver' = 'Foreman';
+                if (userData.roleId === 'AM' || userData.roleId === 'PE' || empId === '100051' || empId === '101485') {
+                    role = 'Admin';
+                } else if (userData.roleId === 'FM' || userData.roleId === 'GOD' || empId === '101527') {
+                    role = 'Foreman';
+                }
+                
+                return {
+                    id: empId,
+                    name: userData.name || '',
+                    role: role,
+                    systemCode: userData.systemCode || ''
+                } as Staff;
+            }).filter(st => st.systemCode === 'AS'); // Only show After Sale users
+            setStaffList(mappedStaff);
         });
         return () => unsub();
     }, [isOpen]);

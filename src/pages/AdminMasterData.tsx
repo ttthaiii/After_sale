@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, HardHat, Plus, Edit2, Trash2, Building, Eye, EyeOff, ClipboardList } from 'lucide-react';
 import { Contractor, Staff, Project } from '../types';
 import MasterDataModal from '../components/MasterDataModal';
+import bcrypt from 'bcryptjs';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { migrateAll } from '../services/migrationService'; // Import migration
@@ -115,7 +116,7 @@ const AdminMasterData = () => {
     };
 
     const handleSave = async (data: any) => {
-        const collectionName = activeTab.toLowerCase();
+        const collectionName = activeTab === 'Staff' ? 'users' : activeTab.toLowerCase();
         let id = data.id;
 
         if (!editingItem) {
@@ -156,15 +157,60 @@ const AdminMasterData = () => {
         }
 
         const docRef = doc(db, collectionName, id);
-        const finalData = { ...data };
+        let finalData = { ...data };
 
         // ✅ If it's a staff member, explicitly set employeeId and ensure redundant id field is removed
-        if (activeTab === 'Staff') {
-            finalData.employeeId = data.employeeId || id;
-            if ('id' in finalData) delete finalData.id;
-        }
+                        if (activeTab === 'Staff') {
+            const editingStaff = editingItem as Staff | null;
+            let hashedPassword = editingStaff?.passwordHash || '';
+            let plainPassword = editingStaff?.password || '';
+            
+            if (!editingStaff) {
+                // For new staff: if custom password is provided, use it. Otherwise default to Employee ID (id).
+                const targetPass = data.password || id;
+                hashedPassword = bcrypt.hashSync(targetPass, 10);
+                plainPassword = targetPass;
+            } else if (data.password) {
+                // For existing staff: if a new custom password is typed
+                hashedPassword = bcrypt.hashSync(data.password, 10);
+                plainPassword = data.password;
+            }
 
-        await setDoc(docRef, finalData);
+            finalData = {
+                employeeId: id,
+                username: data.username || data.employeeId || id,
+                password: plainPassword,
+                passwordHash: hashedPassword,
+                name: data.name || '',
+                roleId: data.role === 'Admin' ? 'AM' : 'FM', // AM for Admin, FM for Foreman (Labor standard)
+                department: 'WH', // Always WH for After Sale staff
+                systemCode: 'AS', // Tag as After Sale created user
+                projectLocationIds: data.assignedProjects || [],
+                isActive: true,
+                createdAt: editingStaff?.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                createdBy: editingStaff?.createdBy || user?.id || '100051',
+                updatedBy: user?.id || '100051',
+                startDate: editingStaff?.startDate || new Date().toISOString()
+            };
+            
+            // Use merge: true to protect native labor db fields like dateOfBirth
+            await setDoc(docRef, finalData, { merge: true });
+            
+            // ✅ Real-time sync back to Labor DB directly from UI!
+            try {
+                await fetch('/api/sync-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, userData: finalData })
+                });
+                console.log("Real-time sync to Labor DB successful!");
+            } catch (err) {
+                console.error("Real-time sync to Labor DB failed:", err);
+            }
+        } else {
+            await setDoc(docRef, finalData);
+        }
 
         // ✅ Log Action
         await logService.trackAction({
@@ -183,7 +229,7 @@ const AdminMasterData = () => {
 
     const handleDelete = async (id: string) => {
         if (!window.confirm('ยืนยันการลบข้อมูล?')) return;
-        const collectionName = activeTab.toLowerCase();
+        const collectionName = activeTab === 'Staff' ? 'users' : activeTab.toLowerCase();
         const itemToDelete =
             activeTab === 'Staff' ? staffList.find(s => s.id === id) :
                 activeTab === 'Contractors' ? contractorList.find(c => c.id === id) :
@@ -307,7 +353,15 @@ const AdminMasterData = () => {
                     >
                         🔄 Sync Excel Data
                     </button>
-                    {activeTab !== 'Costs' && (
+                    <button
+                        onClick={() => {
+                            alert('📢 วิธีการซิงค์:\nกรุณาเปิด Terminal แล้วรันคำสั่งด้านล่างนี้:\n\nnode scratch/sync_users_aftersale_to_labor.js\n\nระบบจะทำการอัปเดตและประสานข้อมูลผู้ใช้ระหว่าง 2 ระบบทันทีครับ!');
+                        }}
+                        style={{ padding: '8px 16px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 900, boxShadow: '0 4px 10px rgba(139, 92, 246, 0.3)' }}
+                    >
+                        🔄 Sync Users to Labor
+                    </button>
+                    {activeTab !== 'Costs' && activeTab !== 'Projects' && (
                         <button
                             onClick={() => setIsModalOpen(true)}
                             style={{ padding: '8px 16px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
@@ -430,30 +484,36 @@ const AdminMasterData = () => {
                             : activeTab === 'Contractors' ? 'รายชื่อผู้รับเหมาทั้งหมด'
                                 : activeTab === 'Projects' ? 'รายชื่อโครงการทั้งหมด' : 'ตั้งค่าอัตราค่าแรง (บาท/วัน)'}
                     </h3>
-                    <button
-                        onClick={openAddModal}
-                        style={{
-                            background: '#4f46e5',
-                            color: 'white',
-                            border: 'none',
-                            padding: '12px 24px',
-                            borderRadius: '14px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            fontWeight: 800,
-                            boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.3)',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                    >
-                        <Plus size={20} />
-                        {activeTab === 'Staff' ? 'เพิ่มเจ้าหน้าที่'
-                            : activeTab === 'Contractors' ? 'เพิ่มผู้รับเหมา'
-                                : activeTab === 'Projects' ? 'เพิ่มโครงการ' : ''}
-                    </button>
+                    {activeTab !== 'Projects' && activeTab !== 'Costs' && (
+                        <button
+                            onClick={openAddModal}
+                            style={{
+                                background: '#4f46e5',
+                                color: 'white',
+                                border: 'none',
+                                padding: '12px 24px',
+                                borderRadius: '14px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                fontWeight: 800,
+                                boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.3)',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                        >
+                            <Plus size={20} />
+                            {activeTab === 'Staff' ? 'เพิ่มเจ้าหน้าที่'
+                                : activeTab === 'Contractors' ? 'เพิ่มผู้รับเหมา' : ''}
+                        </button>
+                    )}
+                    {activeTab === 'Projects' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#eff6ff', color: '#1d4ed8', padding: '8px 16px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 800, border: '1px solid #bfdbfe' }}>
+                            🔄 ข้อมูลเชื่อมต่ออัตโนมัติจากระบบ Labor
+                        </div>
+                    )}
                 </div>
 
                 <div style={{ overflowX: 'auto' }}>
@@ -519,17 +579,25 @@ const AdminMasterData = () => {
                                             <th style={{ padding: '16px 32px' }}>Role</th>
                                             <th style={{ padding: '16px 32px' }}>Username</th>
                                             <th style={{ padding: '16px 32px' }}>โครงการที่รับผิดชอบ</th>
-                                            <th style={{ padding: '16px 32px' }}>สังกัด</th>
+                                            
+                                            <th style={{ padding: '16px 32px', textAlign: 'right' }}>จัดการ</th>
+                                        </>
+                                    ) : activeTab === 'Contractors' ? (
+                                        <>
+                                            <th style={{ padding: '16px 32px' }}>ID</th>
+                                            <th style={{ padding: '16px 32px' }}>ชื่อ (Name)</th>
+                                            <th style={{ padding: '16px 32px' }}>ความเชี่ยวชาญ (Specialty)</th>
+                                            
                                             <th style={{ padding: '16px 32px', textAlign: 'right' }}>จัดการ</th>
                                         </>
                                     ) : (
                                         <>
                                             <th style={{ padding: '16px 32px' }}>ID</th>
                                             <th style={{ padding: '16px 32px' }}>ชื่อ (Name)</th>
-                                            <th style={{ padding: '16px 32px' }}>
-                                                {activeTab === 'Contractors' ? 'ความเชี่ยวชาญ (Specialty)' : 'Code'}
-                                            </th>
-                                            {activeTab === 'Projects' && <th style={{ padding: '16px 32px' }}>สังกัด (Affiliation)</th>}
+                                            <th style={{ padding: '16px 32px' }}>Code</th>
+                                            <th style={{ padding: '16px 32px' }}>สังกัด (Affiliation)</th>
+                                            <th style={{ padding: '16px 32px' }}>สถานะ (Status)</th>
+                                            
                                             <th style={{ padding: '16px 32px', textAlign: 'right' }}>จัดการ</th>
                                         </>
                                     )}
@@ -578,7 +646,7 @@ const AdminMasterData = () => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td style={{ padding: '20px 32px', color: '#64748b' }}>{st.affiliation}</td>
+                                                
                                                 <td style={{ padding: '20px 32px', textAlign: 'right' }}>
                                                     <button onClick={() => openEditModal(st)} style={{ background: 'transparent', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '8px', borderRadius: '8px' }} onMouseOver={(e) => e.currentTarget.style.background = '#eef2ff'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}><Edit2 size={20} /></button>
                                                     <button onClick={() => handleDelete(st.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px', borderRadius: '8px' }} onMouseOver={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}><Trash2 size={20} /></button>
@@ -617,15 +685,45 @@ const AdminMasterData = () => {
                                                 </td>
                                                 <td style={{ padding: '20px 32px' }}>
                                                     <span style={{ background: '#e0e7ff', color: '#4338ca', padding: '6px 14px', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', border: '1px solid #c7d2fe' }}>
-                                                        {prj.code}
+                                                        {prj.projectCode || prj.code}
                                                     </span>
                                                 </td>
-                                                <td style={{ padding: '20px 32px', color: '#64748b', fontWeight: 600 }}>
-                                                    {prj.affiliation || '-'}
-                                                </td>
-                                                <td style={{ padding: '20px 32px', textAlign: 'right' }}>
-                                                    <button onClick={() => openEditModal(prj)} style={{ background: 'transparent', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '8px', borderRadius: '8px' }} onMouseOver={(e) => e.currentTarget.style.background = '#eef2ff'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}><Edit2 size={20} /></button>
-                                                    <button onClick={() => handleDelete(prj.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px', borderRadius: '8px' }} onMouseOver={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}><Trash2 size={20} /></button>
+												<td style={{ padding: '20px 32px' }}>
+													<span style={{ background: '#f8fafc', color: '#475569', padding: '6px 14px', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 700, border: '1px solid #e2e8f0' }}>
+														{prj.affiliation || '-'}
+													</span>
+												</td>
+												<td style={{ padding: '20px 32px' }}>
+													{(() => {
+														const statusText = prj.status || 'กำลังดำเนินการอยู่';
+														const isOngoing = statusText === 'กำลังดำเนินการอยู่';
+														return (
+															<span style={{
+																background: isOngoing ? '#dcfce7' : '#f1f5f9',
+																color: isOngoing ? '#15803d' : '#475569',
+																padding: '6px 16px',
+																borderRadius: '20px',
+																fontSize: '0.85rem',
+																fontWeight: 700,
+																display: 'inline-flex',
+																alignItems: 'center',
+																gap: '6px',
+																border: isOngoing ? '1px solid #bbf7d0' : '1px solid #e2e8f0'
+															}}>
+																<span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isOngoing ? '#16a34a' : '#64748b' }}></span>
+																{statusText}
+															</span>
+														);
+													})()}
+												</td>
+                                                
+                                                <td style={{ padding: '20px 32px', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
+                                                    <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 800, fontStyle: 'italic', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                                        เชื่อมต่อระบบหลัก
+                                                    </span>
+                                                    <button onClick={() => openEditModal(prj)} style={{ background: 'transparent', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '8px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, fontSize: '0.85rem' }} onMouseOver={(e) => e.currentTarget.style.background = '#eef2ff'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
+                                                        <Edit2 size={16} /> แก้ไขรูปภาพ
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}

@@ -34,6 +34,12 @@ export interface LaborRecord {
     };
     workHours?: string; // e.g. "08:00 - 17:00"
     contractorId?: string; // For linking to master data
+    employeeId?: string; // Add for labor database compatibility
+    leave?: {
+        active: boolean;
+        time?: string;
+        medCertFileUrl?: string;
+    }; // Add for daily report leave status tracking
 }
 
 export interface TaskUpdate {
@@ -44,6 +50,7 @@ export interface TaskUpdate {
     photos?: string[];
     laborPhotos?: string[];
     labor: LaborRecord[];
+    leave?: any[];
     type?: 'Update' | 'Problem' | 'Resolution';
 }
 
@@ -63,6 +70,7 @@ export interface DailyReport {
     progress?: number;
     notes?: string;
     labor?: LaborRecord[]; // ✅ Added for compatibility with Dashboard/DailyReport pages
+    leave?: any[];
     type?: string;         // ✅ Added for compatibility
     reportDate?: string;   // ✅ Added for compatibility
     photoUrl?: string; // ✅ New: Support for daily progress photo
@@ -136,7 +144,13 @@ export interface Staff {
     profileImage?: string; 
     username?: string; 
     password?: string; 
+    passwordHash?: string; // Add for labor database compatibility
     assignedProjects?: string[]; 
+    projectLocationIds?: string[]; // Add for labor database compatibility
+    systemCode?: string; // Add to tag users created by After Sale system
+    createdAt?: string; // Add for labor database compatibility
+    createdBy?: string; // Add for labor database compatibility
+    startDate?: string; // Add for labor database compatibility
 }
 
 export interface Category {
@@ -154,6 +168,8 @@ export interface Project {
     affiliation?: string; 
     imageUrl?: string; 
     budget?: number;
+    projectCode?: string;
+    status?: string;
 }
 
 export interface WorkOrder {
