@@ -10,8 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.0.1",
+    "@mui/x-date-pickers": "^9.2.0",
     "bcryptjs": "^3.0.3",
     "browser-image-compression": "^2.0.2",
+    "date-fns": "^4.2.1",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.10.0",
     "lucide-react": "^0.469.0",

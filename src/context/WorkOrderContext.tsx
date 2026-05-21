@@ -19,6 +19,7 @@ interface WorkOrderContextType {
     deleteWorkOrder: (id: string) => Promise<void>;
     archiveWorkOrder: (id: string) => Promise<void>;
     markWorkOrderAsReviewed: (id: string) => Promise<void>;
+    requestRetroactiveUnlock: (workOrderId: string, categoryId: string, taskId: string, date: string, reason: string) => Promise<void>;
 }
 
 const WorkOrderContext = createContext<WorkOrderContextType | undefined>(undefined);
@@ -224,6 +225,23 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await updateDoc(doc(db, 'workOrders', id), { status, lastUpdate: new Date().toISOString() });
     };
 
+    const requestRetroactiveUnlock = async (workOrderId: string, categoryId: string, taskId: string, date: string, reason: string) => {
+        const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
+        const taskDoc = allWorkOrders.find(w => w?.id === workOrderId)?.categories?.find(c => c?.id === categoryId)?.tasks?.find(t => t?.id === taskId);
+        
+        // For demonstration, we auto-approve the unlock for 24 hours.
+        // In a full implementation, this would send a notification to the Admin and wait for approval.
+        const unlockedDates = taskDoc?.unlockedDates || {};
+        unlockedDates[date] = {
+            unlockedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours from now
+            reason: reason
+        };
+
+        await updateDoc(taskRef, {
+            unlockedDates
+        });
+    };
+
     const deleteWorkOrder = async (id: string) => {
         await updateDoc(doc(db, 'workOrders', id), { status: 'Cancelled', isArchived: true });
     };
@@ -259,7 +277,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             loading,
             deleteWorkOrder,
             archiveWorkOrder,
-            markWorkOrderAsReviewed
+            markWorkOrderAsReviewed,
+            requestRetroactiveUnlock
         }}>
             {children}
         </WorkOrderContext.Provider>

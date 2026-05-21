@@ -47,8 +47,16 @@ export interface TaskUpdate {
     date: string;
     note: string;
     progress: number;
-    photos?: string[];
-    laborPhotos?: string[];
+    photos?: string[] | {
+        site?: string[];
+        laborByShift?: {
+            regular?: string[] | { in?: string; lunch?: string; afternoon?: string; out?: string; } | null;
+            otMorning?: { in?: string; out?: string; } | null;
+            otNoon?: { in?: string; out?: string; } | null;
+            otEvening?: { in?: string; out?: string; } | null;
+        };
+    }; // รองรับทั้งรูปแบบอาร์เรย์เดิม (legacy arrays) และรูปภาพแยกตามกะการทำงาน (LB-style)
+    laborPhotos?: string[]; // นำ laborPhotos กลับมาใช้เพื่อรองรับความเข้ากันได้ย้อนหลัง
     labor: LaborRecord[];
     leave?: any[];
     type?: 'Update' | 'Problem' | 'Resolution';
@@ -114,6 +122,7 @@ export interface MasterTask {
     history?: TaskUpdate[];
     labor?: LaborRecord[];
     slaStartTime?: string; // ✅ Added
+    unlockedDates?: Record<string, { unlockedUntil: string, reason?: string }>; // For retroactive admin unlocking
     
     dailyreports?: DailyReport[]; 
 }

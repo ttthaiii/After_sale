@@ -424,7 +424,15 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
                                                                             {/* Visual Comparison: Show latest progress photo if exists */}
                                                                             {(() => {
                                                                                 const latestPhoto = task.history && task.history.length > 0
-                                                                                    ? [...task.history].reverse().find(h => h && h.photos && h.photos.length > 0)?.photos?.[0]
+                                                                                    ? (() => {
+                                                                                        const found = [...task.history].reverse().find(h => {
+                                                                                            if (!h || !h.photos) return false;
+                                                                                            if (Array.isArray(h.photos)) return h.photos.length > 0;
+                                                                                            return !!(h.photos.site && h.photos.site.length > 0);
+                                                                                        });
+                                                                                        if (!found) return null;
+                                                                                        return Array.isArray(found.photos) ? found.photos[0] : (found.photos as any)?.site?.[0] || null;
+                                                                                    })()
                                                                                     : null;
 
                                                                                 if (!latestPhoto) return null;

@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, LayoutDashboard, User2, RotateCw, Building2, AlertCircle, ChevronDown, ChevronUp, ArrowDown, ArrowUp } from 'lucide-react';
+import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +28,6 @@ const SLAMonitor = () => {
 
     // UI States
     const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
-    const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
     const [zoomImage, setZoomImage] = useState<string | null>(null);
     const [closingWorkOrder, setClosingWorkOrder] = useState<WorkOrder | null>(null);
     const [verifyingTaskId, setVerifyingTaskId] = useState<string | null>(null);
@@ -125,14 +124,6 @@ const SLAMonitor = () => {
         setTaskDecisions({});
     };
 
-    const handleGoToEvaluation = (task: MasterTask) => {
-        const wo = workOrders.find(w => w.categories.some(c => c.tasks.some(t => t.id === task.id)));
-        if (wo) {
-            setSelectedEvalWO(wo);
-            setIsDetailModalOpen(true);
-        }
-    };
-
     const getSLARemaining = (task: any, woCreatedAt: string) => {
         // ✅ 1. If task is completed (dailyProgress 100%), stop SLA
         if (task.dailyProgress === 100) {
@@ -169,20 +160,6 @@ const SLAMonitor = () => {
         return { text, isCritical: false, isWarning: hours < 24, diffMs };
     };
 
-    const getStatusThai = (status: string) => {
-        const map: Record<string, string> = {
-            'Pending': 'รอประเมิน',
-            'Assigned': 'มอบหมายแล้ว',
-            'In Progress': 'กำลังดำเนินการ',
-            'Completed': 'รอตรวจสอบ',
-            'Verified': 'เสร็จสมบูรณ์',
-            'Cancelled': 'ยกเลิก',
-            'Approved': 'อนุมัติแล้ว',
-            'Evaluating': 'รอประเมิน',
-            'Rejected': 'ถูกปฏิเสธ'
-        };
-        return map[status] || status;
-    };
 
     const handleInitiateClose = (taskId: string, woId: string) => {
         const wo = workOrders.find(w => w.id === woId);
@@ -453,296 +430,185 @@ const SLAMonitor = () => {
                 </div>
             </div>
 
-            {/* WO Card Area */}
-            <div style={{ background: '#fff', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 4px 15px -5px rgba(0,0,0,0.05)' }}>
-                <div style={{ padding: '1.25rem 1.75rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fcfdfe' }}>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}>รายการใบงานที่กำลังดำเนินการ ({(() => { const ids = new Set(flattenedTasks.map(t => t.woId)); return ids.size; })()})</div>
-                </div>
-                <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {(() => {
-                        // Group flattenedTasks by WO
-                        const woMap = new Map<string, typeof flattenedTasks>();
-                        flattenedTasks.forEach(task => {
-                            if (!woMap.has(task.woId)) woMap.set(task.woId, []);
-                            woMap.get(task.woId)!.push(task);
-                        });
-                        const woGroups = Array.from(woMap.entries());
+            {/* Kanban Board Area */}
+            <div style={{ display: 'flex', gap: '24px', overflowX: 'auto', paddingBottom: '16px' }}>
+                {[
+                    { id: 'upcoming', label: 'Upcoming Tasks', color: '#ff5c5c' },
+                    { id: 'in-progress', label: 'In Progress', color: '#5b5ce6' },
+                    { id: 'for-checking', label: 'For Checking', color: '#f59e0b' },
+                    { id: 'completed', label: 'Completed', color: '#00b87c' },
+                ].map(column => {
+                    const columnTasks = flattenedTasks.filter(t => {
+                        let effectiveStatus: string = t.status;
+                        const progress = t.dailyProgress || 0;
+                        
+                        // Force Column Sync Logic
+                        if (progress >= 100 && effectiveStatus !== 'Completed') {
+                            effectiveStatus = 'for-checking';
+                        } else if (progress > 0 && progress < 100 && (effectiveStatus === 'Pending' || effectiveStatus === 'Assigned' || effectiveStatus === 'upcoming')) {
+                            effectiveStatus = 'in-progress';
+                        }
 
-                        if (woGroups.length === 0) return (
-                            <div style={{ padding: '4rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ไม่พบรายการที่กำลังดำเนินการ</div>
-                        );
+                        if (column.id === 'upcoming') return effectiveStatus === 'Pending' || effectiveStatus === 'Assigned' || effectiveStatus === 'upcoming';
+                        if (column.id === 'in-progress') return effectiveStatus === 'In Progress' || effectiveStatus === 'in-progress';
+                        if (column.id === 'for-checking') return effectiveStatus === 'for-checking' || effectiveStatus === 'Verified';
+                        if (column.id === 'completed') return effectiveStatus === 'Completed' || effectiveStatus === 'Approved';
+                        
+                        return false;
+                    });
 
-                        return woGroups.map(([woId, tasks]) => {
-                            const firstTask = tasks[0];
-                            const project = projects.find(p => p.id === firstTask.woProjectId);
-                            const isWoExpanded = expandedTaskIds.has(woId);
+                    return (
+                        <div key={column.id} style={{ minWidth: 340, width: 340, background: '#f4f6f8', borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                                <div style={{ width: 6, height: 20, background: column.color, borderRadius: 4 }} />
+                                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1c1e2b' }}>{column.label}</div>
+                                <div style={{ background: '#e2e8f0', color: '#475569', fontSize: '0.8rem', fontWeight: 900, padding: '2px 10px', borderRadius: '12px', marginLeft: 'auto' }}>{columnTasks.length}</div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 200 }}>
+                                {columnTasks.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700, padding: '32px 0', border: '2px dashed #e2e8f0', borderRadius: '16px' }}>No Tasks</div>
+                                ) : (
+                                    columnTasks.map(task => {
+                                        const project = projects.find(p => p.id === task.woProjectId);
+                                        const sla = getSLARemaining(task, task.woCreatedAt);
+                                        const isExpanded = expandedTaskIds.has(task.id);
+                                        
+                                        const assignedStaff = staff.find(s => task.responsibleStaffIds?.includes(s.id));
+                                        const assignedContractor = contractors.find(c => task.responsibleStaffIds?.includes(c.id));
+                                        const assignedName = assignedStaff?.name || assignedContractor?.name || 'ยังไม่มอบหมาย';
+                                        const assignedPhone = assignedStaff?.phone || assignedContractor?.phone || '-';
+                                        const assignedRole = assignedStaff ? 'Staff' : (assignedContractor ? 'Contractor' : '-');
 
-                            const validTasks = tasks.filter(t => t.status !== 'Rejected');
-                            const completedCount = validTasks.filter(t => t.dailyProgress === 100).length;
-                            const totalCount = validTasks.length > 0 ? validTasks.length : tasks.length;
-                            const isAllDone = validTasks.length > 0 ? completedCount === validTasks.length : false;
-
-                            // Worst SLA among active tasks (Ignore completed and rejected tasks for summary color)
-                            const activeTasks = tasks.filter(t => t.dailyProgress < 100 && t.status !== 'Rejected');
-                            const sumTask = activeTasks.length > 0
-                                ? activeTasks.reduce((worst, t) => t.slaScore > worst.slaScore ? t : worst, activeTasks[0])
-                                : tasks[0]; // Fallback if all are done/rejected
-
-                            const sumSla = getSLARemaining(sumTask, sumTask.woCreatedAt);
-                            const summaryColor = sumTask.status === 'Rejected'
-                                ? '#94a3b8'
-                                : (sumTask.dailyProgress === 100 ? '#10b981' : (sumSla.isCritical ? '#ef4444' : (sumSla.isWarning ? '#f59e0b' : '#3b82f6')));
-
-                            const hasActiveProblem = tasks.some(t => t.history?.some((h: any) => h.type === 'Problem'));
-
-                            return (
-                                <div key={woId} style={{ border: `1px solid #e2e8f0`, borderRadius: '18px', overflow: 'hidden', boxShadow: '0 2px 8px -2px rgba(0,0,0,0.04)', borderLeft: `4px solid ${summaryColor}` }}>
-                                    {/* WO Card Header */}
-                                    <div
-                                        onClick={() => {
-                                            const newSet = new Set(expandedTaskIds);
-                                            if (newSet.has(woId)) newSet.delete(woId);
-                                            else newSet.add(woId);
-                                            setExpandedTaskIds(newSet);
-                                        }}
-                                        style={{ padding: '1rem 1.5rem', background: isWoExpanded ? '#f8faff' : '#fff', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', transition: 'background 0.2s' }}
-                                        onMouseEnter={e => { if (!isWoExpanded) e.currentTarget.style.background = '#f8fafc'; }}
-                                        onMouseLeave={e => { if (!isWoExpanded) e.currentTarget.style.background = '#fff'; }}
-                                    >
-                                        {/* Project Image */}
-                                        <div style={{ width: '44px', height: '44px', borderRadius: '12px', overflow: 'hidden', background: '#f1f5f9', flexShrink: 0, border: '1px solid #e2e8f0' }}>
-                                            {project?.imageUrl
-                                                ? <img loading="lazy" src={project.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 900, color: '#334155' }}>{(project?.name || 'P')[0]}</div>
-                                            }
-                                        </div>
-
-                                        {/* WO Info */}
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: 950, color: '#4f46e5' }}>{woId}</span>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>{project?.name || 'N/A'}</span>
-                                                <span style={{ color: '#cbd5e1' }}>•</span>
-                                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{firstTask.woLocation}</span>
-                                            </div>
-                                            <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                                {/* Task count badge */}
-                                                <span style={{ fontSize: '0.78rem', fontWeight: 800, background: isAllDone ? '#f0fdf4' : '#f8fafc', color: isAllDone ? '#16a34a' : '#475569', padding: '2px 10px', borderRadius: '20px', border: `1px solid ${isAllDone ? '#bbf7d0' : '#e2e8f0'}` }}>
-                                                    ✅ {completedCount}/{totalCount} งาน
-                                                </span>
-
-                                                {/* Problem Badge */}
-                                                {hasActiveProblem && (
-                                                    <span style={{
-                                                        fontSize: '0.78rem',
-                                                        fontWeight: 900,
-                                                        background: '#fef2f2',
-                                                        color: '#ef4444',
-                                                        padding: '2px 10px',
-                                                        borderRadius: '20px',
-                                                        border: '1px solid #fee2e2',
-                                                        animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}>
-                                                        <style>{`
-                                                            @keyframes pulse {
-                                                                0%, 100% { opacity: 1; transform: scale(1); }
-                                                                50% { opacity: 0.8; transform: scale(1.05); }
-                                                            }
-                                                        `}</style>
-                                                        🚨 พบปัญหา
-                                                    </span>
+                                        return (
+                                            <div 
+                                                key={task.id} 
+                                                style={{ 
+                                                    background: '#fff', 
+                                                    borderRadius: '16px', 
+                                                    padding: '16px', 
+                                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', 
+                                                    cursor: 'pointer', 
+                                                    border: isExpanded ? '2px solid #4f46e5' : '1px solid #f1f5f9', 
+                                                    transition: 'all 0.2s',
+                                                    textAlign: 'left'
+                                                }} 
+                                                onClick={() => toggleTaskExpansion(task.id)}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '8px' }}>{task.woId}</div>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: column.color, background: `${column.color}15`, padding: '2px 8px', borderRadius: '8px' }}>{task.dailyProgress}%</div>
+                                                </div>
+                                                <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#1e293b', marginBottom: '6px', lineHeight: 1.3 }}>{task.name}</div>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Building2 size={12} /> {project?.name} - {task.woLocation}
+                                                </div>
+                                                
+                                                {task.beforePhotoUrl && (
+                                                    <div style={{ width: '100%', height: '140px', borderRadius: '12px', overflow: 'hidden', marginBottom: '12px', border: '1px solid #f1f5f9' }}>
+                                                        <img src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    </div>
                                                 )}
 
-                                                {/* Worst SLA badge */}
-                                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: summaryColor }}>
-                                                    <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: summaryColor, marginRight: '5px', verticalAlign: 'middle' }} />
-                                                    {sumSla.text}
-                                                </span>
-                                            </div>
-                                        </div>
+                                                {/* Expanded Details */}
+                                                {isExpanded && (
+                                                    <div 
+                                                        onClick={(e) => e.stopPropagation()} 
+                                                        style={{ 
+                                                            marginTop: '12px', 
+                                                            paddingTop: '12px', 
+                                                            borderTop: '1px dashed #e2e8f0',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '10px',
+                                                            fontSize: '0.8rem',
+                                                            color: '#475569'
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <span style={{ fontWeight: 800, color: '#94a3b8' }}>ผู้รับผิดชอบ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{assignedName} ({assignedRole})</span>
+                                                        </div>
+                                                        <div>
+                                                            <span style={{ fontWeight: 800, color: '#94a3b8' }}>เบอร์ติดต่อ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{assignedPhone}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{task.startDate ? new Date(task.startDate).toLocaleDateString('th-TH') : '-'}</span>
+                                                        </div>
+                                                        {task.history && task.history.length > 0 && (
+                                                            <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '4px' }}>
+                                                                <div style={{ fontWeight: 900, color: '#475569', marginBottom: '4px', fontSize: '0.75rem' }}>หมายเหตุล่าสุด:</div>
+                                                                <div style={{ fontStyle: 'italic', color: '#64748b' }}>"{task.history[0].note || 'ไม่มีข้อความหมายเหตุ'}"</div>
+                                                            </div>
+                                                        )}
 
-                                        {/* Toggle icon */}
-                                        <div style={{ color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isWoExpanded ? 'rotate(180deg)' : 'none' }}>
-                                            <ChevronDown size={20} />
-                                        </div>
-                                    </div>
-
-                                    {/* Expandable Task Table */}
-                                    {isWoExpanded && (
-                                        <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                                <thead>
-                                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                                        <th style={{ padding: '10px 20px', fontSize: '0.72rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>รายละเอียดงาน</th>
-                                                        <th style={{ padding: '10px 20px', fontSize: '0.72rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>ผู้รับผิดชอบ</th>
-                                                        <th style={{ padding: '10px 20px', fontSize: '0.72rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>สถานะ SLA</th>
-                                                        <th style={{ padding: '10px 20px', fontSize: '0.72rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>ความคืบหน้า</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {tasks.map(task => {
-                                                        const isTaskExpanded = expandedTaskIds.has(task.id);
-                                                        const sla = getSLARemaining(task, task.woCreatedAt);
-                                                        const isHovered = hoveredTaskId === task.id;
-                                                        const progressColor = task.dailyProgress === 100 ? '#10b981' : (sla.isCritical ? '#ef4444' : (sla.isWarning ? '#f59e0b' : '#3b82f6'));
-                                                        const staffMember = staff.find(s => task.responsibleStaffIds?.includes(s.id));
-                                                        const contractor = contractors.find(c => c.id === task.contractorId);
-                                                        let rowBg = isTaskExpanded ? '#eff6ff' : (isHovered ? '#f1f5f9' : '#ffffff');
-
-                                                        return (
-                                                            <React.Fragment key={task.id}>
-                                                                <tr
-                                                                    onClick={() => toggleTaskExpansion(task.id)}
-                                                                    onMouseEnter={() => setHoveredTaskId(task.id)}
-                                                                    onMouseLeave={() => setHoveredTaskId(null)}
-                                                                    style={{ background: rowBg, cursor: 'pointer', borderTop: '1px solid #f1f5f9', transition: 'background 0.15s', boxShadow: isTaskExpanded ? 'inset 4px 0 0 0 #4f46e5' : 'none' }}
+                                                        {/* Actions Area inside Card */}
+                                                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                                            {/* Assign Button */}
+                                                            {(currentRole === 'Admin' || currentRole === 'Manager' || currentRole === 'Approver') && (
+                                                                <button 
+                                                                    onClick={() => handleInitiateAssign(task.id, task.woId)} 
+                                                                    style={{ 
+                                                                        flex: 1,
+                                                                        background: '#fff', 
+                                                                        color: '#4f46e5', 
+                                                                        border: '1.5px solid #4f46e5', 
+                                                                        padding: '6px 12px', 
+                                                                        borderRadius: '8px', 
+                                                                        fontWeight: 800, 
+                                                                        cursor: 'pointer', 
+                                                                        fontSize: '0.75rem', 
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center', 
+                                                                        justifyContent: 'center',
+                                                                        gap: '4px' 
+                                                                    }}
                                                                 >
-                                                                    <td style={{ padding: '14px 20px' }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f1f5f9', overflow: 'hidden', border: '1px solid #e2e8f0', flexShrink: 0 }}>
-                                                                                {task.beforePhotoUrl ? <img loading="lazy" src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <AlertCircle size={12} color="#cbd5e1" style={{ margin: '10px' }} />}
-                                                                            </div>
-                                                                            <div>
-                                                                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>{task.name}</div>
-                                                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{task.categoryName}</div>
-                                                                            </div>
-                                                                            {isTaskExpanded ? <ChevronUp size={16} color="#4f46e5" style={{ marginLeft: 'auto' }} /> : <ChevronDown size={16} color="#cbd5e1" style={{ marginLeft: 'auto' }} />}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td style={{ padding: '14px 20px' }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>
-                                                                            {staffMember ? (<>
-                                                                                {staffMember.profileImage ? <img loading="lazy" src={staffMember.profileImage} style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }} /> : <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User2 size={12} /></div>}
-                                                                                <div>
-                                                                                    <div style={{ fontWeight: 800 }}>{staffMember.name}</div>
-                                                                                    {staffMember.phone && <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>📞 {staffMember.phone}</div>}
-                                                                                </div>
-                                                                            </>) : contractor ? (<>
-                                                                                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={12} /></div>
-                                                                                <div style={{ fontWeight: 800 }}>{contractor.name}</div>
-                                                                            </>) : task.status === 'Rejected' ? (
-                                                                                <span style={{ color: '#ef4444', fontWeight: 800 }}>ถูกปฏิเสธ</span>
-                                                                            ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>รอประเมิน</span>}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td style={{ padding: '14px 20px' }}>
-                                                                        <div style={{ fontSize: '0.8rem', fontWeight: 900, color: (sla as any).isDone ? '#10b981' : ((sla as any).isRejected ? '#94a3b8' : progressColor), display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                            {!(sla as any).isRejected && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: (sla as any).isDone ? '#10b981' : progressColor }} />}
-                                                                            {sla.text}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td style={{ padding: '14px 20px', textAlign: 'center', width: '130px' }}>
-                                                                        <div style={{ width: '100%', height: '16px', background: '#f1f5f9', borderRadius: '20px', position: 'relative', overflow: 'hidden' }}>
-                                                                            <div style={{ width: `${task.dailyProgress}%`, height: '100%', background: progressColor, borderRadius: '20px', transition: 'width 0.4s' }} />
-                                                                            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                                                                                <span style={{ fontSize: '0.62rem', fontWeight: 950, color: task.dailyProgress >= 50 ? '#fff' : progressColor }}>{task.dailyProgress}%</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                                {isTaskExpanded && (
-                                                                    <tr style={{ background: '#eff6ff' }}>
-                                                                        <td colSpan={4} style={{ padding: '0 24px 24px 24px' }}>
-                                                                            <div style={{ padding: '24px', background: '#fff', borderRadius: '20px', border: '1px solid #dbeafe', display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '28px', boxShadow: '0 8px 15px -3px rgba(0,0,0,0.04)' }}>
-                                                                                <div style={{ display: 'flex', gap: '16px' }}>
-                                                                                    <div style={{ flex: 1 }}>
-                                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#94a3b8', marginBottom: '8px' }}>BEFORE</div>
-                                                                                        <div style={{ aspectRatio: '4/3', borderRadius: '12px', background: '#f8fafc', overflow: 'hidden' }}>
-                                                                                            {task.beforePhotoUrl && <img loading="lazy" src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div style={{ flex: 1 }}>
-                                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#10b981', marginBottom: '8px' }}>LATEST UPDATE</div>
-                                                                                        <div style={{ aspectRatio: '4/3', borderRadius: '12px', background: '#f8fafc', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                                                                                            {(() => {
-                                                                                                const photoUrl = task.history && [...task.history].reverse().find(h => h && h.photos && h.photos.length > 0)?.photos?.[0];
-                                                                                                return photoUrl
-                                                                                                    ? <img loading="lazy" src={photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onClick={() => setZoomImage(photoUrl)} />
-                                                                                                    : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '0.8rem' }}>ยังไม่มีรูปอัปเดต</div>;
-                                                                                            })()}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                                                        <div>
-                                                                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e293b' }}>{task.woLocation}</div>
-                                                                                            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{getStatusThai(task.status)}</div>
-                                                                                        </div>
-                                                                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                                                                            {task.status === 'Pending' && currentRole !== 'Foreman' && (
-                                                                                                <button
-                                                                                                    onClick={() => handleGoToEvaluation(task)}
-                                                                                                    style={{ background: '#4f46e5', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}
-                                                                                                >
-                                                                                                    ไปที่ประเมิน
-                                                                                                </button>
-                                                                                            )}
-                                                                                            {(task.status === 'Approved' || ((task.status === 'In Progress' || task.status === 'Assigned') && Number(task.dailyProgress || 0) === 0)) && currentRole !== 'Foreman' && (
-                                                                                                <button onClick={() => handleInitiateAssign(task.id, task.woId)} style={{ background: task.status !== 'Approved' ? '#fff' : '#4f46e5', color: task.status !== 'Approved' ? '#4f46e5' : '#fff', border: task.status !== 'Approved' ? '1.5px solid #4f46e5' : 'none', padding: '7px 14px', borderRadius: '10px', fontWeight: 800, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                                    {task.status !== 'Approved' ? <RotateCw size={13} /> : null}
-                                                                                                    {task.status !== 'Approved' ? 'เปลี่ยนผู้รับผิดชอบ' : 'มอบหมาย'}
-                                                                                                </button>
-                                                                                            )}
-                                                                                            {task.status === 'Completed' && currentRole !== 'Foreman' && <button onClick={() => handleInitiateClose(task.id, task.woId)} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}>ตรวจรับงาน</button>}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '14px', fontSize: '0.9rem', border: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '12px' }}>
-                                                                                            <div>
-                                                                                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>เบอร์ติดต่อ</div>
-                                                                                                <div style={{ fontWeight: 900, fontSize: '0.9rem', color: '#1e293b' }}>{staffMember?.phone || contractor?.phone || '-'}</div>
-                                                                                                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', marginTop: '8px' }}>📅 วันเริ่ม: <span style={{ color: '#0f172a', fontWeight: 900 }}>{new Date(task.slaStartTime || task.woCreatedAt).toLocaleDateString('th-TH')}</span></div>
-                                                                                            </div>
-                                                                                            <div style={{ background: sla.isCritical ? '#fef2f2' : '#f0f9ff', padding: '12px', borderRadius: '10px', border: `1px solid ${sla.isCritical ? '#fee2e2' : '#e0f2fe'}`, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                                                                                                <div style={{ fontSize: '0.7rem', fontWeight: 900, color: sla.isCritical ? '#ef4444' : '#0369a1', marginBottom: '6px', textTransform: 'uppercase' }}>เวลาคงเหลือ</div>
-                                                                                                <div style={{ fontSize: '1.2rem', fontWeight: 1000, color: progressColor, textAlign: 'center' }}>{sla.text}</div>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                        <div>
-                                                                                            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.8rem', marginBottom: '6px' }}>หมายเหตุ:</div>
-                                                                                            {(() => {
-                                                                const latestHistory = task.history?.[0];
-                                                                const isProblem = latestHistory?.type === 'Problem';
-                                                                return (
-                                                                    <div style={{
-                                                                        color: isProblem ? '#ef4444' : '#64748b',
-                                                                        fontStyle: isProblem ? 'normal' : 'italic',
-                                                                        borderLeft: `2px solid ${isProblem ? '#ef4444' : '#cbd5e1'}`,
-                                                                        padding: isProblem ? '8px 12px' : '0 0 0 10px',
-                                                                        background: isProblem ? '#fef2f2' : 'transparent',
-                                                                        borderRadius: isProblem ? '8px' : '0',
-                                                                        fontSize: isProblem ? '0.9rem' : '0.85rem',
-                                                                        lineHeight: 1.4,
-                                                                        fontWeight: isProblem ? 700 : 400
-                                                                    }}>
-                                                                        {isProblem && <div style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}><AlertCircle size={14} /> รายงานปัญหาจากหน้างาน:</div>}
-                                                                        {latestHistory?.note || 'ไม่มีหมายเหตุล่าสุด'}
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                        </td>
-                                                                    </tr>
-                                                                )}
-                                                            </React.Fragment>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        });
-                    })()}
-                </div>
+                                                                    <RotateCw size={12} />
+                                                                    {task.responsibleStaffIds && task.responsibleStaffIds.length > 0 ? 'เปลี่ยนผู้รับผิดชอบ' : 'มอบหมาย'}
+                                                                </button>
+                                                            )}
+                                                            
+                                                            {/* Review/Evaluate Button */}
+                                                            {column.id === 'for-checking' && (
+                                                                <button 
+                                                                    onClick={() => handleInitiateClose(task.id, task.woId)} 
+                                                                    style={{ 
+                                                                        flex: 1,
+                                                                        background: '#10b981', 
+                                                                        color: '#fff', 
+                                                                        border: 'none', 
+                                                                        padding: '6px 12px', 
+                                                                        borderRadius: '8px', 
+                                                                        fontWeight: 800, 
+                                                                        cursor: 'pointer', 
+                                                                        fontSize: '0.75rem',
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center', 
+                                                                        justifyContent: 'center'
+                                                                    }}
+                                                                >
+                                                                    ตรวจรับงาน
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: sla.isCritical ? '#ef4444' : '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <AlertCircle size={12} /> {sla.text}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>
+                                                        {isExpanded ? 'คลิกเพื่อยุบ' : 'คลิกเพื่อขยาย'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
             {/* Modals */}
