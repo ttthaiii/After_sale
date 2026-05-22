@@ -62,6 +62,10 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
         startDate: new Date().toISOString().split('T')[0]
     });
 
+    const [showSummary, setShowSummary] = useState(false);
+    const [summaryType, setSummaryType] = useState<'Approve' | 'Reject' | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     useEffect(() => {
         if (isOpen && task) {
             setFormData({
@@ -76,89 +80,106 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
 
     if (!isOpen) return null;
 
-    const handleSave = async () => {
+    const handleSave = () => {
         if (!formData.assigneeId) {
             alert('กรุณาระบุผู้รับผิดชอบ (Assignee)');
             return;
         }
-
-        // Calculate SLA start time
-        const selectedDate = new Date(formData.startDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const compareDate = new Date(selectedDate);
-        compareDate.setHours(0, 0, 0, 0);
-
-        // ✅ SLA always starts from 08:00 AM of the "Scheduled Start Date" selected by Admin
-        const slaStart = new Date(`${formData.startDate}T08:00:00`).toISOString();
-
-        const updates: Partial<MasterTask> = {
-            slaCategory: formData.sla as any,
-            costType: formData.costType as any,
-            rootCause: formData.rootCause,
-            responsibleStaffIds: [formData.assigneeId],
-            status: 'Assigned',
-            startDate: formData.startDate,
-            slaStartTime: slaStart
-        };
-
-        onConfirm(updates);
-        
-        // ✅ Send Notification to Assigned Staff
-        try {
-            await sendNotification({
-                recipientId: formData.assigneeId,
-                senderId: user?.id || 'admin',
-                senderName: user?.name || 'Admin',
-                title: 'งานใหม่ได้รับมอบหมาย',
-                message: `คุณได้รับมอบหมายงาน: ${task.name} (ใบงาน ${workOrderId}) โปรดดำเนินการภายในเวลากำหนด (SLA: ${formData.sla})`,
-                type: 'info',
-                targetPath: `/daily-report?id=${workOrderId}`
-            });
-        } catch (err) {
-            console.error("Failed to send notification:", err);
-        }
-
-        onClose();
+        setSummaryType('Approve');
+        setShowSummary(true);
     };
 
-    const handleReject = async () => {
+    const handleReject = () => {
         if (!formData.rootCause || formData.rootCause.trim() === '') {
             alert('กรุณาระบุสาเหตุที่ปฏิเสธในช่อง "สาเหตุ / หมายเหตุ" ก่อนทำการปฏิเสธครับ');
             return;
         }
+        setSummaryType('Reject');
+        setShowSummary(true);
+    };
 
-        const updates: Partial<MasterTask> = {
-            rootCause: formData.rootCause,
-            status: 'Rejected'
-        };
-        onConfirm(updates);
-
-        // ✅ Send Notification to the original reporter
+    const confirmSave = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
-            // Check if we have a reporterId in the task or source work order
-            // Since task might not have it directly, we might need to find the work order this task belongs to
-            // For now, let's try to notify the responsible staff if they were already there
-            const recipientId = task.responsibleStaffIds?.[0];
+            // SLA always starts from 08:00 AM of the "Scheduled Start Date" selected by Admin
+            const slaStart = new Date(`${formData.startDate}T08:00:00`).toISOString();
+
+            const updates: Partial<MasterTask> = {
+                slaCategory: formData.sla as any,
+                costType: formData.costType as any,
+                rootCause: formData.rootCause,
+                responsibleStaffIds: [formData.assigneeId],
+                status: 'Assigned',
+                startDate: formData.startDate,
+                slaStartTime: slaStart
+            };
+
+            onConfirm(updates);
             
-            if (recipientId) {
+            // ✅ Send Notification to Assigned Staff
+            try {
                 await sendNotification({
-                    recipientId: recipientId,
+                    recipientId: formData.assigneeId,
                     senderId: user?.id || 'admin',
                     senderName: user?.name || 'Admin',
-                    title: 'งานถูกปฏิเสธการอนุมัติ',
-                    message: `งาน "${task.name}" (ใบงาน ${workOrderId}) ไม่ผ่านการอนุมัติ: ${formData.rootCause}`,
-                    type: 'error',
-                    targetPath: `/work-orders?id=${workOrderId}`
+                    title: 'งานใหม่ได้รับมอบหมาย',
+                    message: `คุณได้รับมอบหมายงาน: ${task.name} (ใบงาน ${workOrderId}) โปรดดำเนินการภายในเวลากำหนด (SLA: ${formData.sla})`,
+                    type: 'info',
+                    targetPath: `/daily-report?id=${workOrderId}`
                 });
+            } catch (err) {
+                console.error("Failed to send notification:", err);
             }
-        } catch (err) {
-            console.error("Failed to send notification:", err);
-        }
 
-        onClose();
+            setShowSummary(false);
+            onClose();
+        } catch (err) {
+            console.error("Failed to save evaluation:", err);
+            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
+
+    const confirmReject = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            const updates: Partial<MasterTask> = {
+                rootCause: formData.rootCause,
+                status: 'Rejected'
+            };
+            onConfirm(updates);
+
+            // ✅ Send Notification to the original reporter
+            try {
+                const recipientId = task.responsibleStaffIds?.[0];
+                if (recipientId) {
+                    await sendNotification({
+                        recipientId: recipientId,
+                        senderId: user?.id || 'admin',
+                        senderName: user?.name || 'Admin',
+                        title: 'งานถูกปฏิเสธการอนุมัติ',
+                        message: `งาน "${task.name}" (ใบงาน ${workOrderId}) ไม่ผ่านการอนุมัติ: ${formData.rootCause}`,
+                        type: 'error',
+                        targetPath: `/work-orders?id=${workOrderId}`
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to send notification:", err);
+            }
+
+            setShowSummary(false);
+            onClose();
+        } catch (err) {
+            console.error("Failed to reject evaluation:", err);
+            alert('เกิดข้อผิดพลาดในการปฏิเสธการอนุมัติ');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
 
     const inputStyle = {
         width: '100%',
@@ -468,6 +489,213 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
 
             </div>
 
+            {/* Summary Confirmation Modal */}
+            {showSummary && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                    backdropFilter: 'blur(12px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 20000,
+                    animation: 'fadeIn 0.2s ease-out',
+                }} onClick={() => setShowSummary(false)}>
+                    <style>
+                        {`
+                        @keyframes fadeIn {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                        }
+                        @keyframes scaleUp {
+                            from { transform: scale(0.95); opacity: 0; }
+                            to { transform: scale(1); opacity: 1; }
+                        }
+                        `}
+                    </style>
+                    <div 
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.95)',
+                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            borderRadius: '24px',
+                            width: '90%',
+                            maxWidth: '460px',
+                            padding: '2rem',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.5rem',
+                            animation: 'scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.75rem' }}>
+                            {summaryType === 'Approve' ? (
+                                <div style={{
+                                    background: '#e6f4ea',
+                                    color: '#137333',
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}>
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </div>
+                            ) : (
+                                <div style={{
+                                    background: '#fce8e6',
+                                    color: '#c5221f',
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}>
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </div>
+                            )}
+                            <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                                {summaryType === 'Approve' ? 'ยืนยันผลการประเมินและอนุมัติ' : 'ยืนยันการปฏิเสธการอนุมัติ'}
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>
+                                โปรดตรวจสอบข้อมูลความถูกต้องอีกครั้งก่อนทำการยืนยันบันทึกผล
+                            </p>
+                        </div>
+
+                        {/* Info list */}
+                        <div style={{
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.85rem',
+                            fontSize: '0.9rem',
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                                <span style={{ color: '#64748b', fontWeight: 600 }}>งานที่ประเมิน:</span>
+                                <span style={{ color: '#0f172a', fontWeight: 800, maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                                <span style={{ color: '#64748b', fontWeight: 600 }}>ใบงานเลขที่:</span>
+                                <span style={{ color: '#0f172a', fontWeight: 800 }}>{workOrderId}</span>
+                            </div>
+                            {summaryType === 'Approve' ? (
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                                        <span style={{ color: '#64748b', fontWeight: 600 }}>SLA / ความเร่งด่วน:</span>
+                                        <span style={{ color: '#0f172a', fontWeight: 800 }}>
+                                            {formData.sla === 'Immediately' ? 'ด่วนที่สุด (ทันที)' : 
+                                             formData.sla === '24h' ? 'ภายใน 24 ชม. (ด่วน)' : 
+                                             formData.sla === '1-3d' ? '1 - 3 วัน (ปกติ)' : 
+                                             formData.sla === '3-7d' ? '3 - 7 วัน' : 
+                                             formData.sla === '7-14d' ? '7 - 14 วัน' : '14 - 30 วัน'}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                                        <span style={{ color: '#64748b', fontWeight: 600 }}>วันเริ่มงาน:</span>
+                                        <span style={{ color: '#0f172a', fontWeight: 800 }}>{formData.startDate}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                                        <span style={{ color: '#64748b', fontWeight: 600 }}>ผู้รับผิดชอบ:</span>
+                                        <span style={{ color: '#0f172a', fontWeight: 800 }}>
+                                            {staffList.find(s => s.id === formData.assigneeId)?.name || formData.assigneeId}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#64748b', fontWeight: 600 }}>ค่าใช้จ่าย:</span>
+                                        <span style={{ color: '#0f172a', fontWeight: 800 }}>
+                                            {formData.costType === 'Warranty' ? 'อยู่ในประกัน' :
+                                             formData.costType === 'Billable' ? 'เรียกเก็บลูกค้า' :
+                                             formData.costType === 'Project' ? 'งบโครงการ/บริษัท' : 'ไม่มีค่าใช้จ่าย'}
+                                        </span>
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <span style={{ color: '#64748b', fontWeight: 600 }}>สาเหตุที่ปฏิเสธการอนุมัติ:</span>
+                                    <span style={{ color: '#dc2626', fontWeight: 700, background: '#fef2f2', padding: '10px', borderRadius: '8px', border: '1px solid #fee2e2', marginTop: '4px', lineHeight: 1.4 }}>
+                                        {formData.rootCause}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Notice */}
+                        <div style={{
+                            fontSize: '0.8rem',
+                            color: summaryType === 'Approve' ? '#15803d' : '#b91c1c',
+                            background: summaryType === 'Approve' ? '#f0fdf4' : '#fef2f2',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            textAlign: 'center',
+                            fontWeight: 600,
+                            lineHeight: 1.4
+                        }}>
+                            {summaryType === 'Approve' 
+                                ? '⚠️ ระบบจะเริ่มนับเวลา SLA และส่งการแจ้งเตือนไปยังผู้รับผิดชอบทันทีหลังยืนยัน' 
+                                : '⚠️ ระบบจะปฏิเสธการดำเนินงานและส่งแจ้งเตือนสาเหตุไปยังผู้แจ้งงาน'}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
+                            <button
+                                onClick={() => setShowSummary(false)}
+                                disabled={isSubmitting}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    borderRadius: '12px',
+                                    background: '#ffffff',
+                                    border: '1px solid #d1d5db',
+                                    color: '#374151',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    transition: 'background 0.2s'
+                                }}
+                            >
+                                กลับไปแก้ไข
+                            </button>
+                            <button
+                                onClick={summaryType === 'Approve' ? confirmSave : confirmReject}
+                                disabled={isSubmitting}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    borderRadius: '12px',
+                                    background: summaryType === 'Approve' ? '#10b981' : '#dc2626',
+                                    border: 'none',
+                                    color: '#ffffff',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    boxShadow: summaryType === 'Approve' 
+                                        ? '0 4px 10px rgba(16, 185, 129, 0.2)' 
+                                        : '0 4px 10px rgba(220, 38, 38, 0.2)',
+                                    transition: 'background 0.2s'
+                                }}
+                            >
+                                {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันบันทึกผล'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <ImageOverlay
                 src={overlayImage || ''}
                 isOpen={!!overlayImage}
@@ -478,3 +706,4 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
 };
 
 export default TaskEvaluationModal;
+

@@ -8,6 +8,7 @@ import AdminMasterData from './pages/AdminMasterData';
 import Evaluation from './pages/Evaluation';
 import History from './pages/History';
 import Login from './pages/Login';
+import OwnerReview from './pages/OwnerReview';
 import { AuthProvider } from './context/AuthContext';
 import { WorkOrderProvider } from './context/WorkOrderContext';
 
@@ -21,6 +22,7 @@ function App() {
                     <BrowserRouter>
                         <Routes>
                             <Route path="/login" element={<Login />} />
+                            <Route path="/owner-review" element={<OwnerReview />} />
 
                             <Route path="/" element={<MainLayout />}>
                                 <Route index element={<Navigate to="/dashboard" replace />} />

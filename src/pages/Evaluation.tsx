@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import WorkOrderCard from '../components/WorkOrderCard';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
-import { CheckSquare, Search, Calendar, Building2, ChevronDown } from 'lucide-react';
+import { CheckSquare, Search, Calendar, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
@@ -15,35 +15,6 @@ const Evaluation = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
-
-    // ✅ Deep Link: Open Work Order if ID is in URL
-    useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        const workOrderId = params.get('id');
-        
-        if (workOrderId && workOrders.length > 0) {
-            const wo = workOrders.find(w => w.id === workOrderId);
-            if (wo) {
-                setHighlightedId(workOrderId);
-                setSelectedWorkOrder(wo);
-                setIsDetailModalOpen(true);
-                markWorkOrderAsReviewed(wo.id); // Mark as reviewed by admin
-                
-                // Clear the ID from URL once handled to prevent re-opening if data updates
-                const newParams = new URLSearchParams(location.search);
-                newParams.delete('id');
-                const newSearch = newParams.toString();
-                navigate({ search: newSearch ? `?${newSearch}` : '' }, { replace: true });
-            }
-        }
-    }, [location.search, workOrders]);
-
-    const handleCardClick = (wo: WorkOrder) => {
-        setSelectedWorkOrder(wo);
-        setIsDetailModalOpen(true);
-        markWorkOrderAsReviewed(wo.id); // Mark as reviewed by admin
-    };
-
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProjectId, setSelectedProjectId] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -53,6 +24,106 @@ const Evaluation = () => {
     const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Approved' | 'Assigned' | 'Rejected'>>({});
+    const [modalAlert, setModalAlert] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'success' | 'info' | 'warning' | 'error';
+    } | null>(null);
+
+    // ✅ Deep Link: Open Work Order if ID is in URL with State Validation (Case A)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const workOrderId = params.get('id');
+        
+        if (workOrderId && workOrders.length > 0) {
+            const wo = workOrders.find(w => w.id === workOrderId);
+            if (wo) {
+                if (wo.status === 'Evaluating') {
+                    setHighlightedId(workOrderId);
+                    setSelectedWorkOrder(wo);
+                    setIsDetailModalOpen(true);
+                    markWorkOrderAsReviewed(wo.id); // Mark as reviewed by admin
+                } else {
+                    const statusThai: Record<string, string> = {
+                        'Approved': 'อนุมัติแล้ว',
+                        'Partially Approved': 'อนุมัติบางส่วน',
+                        'In Progress': 'กำลังดำเนินการ',
+                        'Completed': 'เสร็จสิ้น',
+                        'Verified': 'ตรวจสอบแล้ว'
+                    };
+                    
+                    if (['Approved', 'Partially Approved', 'In Progress', 'Completed', 'Verified'].includes(wo.status)) {
+                        setModalAlert({
+                            isOpen: true,
+                            title: 'ประเมินใบสั่งงานเรียบร้อยแล้ว',
+                            message: `ใบสั่งงานนี้ได้รับการประเมินและมอบหมายงานเรียบร้อยแล้ว (สถานะปัจจุบัน: ${statusThai[wo.status] || wo.status}) คุณสามารถทำงานอื่นในหน้านี้ต่อได้ทันที`,
+                            type: 'success'
+                        });
+                    } else if (wo.status === 'Rejected') {
+                        setModalAlert({
+                            isOpen: true,
+                            title: 'ใบสั่งงานถูกส่งกลับแก้ไข',
+                            message: 'ใบสั่งงานนี้ถูกปฏิเสธการประเมินและถูกส่งกลับไปให้โฟร์แมนแก้ไขเรียบร้อยแล้ว',
+                            type: 'warning'
+                        });
+                    } else if (wo.status === 'Cancelled') {
+                        setModalAlert({
+                            isOpen: true,
+                            title: 'ใบสั่งงานถูกยกเลิก',
+                            message: 'ใบสั่งงานนี้ถูกยกเลิกการดำเนินงานแล้ว',
+                            type: 'error'
+                        });
+                    } else if (wo.status === 'Draft') {
+                        setModalAlert({
+                            isOpen: true,
+                            title: 'ใบสั่งงานแบบร่าง',
+                            message: 'ใบสั่งงานนี้ยังคงเป็นแบบร่างของโฟร์แมนและยังไม่ได้ถูกส่งมาเพื่อขอประเมิน',
+                            type: 'warning'
+                        });
+                    } else {
+                        setModalAlert({
+                            isOpen: true,
+                            title: 'ใบสั่งงานไม่พร้อมประเมิน',
+                            message: `ใบสั่งงานนี้ไม่พร้อมสำหรับการประเมิน (สถานะปัจจุบัน: ${wo.status})`,
+                            type: 'info'
+                        });
+                    }
+                }
+                
+                // Clear the ID from URL once handled to prevent re-opening if data updates
+                const newParams = new URLSearchParams(location.search);
+                newParams.delete('id');
+                const newSearch = newParams.toString();
+                navigate({ search: newSearch ? `?${newSearch}` : '' }, { replace: true });
+            }
+        }
+    }, [location.search, workOrders, navigate, markWorkOrderAsReviewed]);
+
+    const handleCardClick = (wo: WorkOrder) => {
+        setSelectedWorkOrder(wo);
+        setIsDetailModalOpen(true);
+        markWorkOrderAsReviewed(wo.id); // Mark as reviewed by admin
+    };
+
+    // ✅ Real-time Sync selectedWorkOrder & taskDecisions with Firestore Context
+    useEffect(() => {
+        if (selectedWorkOrder) {
+            const updatedWo = workOrders.find(w => w.id === selectedWorkOrder.id);
+            if (updatedWo) {
+                setSelectedWorkOrder(updatedWo);
+                
+                // Sync taskDecisions with current Firestore statuses
+                const decisions: Record<string, 'Approved' | 'Assigned' | 'Rejected'> = {};
+                updatedWo.categories.flatMap(c => c.tasks).forEach(t => {
+                    if (t.status === 'Approved' || t.status === 'Assigned' || t.status === 'Rejected') {
+                        decisions[t.id] = t.status as any;
+                    }
+                });
+                setTaskDecisions(decisions);
+            }
+        }
+    }, [workOrders, selectedWorkOrder?.id]);
 
     const pendingWorkOrders = workOrders
         .filter(wo => {
@@ -92,56 +163,61 @@ const Evaluation = () => {
         setIsEvalModalOpen(true);
     };
 
-    const handleModalConfirm = (updates: Partial<MasterTask>) => {
+    const handleModalConfirm = async (updates: Partial<MasterTask>) => {
         if (!currentTask || !selectedWorkOrder) return;
 
         const status = updates.status as 'Approved' | 'Assigned' | 'Rejected';
         setTaskDecisions(prev => ({ ...prev, [currentTask.id]: status }));
 
-        // ✅ Immutable Update to WorkOrder state
-        setSelectedWorkOrder(prevWo => {
-            if (!prevWo) return null;
-            return {
-                ...prevWo,
-                categories: prevWo.categories.map(cat => ({
-                    ...cat,
-                    tasks: cat.tasks.map(t => t.id === currentTask.id ? { ...t, ...updates } : t)
-                }))
-            };
-        });
+        // ✅ 1. Compute the updated categories array for the work order
+        const updatedCategories = selectedWorkOrder.categories.map(cat => ({
+            ...cat,
+            tasks: cat.tasks.map(t => t.id === currentTask.id ? { ...t, ...updates } : t)
+        }));
 
-        setIsEvalModalOpen(false);
-    };
+        // ✅ 2. Compute final Work Order status
+        const allTasks = updatedCategories.flatMap(c => c.tasks);
+        const pendingCount = allTasks.filter(t => t.status === 'Pending').length;
+        const approvedCount = allTasks.filter(t => t.status === 'Approved' || t.status === 'Assigned').length;
+        const totalCount = allTasks.length;
 
-    const handleCompleteEvaluation = async (wo: WorkOrder) => {
-        const allTasks = wo.categories.flatMap(c => c.tasks);
-        const undecided = allTasks.filter(t => !taskDecisions[t.id]);
-        if (undecided.length > 0) {
-            if (!confirm(`มีรายการที่ยังไม่ได้ระบุผลตรวจสอบ ${undecided.length} รายการ\nหากดำเนินการต่อ รายการเหล่านี้จะถูก "ไมอนุมัติ" (Reject)\nต้องการยืนยันหรือไม่?`)) {
-                return;
+        let finalWoStatus: 'Evaluating' | 'Approved' | 'Partially Approved' | 'Rejected' = 'Evaluating';
+
+        if (pendingCount > 0) {
+            // There are still undecided tasks! Keep it in 'Evaluating' so it stays in the queue
+            finalWoStatus = 'Evaluating';
+        } else {
+            // All tasks have been evaluated!
+            if (approvedCount === 0) {
+                finalWoStatus = 'Rejected';
+            } else if (approvedCount < totalCount) {
+                finalWoStatus = 'Partially Approved';
+            } else {
+                finalWoStatus = 'Approved';
             }
         }
 
-        const approvedCount = allTasks.filter(t => t.status === 'Approved' || t.status === 'Assigned').length;
-        const total = allTasks.length;
-        let finalWoStatus: 'Approved' | 'Partially Approved' | 'Rejected' = 'Approved';
-
-        if (approvedCount === 0) finalWoStatus = 'Rejected';
-        else if (approvedCount < total) finalWoStatus = 'Partially Approved';
-        else finalWoStatus = 'Approved';
-
-        // ✅ Important: Mark leftover Pending as Rejected
-        allTasks.forEach(t => {
-            if (t.status === 'Pending') {
-                t.status = 'Rejected';
+        // ✅ 3. Save directly to Firestore
+        try {
+            await saveEvaluation(selectedWorkOrder.id, finalWoStatus, updatedCategories);
+            
+            // If all tasks are decided, close the detail modal automatically
+            if (pendingCount === 0) {
+                setIsDetailModalOpen(false);
+                setSelectedWorkOrder(null);
+                setTaskDecisions({});
             }
-        });
+        } catch (err) {
+            console.error("Failed to save task evaluation:", err);
+            setModalAlert({
+                isOpen: true,
+                title: 'เกิดข้อผิดพลาด',
+                message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูลการประเมิน กรุณาลองใหม่อีกครั้ง',
+                type: 'error'
+            });
+        }
 
-        await saveEvaluation(wo.id, finalWoStatus, wo.categories);
-
-        setIsDetailModalOpen(false);
-        setSelectedWorkOrder(null);
-        setTaskDecisions({});
+        setIsEvalModalOpen(false);
     };
 
     const commonInputStyle = {
@@ -174,7 +250,6 @@ const Evaluation = () => {
                     onClose={() => setIsDetailModalOpen(false)}
                     wo={selectedWorkOrder}
                     onTaskClick={handleTaskReviewClick}
-                    onComplete={handleCompleteEvaluation}
                     taskDecisions={taskDecisions}
                 />
             )}
@@ -281,6 +356,52 @@ const Evaluation = () => {
                     ))
                 )}
             </div>
+
+            {modalAlert && modalAlert.isOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(12px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2000, padding: '2rem', animation: 'fadeIn 0.3s ease'
+                }}>
+                    <div style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255, 255, 255, 0.4)', borderRadius: '24px',
+                        padding: '2.5rem', maxWidth: '480px', width: '100%', textAlign: 'center',
+                        boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.1)',
+                        animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    }}>
+                        <div style={{
+                            width: '64px', height: '64px', borderRadius: '20px',
+                            background: modalAlert.type === 'success' 
+                                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                                : modalAlert.type === 'warning'
+                                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                                    : modalAlert.type === 'error'
+                                        ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                                        : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 1.5rem auto', boxShadow: '0 8px 16px rgba(0,0,0,0.1)'
+                        }}>
+                            {modalAlert.type === 'success' ? <CheckCircle2 size={32} /> :
+                             modalAlert.type === 'warning' ? <AlertCircle size={32} /> :
+                             modalAlert.type === 'error' ? <XCircle size={32} /> : <Info size={32} />}
+                        </div>
+                        <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>{modalAlert.title}</h3>
+                        <p style={{ margin: '0 0 2rem 0', fontSize: '0.95rem', color: '#475569', lineHeight: 1.6, fontWeight: 500 }}>{modalAlert.message}</p>
+                        <button
+                            onClick={() => setModalAlert(null)}
+                            style={{
+                                width: '100%', padding: '12px 24px', background: '#0f172a', color: '#ffffff',
+                                border: 'none', borderRadius: '14px', fontSize: '0.95rem', fontWeight: 700,
+                                cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)'
+                            }}
+                        >
+                            ตกลง
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

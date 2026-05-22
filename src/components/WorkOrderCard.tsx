@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { WorkOrder, MasterTask } from '../types';
-import { ChevronDown, ChevronRight, Clock, MapPin, User, HardHat, Info, FileText, Search, CheckCircle2, XCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, MapPin, User, HardHat, Info, FileText, Search, CheckCircle2, XCircle, Edit2 } from 'lucide-react';
 import ImageOverlay from './ImageOverlay';
 import { useWorkOrders } from '../context/WorkOrderContext';
 
@@ -362,7 +362,7 @@ const WorkOrderCard = ({
 
                                     {isExpanded && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0' }}>
-                                            {cat.tasks.some(t => t.status === 'Pending') ? (
+                                            {wo.status === 'Evaluating' || cat.tasks.some(t => t.status === 'Pending') ? (
                                                 /* TABLE VIEW FOR INSPECTION (PENDING) */
                                                 <div style={{
                                                     background: '#ffffff',
@@ -391,13 +391,47 @@ const WorkOrderCard = ({
                                                                     task.latestPhotoUrl ||
                                                                     ((task as any).images && (task as any).images.length > 0 && (task as any).images[0]) ||
                                                                     task.beforePhotoUrl;
+                                                                const currentStatus = taskDecisions?.[task.id] || task.status;
+                                                                const isDecided = currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Rejected';
+                                                                const trBgColor = (currentStatus === 'Approved' || currentStatus === 'Assigned')
+                                                                    ? 'rgba(16, 185, 129, 0.03)'
+                                                                    : currentStatus === 'Rejected'
+                                                                        ? 'rgba(239, 68, 68, 0.03)'
+                                                                        : 'transparent';
 
                                                                 return (
-                                                                    <tr key={task.id} style={{ borderBottom: idx === cat.tasks.length - 1 ? 'none' : '1px solid #f1f5f9' }}>
+                                                                    <tr key={task.id} style={{ borderBottom: idx === cat.tasks.length - 1 ? 'none' : '1px solid #f1f5f9', backgroundColor: trBgColor, transition: 'background-color 0.2s' }}>
                                                                         <td style={{ padding: '20px', color: '#94a3b8', fontWeight: 600, textAlign: 'center' }}>{idx + 1}</td>
                                                                         <td style={{ padding: '20px' }}>
-                                                                            <div style={{ fontWeight: 700, color: '#1e293b' }}>{task.name}</div>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                <div style={{ fontWeight: 700, color: '#1e293b' }}>{task.name}</div>
+                                                                                {task.currentRevision && task.currentRevision !== 'rev00' && (
+                                                                                    <div 
+                                                                                        style={{ 
+                                                                                            fontSize: '0.65rem', 
+                                                                                            fontWeight: 900, 
+                                                                                            color: '#e11d48', 
+                                                                                            background: '#fff1f2', 
+                                                                                            padding: '1px 6px', 
+                                                                                            borderRadius: '6px',
+                                                                                            border: '1px solid #fecdd3',
+                                                                                            display: 'inline-flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '3px'
+                                                                                        }}
+                                                                                        title={`เหตุผลที่ตีกลับ: ${task.revisionName || 'ไม่ระบุสาเหตุ'}`}
+                                                                                    >
+                                                                                        <span style={{ display: 'inline-block', width: 4, height: 4, background: '#e11d48', borderRadius: '50%' }} />
+                                                                                        {task.currentRevision.toUpperCase().replace('REV', 'REV. ')}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
                                                                             {task.position && <div style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>จุดที่พบ: {task.position}</div>}
+                                                                            {task.currentRevision && task.currentRevision !== 'rev00' && task.status === 'Rejected' && (
+                                                                                <div style={{ fontSize: '0.72rem', color: '#be123c', background: '#fff1f2', padding: '4px 8px', borderRadius: '6px', marginTop: '6px', border: '1px solid #ffe4e6', width: 'fit-content' }}>
+                                                                                    <strong>เหตุผลการตีกลับ:</strong> {task.revisionName || 'ไม่ระบุสาเหตุ'}
+                                                                                </div>
+                                                                            )}
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'center', fontWeight: 700, color: '#334155' }}>{task.amount || '-'}</td>
                                                                         <td style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>{task.unit || '-'}</td>
@@ -432,11 +466,11 @@ const WorkOrderCard = ({
                                                                             </div>
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'center' }}>
-                                                                            {taskDecisions?.[task.id] === 'Approved' || taskDecisions?.[task.id] === 'Assigned' ? (
+                                                                            {currentStatus === 'Approved' || currentStatus === 'Assigned' ? (
                                                                                 <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                                     <CheckCircle2 size={24} />
                                                                                 </div>
-                                                                            ) : taskDecisions?.[task.id] === 'Rejected' ? (
+                                                                            ) : currentStatus === 'Rejected' ? (
                                                                                 <div style={{ color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                                     <XCircle size={24} />
                                                                                 </div>
@@ -445,43 +479,83 @@ const WorkOrderCard = ({
                                                                             )}
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'right' }}>
-                                                                            <button
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    if (onTaskClick) onTaskClick(task, cat.id, wo.id, cat.name);
-                                                                                }}
-                                                                                style={{
-                                                                                    padding: '10px 20px',
-                                                                                    background: '#fffbeb',
-                                                                                    border: '1px solid #fef3c7',
-                                                                                    borderRadius: '12px',
-                                                                                    color: '#d97706',
-                                                                                    fontSize: '0.85rem',
-                                                                                    fontWeight: 800,
-                                                                                    cursor: 'pointer',
-                                                                                    display: 'inline-flex',
-                                                                                    alignItems: 'center',
-                                                                                    gap: '8px',
-                                                                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                                                                    boxShadow: '0 2px 4px rgba(217, 119, 6, 0.05)'
-                                                                                }}
-                                                                                onMouseOver={e => {
-                                                                                    e.currentTarget.style.background = '#fef3c7';
-                                                                                    e.currentTarget.style.transform = 'translateY(-2px)';
-                                                                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(217, 119, 6, 0.15)';
-                                                                                    e.currentTarget.style.borderColor = '#fbbf24';
-                                                                                }}
-                                                                                onMouseOut={e => {
-                                                                                    e.currentTarget.style.background = '#fffbeb';
-                                                                                    e.currentTarget.style.transform = 'translateY(0)';
-                                                                                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(217, 119, 6, 0.05)';
-                                                                                    e.currentTarget.style.borderColor = '#fef3c7';
-                                                                                }}
-                                                                            >
-                                                                                <Search size={14} strokeWidth={2.5} />
-                                                                                <span>ตรวจสอบ</span>
-                                                                                <ChevronRight size={14} strokeWidth={2.5} />
-                                                                            </button>
+                                                                            {isDecided ? (
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        if (onTaskClick) onTaskClick(task, cat.id, wo.id, cat.name);
+                                                                                    }}
+                                                                                    style={{
+                                                                                        padding: '10px 20px',
+                                                                                        background: '#f1f5f9',
+                                                                                        border: '1px solid #e2e8f0',
+                                                                                        borderRadius: '12px',
+                                                                                        color: '#475569',
+                                                                                        fontSize: '0.85rem',
+                                                                                        fontWeight: 800,
+                                                                                        cursor: 'pointer',
+                                                                                        display: 'inline-flex',
+                                                                                        alignItems: 'center',
+                                                                                        gap: '8px',
+                                                                                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                                                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)'
+                                                                                    }}
+                                                                                    onMouseOver={e => {
+                                                                                        e.currentTarget.style.background = '#e2e8f0';
+                                                                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(71, 85, 105, 0.15)';
+                                                                                        e.currentTarget.style.borderColor = '#cbd5e1';
+                                                                                    }}
+                                                                                    onMouseOut={e => {
+                                                                                        e.currentTarget.style.background = '#f1f5f9';
+                                                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.02)';
+                                                                                        e.currentTarget.style.borderColor = '#e2e8f0';
+                                                                                    }}
+                                                                                >
+                                                                                    <Edit2 size={14} strokeWidth={2.5} />
+                                                                                    <span>แก้ไขผล</span>
+                                                                                    <ChevronRight size={14} strokeWidth={2.5} />
+                                                                                </button>
+                                                                            ) : (
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        if (onTaskClick) onTaskClick(task, cat.id, wo.id, cat.name);
+                                                                                    }}
+                                                                                    style={{
+                                                                                        padding: '10px 20px',
+                                                                                        background: '#fffbeb',
+                                                                                        border: '1px solid #fef3c7',
+                                                                                        borderRadius: '12px',
+                                                                                        color: '#d97706',
+                                                                                        fontSize: '0.85rem',
+                                                                                        fontWeight: 800,
+                                                                                        cursor: 'pointer',
+                                                                                        display: 'inline-flex',
+                                                                                        alignItems: 'center',
+                                                                                        gap: '8px',
+                                                                                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                                                        boxShadow: '0 2px 4px rgba(217, 119, 6, 0.05)'
+                                                                                    }}
+                                                                                    onMouseOver={e => {
+                                                                                        e.currentTarget.style.background = '#fef3c7';
+                                                                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(217, 119, 6, 0.15)';
+                                                                                        e.currentTarget.style.borderColor = '#fbbf24';
+                                                                                    }}
+                                                                                    onMouseOut={e => {
+                                                                                        e.currentTarget.style.background = '#fffbeb';
+                                                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(217, 119, 6, 0.05)';
+                                                                                        e.currentTarget.style.borderColor = '#fef3c7';
+                                                                                    }}
+                                                                                >
+                                                                                    <Search size={14} strokeWidth={2.5} />
+                                                                                    <span>ตรวจสอบ</span>
+                                                                                    <ChevronRight size={14} strokeWidth={2.5} />
+                                                                                </button>
+                                                                            )}
                                                                         </td>
                                                                     </tr>
                                                                 );

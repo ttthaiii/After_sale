@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { db, storage } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Project, Contractor } from '../types';
-import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock } from 'lucide-react';
+import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock, TrendingUp, FileText, UserCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import TaskReviewModal from '../components/TaskReviewModal';
 import { useNotifications } from '../context/NotificationContext';
 import { AnalogTimePicker } from '../components/AnalogTimePicker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -189,6 +190,30 @@ const BatchAddModal = ({
                 <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '24px', width: '500px', maxWidth: '90%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: '12px' }}>
                         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>เลือก{type === 'Internal' ? 'คนงานบริษัท' : 'ผู้รับเหมา'}</h3>
+                        <div style={{
+                            background: selectedIds.length > 0 ? '#eff6ff' : '#f8fafc',
+                            color: selectedIds.length > 0 ? '#2563eb' : '#64748b',
+                            border: '1px solid',
+                            borderColor: selectedIds.length > 0 ? '#bfdbfe' : '#e2e8f0',
+                            padding: '4px 12px',
+                            borderRadius: '9999px',
+                            fontSize: '0.8rem',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: selectedIds.length > 0 ? '0 2px 4px rgba(37, 99, 235, 0.08)' : 'none',
+                            transition: 'all 0.2s ease-in-out',
+                            whiteSpace: 'nowrap'
+                        }}>
+                            {selectedIds.length > 0 ? (
+                                <>
+                                    เลือกแล้ว <span style={{ color: '#1d4ed8', fontSize: '0.95rem', fontWeight: 900 }}>{selectedIds.length}</span> คน
+                                </>
+                            ) : (
+                                'ยังไม่ได้เลือก'
+                            )}
+                        </div>
                         <input
                             type="text"
                             placeholder="ค้นหาคนงาน..."
@@ -295,8 +320,10 @@ const DailyReport = () => {
     const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
 
     const [isEditingExisting, setIsEditingExisting] = useState(false); // ✅ New state for Edit Mode
+    const [showSummaryModal, setShowSummaryModal] = useState(false); // ✅ State to control summary modal popup
     const [isUploading, setIsUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const submittingRef = useRef(false);
     const [activeModal, setActiveModal] = useState<'Internal' | 'Outsource' | null>(null);
     const [timePickerTarget, setTimePickerTarget] = useState<{ id: string, type: 'start' | 'end', shift: 'normal' | 'otMorning' | 'otEvening', currentValue: string } | null>(null);
     const [reportType, setReportType] = useState<TaskUpdate['type']>('Update');
@@ -306,6 +333,16 @@ const DailyReport = () => {
     const [realContractors, setRealContractors] = useState<Contractor[]>([]);
     const [realProjects, setRealProjects] = useState<Project[]>([]);
     const [dailyContractors, setDailyContractors] = useState<any[]>([]);
+    const [modalAlert, setModalAlert] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'success' | 'info' | 'warning' | 'error';
+    } | null>(null);
+
+    // Task Review Modal states
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+    const [reviewTaskInfo, setReviewTaskInfo] = useState<{ task: MasterTask; wo: WorkOrder } | null>(null);
 
     useEffect(() => {
         const unsubContractors = onSnapshot(collection(db, 'contractors'), (snap) => {
@@ -359,10 +396,12 @@ const DailyReport = () => {
                     id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     membership: isInternal ? 'Internal' : 'Outsource',
                     staffId: wId,
-                    staffName: l?.workerName || lv?.workerName || '',
+                    staffName: l?.staffName || l?.workerName || lv?.staffName || lv?.workerName || '',
                     employeeId: l?.employeeId || lv?.employeeId || '',
-                    affiliation: l?.workerName ? (isInternal ? (l.shiftTimes?.day ? 'WH' : 'General') : l.workerName) : (lv?.workerName || 'General'),
-                    amount: 1,
+                    affiliation: l?.staffName || l?.workerName
+                        ? (isInternal ? (l?.staffName || l?.workerName || 'General') : (l?.staffName || l?.workerName || 'General'))
+                        : (lv?.staffName || lv?.workerName || 'General'),
+                    amount: Number(l?.amount) || 1,
                     timeType: 'Normal',
                     shifts: {
                         normal: l?.shifts?.normal || false,
@@ -419,8 +458,11 @@ const DailyReport = () => {
         } else {
             // Reset form for a new entry on this date, defaulting to the latest valid progress
             const history = selectedTaskInfo.task.history || [];
+            const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+                ? history.filter(h => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt)
+                : history;
             let min = 0;
-            history.forEach(h => {
+            filteredHistory.forEach(h => {
                 const hDate = h.date?.split('T')[0] || '';
                 if (hDate && hDate < reportDate && h.progress > min) {
                     min = h.progress;
@@ -451,15 +493,17 @@ const DailyReport = () => {
         const _inProgressTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
 
         workOrders.forEach(wo => {
-            // Only show work orders that are active (Approved, Partially Approved, Pending, In Progress)
+            // Only show work orders that are active (Approved, Partially Approved, Pending, In Progress, Evaluating)
             // Note: 'Pending' is used for jobs that skipped evaluation or legacy
-            if (['Draft', 'Evaluating', 'Completed', 'Rejected', 'Cancelled'].includes(wo.status)) return;
+            // We allow 'Evaluating' so tasks assigned task-by-task can be reported immediately
+            if (['Draft', 'Completed', 'Rejected', 'Cancelled'].includes(wo.status)) return;
 
             wo.categories.forEach(cat => {
                 cat.tasks.forEach(task => {
                     // Show tasks that are Approved (Ready), Assigned (Specific person) or In Progress
-                    // 🛡️ RELAXED FILTER: If it's not 100% and not rejected/cancelled, show it!
-                    if (task.status === 'Completed' || (task.dailyProgress || 0) >= 100 || task.status === 'Rejected') return;
+                    // Skip 'Pending' (unevaluated/unassigned tasks) when work order is 'Evaluating'
+                    // 🛡️ RELAXED FILTER: If it's not Verified, show it! (Even if 100% so foreman can review/close)
+                    if (task.status === 'Pending' || task.status === 'Verified') return;
 
                     // Filter by assigned staff (or show all for Admins/Managers)
                     // Also show to the reporter if the task is Approved (Ready to start)
@@ -468,9 +512,12 @@ const DailyReport = () => {
                         task.responsibleStaffIds?.includes(foremanId) ||
                         (wo.reporterId === user?.id && task.status === 'Approved' && (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0));
 
-                        if (isAssigned && (task.dailyProgress || 0) < 100) {
+                        if (isAssigned) {
                             // ✅ Find the absolute maximum progress from history to ensure correct display
-                            const historyMax = task.history?.reduce((max, h) => Math.max(max, h.progress), 0) || 0;
+                            const filteredHistory = task.revisionCreatedAt
+                                ? (task.history || []).filter(h => h.date && h.date > task.revisionCreatedAt)
+                                : (task.history || []);
+                            const historyMax = filteredHistory.reduce((max, h) => Math.max(max, h.progress), 0) || 0;
                             const actualProgress = Math.max(task.dailyProgress || 0, historyMax);
                             
                             const item = { 
@@ -497,12 +544,12 @@ const DailyReport = () => {
             return { newTasks: _newTasks, inProgressTasks: _inProgressTasks };
         }, [workOrders, searchTerm, foremanId, user?.role]);
 
-    // ✅ Deep Link: Open Work Order if ID is in URL
+    // ✅ Deep Link: Open Work Order if ID is in URL with Completed/Inactive Verification (Case C)
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const workOrderId = params.get('id');
 
-        if (workOrderId && (newTasks.length > 0 || inProgressTasks.length > 0)) {
+        if (workOrderId && workOrders.length > 0) {
             // Find task in either newTasks or inProgressTasks
             const item = newTasks.find(n => n.wo.id === workOrderId) || inProgressTasks.find(i => i.wo.id === workOrderId);
             
@@ -510,21 +557,79 @@ const DailyReport = () => {
                 setHighlightedId(workOrderId);
                 // Call handleSelectTask with the found info
                 handleSelectTask(item.task, item.wo, item.categoryId);
-                
-                // Clear URL parameters
-                const newParams = new URLSearchParams(location.search);
-                newParams.delete('id');
-                const newSearch = newParams.toString();
-                navigate(location.pathname + (newSearch ? `?${newSearch}` : ''), { replace: true });
+            } else {
+                // If not found in active lists, search the actual workOrder status for a custom premium warning
+                const wo = workOrders.find(w => w.id === workOrderId);
+                if (wo) {
+                    let message = '';
+                    let title = 'ใบสั่งงานไม่พร้อมสำหรับการรายงาน';
+                    let type: 'success' | 'info' | 'warning' | 'error' = 'info';
+
+                    if (wo.status === 'Completed') {
+                        message = 'งานในใบงานนี้ได้รับการรายงานความคืบหน้าครบถ้วนและเสร็จสิ้นเรียบร้อยแล้ว';
+                        title = 'ใบสั่งงานเสร็จสิ้นแล้ว';
+                        type = 'success';
+                    } else if (wo.status === 'Cancelled') {
+                        message = 'ใบสั่งงานนี้ถูกยกเลิกการดำเนินงานแล้ว';
+                        title = 'ใบสั่งงานถูกยกเลิก';
+                        type = 'error';
+                    } else if (wo.status === 'Rejected') {
+                        message = 'ใบสั่งงานนี้ถูกปฏิเสธโดยแอดมิน กรุณาเข้าหน้า \'ใบงานและติดตามผล\' เพื่อทำการแก้ไขและส่งใหม่';
+                        title = 'ใบสั่งงานถูกปฏิเสธการประเมิน';
+                        type = 'warning';
+                    } else if (wo.status === 'Draft') {
+                        message = 'ใบสั่งงานนี้ยังคงอยู่ในสถานะแบบร่าง กรุณาส่งใบงานเพื่อรับการประเมินจากแอดมิน';
+                        title = 'ใบสั่งงานแบบร่าง';
+                        type = 'warning';
+                    } else if (wo.status === 'Evaluating') {
+                        message = 'ใบสั่งงานนี้อยู่ระหว่างขั้นตอนการประเมินโดยแอดมิน หรือยังไม่มีงานประเมินที่ระบุให้คุณรับผิดชอบในขณะนี้';
+                        title = 'อยู่ระหว่างการประเมิน';
+                        type = 'info';
+                    } else {
+                        const statusThai: Record<string, string> = {
+                            'Pending': 'รออนุมัติ',
+                            'Approved': 'อนุมัติแล้ว',
+                            'Partially Approved': 'อนุมัติบางส่วน',
+                            'In Progress': 'กำลังดำเนินการ',
+                            'Verified': 'ตรวจสอบแล้ว'
+                        };
+                        message = `ไม่พบงานที่พร้อมสำหรับการรายงานความคืบหน้าในระบบ (สถานะปัจจุบันของใบงาน: ${statusThai[wo.status] || wo.status})`;
+                        title = 'ไม่สามารถรายงานความคืบหน้าได้';
+                        type = 'info';
+                    }
+                    
+                    setModalAlert({
+                        isOpen: true,
+                        title,
+                        message,
+                        type
+                    });
+                } else {
+                    setModalAlert({
+                        isOpen: true,
+                        title: 'ไม่พบใบสั่งงาน',
+                        message: 'ไม่พบข้อมูลใบสั่งงานนี้ในระบบ หรือคุณไม่มีสิทธิ์ในการรายงานความคืบหน้าของงานชุดนี้',
+                        type: 'error'
+                    });
+                }
             }
+            
+            // Clear URL parameters in all cases to prevent alerts looping on page update
+            const newParams = new URLSearchParams(location.search);
+            newParams.delete('id');
+            const newSearch = newParams.toString();
+            navigate(location.pathname + (newSearch ? `?${newSearch}` : ''), { replace: true });
         }
-    }, [location.search, newTasks, inProgressTasks]);
+    }, [location.search, newTasks, inProgressTasks, workOrders, navigate]);
 
     const handleSelectTask = (task: MasterTask, wo: WorkOrder, categoryId: string) => {
         // ✅ 1. Find the history-based minimum progress for the current date
         const history = task.history || [];
         const todayStr = new Date().toISOString().split('T')[0];
-        const historyBeforeToday = history
+        const filteredHistory = task.revisionCreatedAt
+            ? history.filter(h => h.date && h.date > task.revisionCreatedAt)
+            : history;
+        const historyBeforeToday = filteredHistory
             .filter(h => (h.date?.split('T')[0] || '') < todayStr)
             .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         
@@ -581,12 +686,15 @@ const DailyReport = () => {
     const progressBounds = useMemo(() => {
         if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
         const history = selectedTaskInfo.task.history || [];
+        const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+            ? history.filter(h => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt)
+            : history;
         const targetDate = reportDate; // YYYY-MM-DD
         
         let min = 0;
         let max = 100;
         
-        history.forEach(h => {
+        filteredHistory.forEach(h => {
             const hDate = h.date?.split('T')[0] || '';
             if (!hDate) return;
 
@@ -616,6 +724,11 @@ const DailyReport = () => {
     }, [reportDate, selectedTaskInfo?.task.unlockedDates]);
 
     const isProgressNotePhotosEditable = isEditingExisting && !isReportDatePast3Days;
+
+    const hasHistoryForSelectedDate = useMemo(() => {
+        if (!selectedTaskInfo) return false;
+        return selectedTaskInfo.task.history?.some(h => (h.date?.split('T')[0]) === reportDate) || false;
+    }, [selectedTaskInfo, reportDate]);
 
     // Redundant force-sync removed, handled by onChange constraints and initialization
 
@@ -867,6 +980,71 @@ const DailyReport = () => {
         }));
     };
 
+    const handleConfirmReview = async (
+        woId: string, 
+        categoryId: string, 
+        taskId: string, 
+        status: 'Verified' | 'Rejected', 
+        updates: {
+            ownerName?: string;
+            rejectReason?: string;
+            notes?: string;
+            currentRevision?: string;
+        }
+    ) => {
+        try {
+            const now = new Date().toISOString();
+            
+            if (status === 'Verified') {
+                await updateTask(woId, categoryId, taskId, {
+                    status: 'Verified',
+                    ownerName: updates.ownerName || '',
+                    notes: updates.notes || '',
+                    updatedAt: now
+                });
+                
+                if (selectedTaskInfo?.task.id === taskId) {
+                    setSelectedTaskInfo(null);
+                }
+
+                setModalAlert({
+                    isOpen: true,
+                    title: 'ตรวจรับงานสำเร็จ',
+                    message: 'ระบบได้ตรวจรับงานเรียบร้อยแล้ว รายการนี้จะย้ายไปอยู่ในส่วนของประวัติงานย้อนหลัง',
+                    type: 'success'
+                });
+            } else if (status === 'Rejected') {
+                await updateTask(woId, categoryId, taskId, {
+                    status: 'Rejected',
+                    revisionName: updates.rejectReason || '',
+                    revisionCreatedAt: now,
+                    currentRevision: updates.currentRevision || 'rev01',
+                    dailyProgress: 0,
+                    updatedAt: now
+                });
+
+                if (selectedTaskInfo?.task.id === taskId) {
+                    setSelectedTaskInfo(null);
+                }
+
+                setModalAlert({
+                    isOpen: true,
+                    title: 'ส่งกลับแก้ไขสำเร็จ',
+                    message: `ระบบได้ส่งกลับแก้ไข (ตีกลับ) เรียบร้อยแล้ว โปรเกรสของงานถูกรีเซ็ตเป็น 0% (${updates.currentRevision || 'REV. 01'})`,
+                    type: 'warning'
+                });
+            }
+        } catch (error) {
+            console.error("Error confirming review:", error);
+            setModalAlert({
+                isOpen: true,
+                title: 'เกิดข้อผิดพลาด',
+                message: 'ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง',
+                type: 'error'
+            });
+        }
+    };
+
     const handleBounceBackSLA = async (workOrderId: string, categoryId: string, taskId: string) => {
         if (!window.confirm('คุณต้องการตีกลับใบงานนี้เพื่อให้แอดมินประเมิน SLA ใหม่ใช่หรือไม่?\n(งานจะถูกถอดออกจากการมอบหมายและส่งกลับไปที่แอดมิน)')) return;
         
@@ -915,6 +1093,7 @@ const DailyReport = () => {
     };
 
     const handleSubmit = async () => {
+        if (submittingRef.current || isSubmitting) return;
         if (!selectedTaskInfo) return;
         if (labor.length === 0) return alert('กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ');
 
@@ -948,19 +1127,41 @@ const DailyReport = () => {
         }
 
         // ✅ 2. Prevent Duplicate Date Entry
-        const existingHistory = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+        const history = selectedTaskInfo.task.history || [];
+        const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+            ? history.filter(h => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt)
+            : history;
+        const existingHistory = filteredHistory.find(h => (h.date?.split('T')[0]) === reportDate);
         if (existingHistory && !isEditingExisting) {
             alert(`คุณเคยส่งรายงานของวันที่ ${new Date(reportDate).toLocaleDateString('th-TH')} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`);
             return;
         }
 
+        // If all validation passes, show the summary modal instead of submitting immediately
+        setShowSummaryModal(true);
+    };
+
+    const handleFinalSubmit = async () => {
+        if (submittingRef.current || isSubmitting) return;
+        if (!selectedTaskInfo) return;
+
+        submittingRef.current = true;
         setIsSubmitting(true);
         try {
+            const history = selectedTaskInfo.task.history || [];
+            const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+                ? history.filter(h => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt)
+                : history;
+            const existingHistory = filteredHistory.find(h => (h.date?.split('T')[0]) === reportDate);
             const laborPayload = labor
                 .filter((l) => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
                 .map((l) => ({
-                    workerId: l.staffId || l.id,
-                    workerName: l.staffName || '',
+                    membership: l.membership || 'Internal',
+                    workerId: l.staffId || l.contractorId || l.id,
+                    workerName: l.staffName || l.affiliation || '',
+                    staffId: l.staffId || '',
+                    staffName: l.staffName || '',
+                    contractorId: l.contractorId || '',
                     employeeId: l.employeeId || '',
                     shiftTimes: {
                         day: l.shifts?.normal ? l.shiftTimes?.day || '08:00 - 17:00' : null,
@@ -973,7 +1174,8 @@ const DailyReport = () => {
                         otEvening: l.shifts?.otEvening || false,
                         otMorning: l.shifts?.otMorning || false,
                         otNoon: l.shifts?.otNoon || false,
-                    }
+                    },
+                    amount: l.amount || 1
                 }));
 
             const leavePayload = labor
@@ -1030,21 +1232,31 @@ const DailyReport = () => {
 
             await addTaskUpdate(selectedTaskInfo.wo.id, selectedTaskInfo.categoryId, selectedTaskInfo.task.id, newUpdate as any);
             alert('บันทึกรายงานเรียบร้อยแล้ว');
-            setSelectedTaskInfo(null);
-            setProgress(0);
-            setNote('');
-            setLabor([]);
-            setSitePhotos([]);
-            setLaborRegularPhotos([]);
-            setLaborOtMorningPhotos([]);
-            setLaborOtNoonPhotos([]);
-            setLaborOtEveningPhotos([]);
-            setReportType('Update');
-            setReportDate(new Date().toISOString().split('T')[0]);
+
+            setShowSummaryModal(false); // ปิดหน้าต่างสรุปข้อมูลเมื่อสำเร็จ
+
+            if (existingHistory) {
+                // ✅ กรณีแก้ไขข้อมูลเดิม — คงอยู่ที่หน้าเดิม แค่ปิด Edit Mode
+                setIsEditingExisting(false);
+            } else {
+                // ✅ กรณีส่งรายงานใหม่ — reset ทุกอย่างกลับไปหน้าว่าง
+                setSelectedTaskInfo(null);
+                setProgress(0);
+                setNote('');
+                setLabor([]);
+                setSitePhotos([]);
+                setLaborRegularPhotos([]);
+                setLaborOtMorningPhotos([]);
+                setLaborOtNoonPhotos([]);
+                setLaborOtEveningPhotos([]);
+                setReportType('Update');
+                setReportDate(new Date().toISOString().split('T')[0]);
+            }
         } catch (error) {
             console.error('Submit failed:', error);
             alert('บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
         } finally {
+            submittingRef.current = false;
             setIsSubmitting(false);
         }
     };
@@ -1056,7 +1268,11 @@ const DailyReport = () => {
         if (!confirmCancel) return;
 
         // Search for the existing report for this exact date to revert the state
-        const existingReport = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+        const history = selectedTaskInfo.task.history || [];
+        const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+            ? history.filter(h => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt)
+            : history;
+        const existingReport = filteredHistory.find(h => (h.date?.split('T')[0]) === reportDate);
 
         if (existingReport) {
             // Revert progress and note
@@ -1086,10 +1302,12 @@ const DailyReport = () => {
                     id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     membership: isInternal ? 'Internal' : 'Outsource',
                     staffId: wId,
-                    staffName: l?.workerName || lv?.workerName || '',
+                    staffName: l?.staffName || l?.workerName || lv?.staffName || lv?.workerName || '',
                     employeeId: l?.employeeId || lv?.employeeId || '',
-                    affiliation: l?.workerName ? (isInternal ? (l.shiftTimes?.day ? 'WH' : 'General') : l.workerName) : (lv?.workerName || 'General'),
-                    amount: 1,
+                    affiliation: l?.staffName || l?.workerName
+                        ? (isInternal ? (l?.staffName || l?.workerName || 'General') : (l?.staffName || l?.workerName || 'General'))
+                        : (lv?.staffName || lv?.workerName || 'General'),
+                    amount: Number(l?.amount) || 1,
                     timeType: 'Normal',
                     shifts: {
                         normal: l?.shifts?.normal || false,
@@ -1148,7 +1366,11 @@ const DailyReport = () => {
     const hasUnsavedChanges = () => {
         if (!selectedTaskInfo) return false;
         
-        const existingReport = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+        const history = selectedTaskInfo.task.history || [];
+        const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+            ? history.filter(h => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt)
+            : history;
+        const existingReport = filteredHistory.find(h => (h.date?.split('T')[0]) === reportDate);
         
         if (existingReport) {
             // If they are in edit mode, they have active unsaved editing
@@ -1164,9 +1386,8 @@ const DailyReport = () => {
             const isNoteDirty = note.trim() !== '';
             
             // Re-evaluating default progress bounds
-            const history = selectedTaskInfo.task.history || [];
             let minProgress = 0;
-            history.forEach(h => {
+            filteredHistory.forEach(h => {
                 const hDate = h.date?.split('T')[0] || '';
                 if (hDate && hDate < reportDate && h.progress > minProgress) {
                     minProgress = h.progress;
@@ -1194,6 +1415,7 @@ const DailyReport = () => {
 
         // Circular Progress Calculation
         const progressColor = task.dailyProgress === 100 ? '#10b981' : task.dailyProgress > 0 ? '#3b82f6' : '#e2e8f0';
+        const isCompleted100 = (task.dailyProgress || 0) >= 100;
 
         return (
             <div
@@ -1201,10 +1423,11 @@ const DailyReport = () => {
                 onClick={() => handleSelectTask(task, wo, categoryId)}
                 style={{
                     padding: '12px 14px', borderRadius: '16px', marginBottom: '8px',
-                    border: '1px solid', borderColor: isSelected ? '#3b82f6' : isHighlighted ? '#3b82f6' : isNew ? '#fcd34d' : '#f1f5f9',
-                    background: isSelected ? '#eff6ff' : isHighlighted ? '#eff6ff' : isNew ? '#fffbeb' : '#fff',
+                    border: '1px solid', 
+                    borderColor: isSelected ? '#3b82f6' : isHighlighted ? '#3b82f6' : isCompleted100 ? '#a7f3d0' : isNew ? '#fcd34d' : '#f1f5f9',
+                    background: isSelected ? '#eff6ff' : isHighlighted ? '#eff6ff' : isCompleted100 ? '#f0fdf4' : isNew ? '#fffbeb' : '#fff',
                     cursor: 'pointer', transition: 'all 0.2s',
-                    boxShadow: isSelected || isHighlighted ? '0 8px 12px -3px rgba(59, 130, 246, 0.15)' : '0 2px 4px -1px rgba(0,0,0,0.05)',
+                    boxShadow: isSelected || isHighlighted ? '0 8px 12px -3px rgba(59, 130, 246, 0.15)' : isCompleted100 ? '0 4px 6px -1px rgba(16, 185, 129, 0.08)' : '0 2px 4px -1px rgba(0,0,0,0.05)',
                     transform: isHighlighted && !isSelected ? 'scale(1.02)' : 'none',
                     position: 'relative',
                     display: 'flex', alignItems: 'center', gap: '12px'
@@ -1234,10 +1457,46 @@ const DailyReport = () => {
                         <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', background: '#dbeafe', padding: '2px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>{wo.id}</div>
                         {isNew && <div style={{ background: '#ef4444', color: '#fff', fontSize: '0.58rem', fontWeight: 800, padding: '2px 5px', borderRadius: '6px' }}>ใหม่</div>}
                     </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{task.name}</div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+                        {task.name}
+                        {task.currentRevision && task.currentRevision !== 'rev00' && (
+                            <span style={{ color: '#ef4444', marginLeft: '6px', fontWeight: 900, background: '#fef2f2', padding: '1px 5px', borderRadius: '4px', border: '1px solid #fca5a5', fontSize: '0.62rem', display: 'inline-block' }}>
+                                REV. {parseInt(task.currentRevision.replace('rev', ''))}
+                            </span>
+                        )}
+                    </div>
                     <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
                         <Building2 size={11} style={{ flexShrink: 0 }} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{wo.locationName}</span>
                     </div>
+                    {isCompleted100 && (
+                        <div style={{ marginTop: '6px' }}>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReviewTaskInfo({ task, wo });
+                                    setIsReviewModalOpen(true);
+                                }}
+                                style={{
+                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '5px 10px',
+                                    borderRadius: '8px',
+                                    fontWeight: 800,
+                                    fontSize: '0.7rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.2)',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                <UserCheck size={11} />
+                                <span>ตรวจรับงานร่วมกับ Owner</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Project Image */}
@@ -1304,6 +1563,371 @@ const DailyReport = () => {
         }}>
             {timePickerTarget && <AnalogTimePicker value={timePickerTarget.currentValue} onChange={handleTimeChange} onClose={() => setTimePickerTarget(null)} />}
             {activeModal && <BatchAddModal type={activeModal} availableItems={activeModal === 'Internal' ? availableStaff : availableContractors} onClose={() => setActiveModal(null)} onAdd={handleBatchAdd} />}
+            {showSummaryModal && selectedTaskInfo && (() => {
+                const totalManpower = labor.filter(l => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening).reduce((acc, l) => acc + (Number(l.amount) || 1), 0);
+                const internalCount = labor.filter(l => l.membership === 'Internal' && (l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)).reduce((acc, l) => acc + (Number(l.amount) || 1), 0);
+                const subcoCount = labor.filter(l => l.membership === 'Outsource' && (l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)).reduce((acc, l) => acc + (Number(l.amount) || 1), 0);
+                const leaveCount = labor.filter(l => l.leave?.active).length;
+
+                return (
+                    <div style={{ 
+                        position: 'fixed', 
+                        top: 0, 
+                        left: 0, 
+                        right: 0, 
+                        bottom: 0, 
+                        background: 'rgba(15, 23, 42, 0.65)', 
+                        backdropFilter: 'blur(10px)',
+                        zIndex: 2000, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        padding: '1.5rem',
+                        boxSizing: 'border-box'
+                    }}>
+                        <div style={{ 
+                            background: '#ffffff', 
+                            borderRadius: '24px', 
+                            padding: '2rem', 
+                            width: '580px', 
+                            maxWidth: '100%', 
+                            maxHeight: '90vh',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                            border: '1px solid #e2e8f0',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.25rem',
+                            position: 'relative',
+                            overflow: 'hidden'
+                        }}>
+                            {/* Modal Header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+                                <div style={{ background: '#eff6ff', padding: '12px', borderRadius: '16px', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <CheckSquare size={24} />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
+                                        {isEditingExisting ? 'ตรวจสอบการแก้ไขรายงานประจำวัน' : 'ตรวจสอบรายงานประจำวัน'}
+                                    </h3>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                                        โปรดตรวจสอบรายละเอียดข้อมูลก่อนกดยืนยันการส่งรายงาน
+                                    </p>
+                                </div>
+                                <button 
+                                    onClick={() => setShowSummaryModal(false)}
+                                    style={{ 
+                                        border: 'none', 
+                                        background: 'none', 
+                                        color: '#94a3b8', 
+                                        cursor: 'pointer', 
+                                        padding: '4px',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        transition: 'background 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                >
+                                    <XCircle size={20} />
+                                </button>
+                            </div>
+
+                            {/* Modal Body Container (Scrollable) */}
+                            <div style={{ 
+                                display: 'flex', 
+                                flexDirection: 'column', 
+                                gap: '1rem', 
+                                overflowY: 'auto', 
+                                paddingRight: '4px',
+                                maxHeight: 'calc(90vh - 200px)' 
+                            }}>
+                                {/* General Operations Info Card */}
+                                <div style={{ 
+                                    background: '#f8fafc', 
+                                    borderRadius: '16px', 
+                                    border: '1px solid #e2e8f0', 
+                                    padding: '1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <FileText size={14} color="#64748b" /> ข้อมูลการดำเนินงาน
+                                    </h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginTop: '4px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>วันที่รายงาน:</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>
+                                                <Calendar size={14} color="#3b82f6" />
+                                                {new Date(reportDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>ความคืบหน้างาน:</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: 800, color: '#2563eb' }}>
+                                                <TrendingUp size={14} color="#2563eb" />
+                                                <span>{progress}%</span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>
+                                                    ({progress === 100 ? 'ปิดงาน' : reportType === 'Problem' ? 'รายงานปัญหาหน้างาน' : 'อัปเดตความคืบหน้า'})
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Labor Headcount Summary Card */}
+                                <div style={{ 
+                                    background: '#f8fafc', 
+                                    borderRadius: '16px', 
+                                    border: '1px solid #e2e8f0', 
+                                    padding: '1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <HardHat size={14} color="#64748b" /> กำลังพลปฏิบัติงานทั้งหมด
+                                        </h4>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 900, color: '#1e40af', background: '#eff6ff', padding: '4px 10px', borderRadius: '20px', border: '1px solid #bfdbfe' }}>
+                                            {totalManpower} คน
+                                        </span>
+                                    </div>
+
+                                    {/* Sub-counts */}
+                                    <div style={{ display: 'flex', gap: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#2563eb' }}></div>
+                                            <span>คนงานบริษัท: <span style={{ color: '#0f172a', fontWeight: 900 }}>{internalCount} คน</span></span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }}></div>
+                                            <span>ทีมงานผู้รับเหมา: <span style={{ color: '#0f172a', fontWeight: 900 }}>{subcoCount} คน</span></span>
+                                        </div>
+                                        {leaveCount > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }}></div>
+                                                <span>ลางาน: <span style={{ color: '#ef4444', fontWeight: 900 }}>{leaveCount} คน</span></span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Worker List inside modal */}
+                                    <div style={{ 
+                                        maxHeight: '180px', 
+                                        overflowY: 'auto', 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        gap: '6px',
+                                        paddingRight: '2px',
+                                        marginTop: '4px'
+                                    }}>
+                                        {labor.map((l) => {
+                                            const activeShifts = [];
+                                            if (l.shifts?.normal) activeShifts.push('ปกติ');
+                                            if (l.shifts?.otMorning) activeShifts.push('OT เช้า');
+                                            if (l.shifts?.otNoon) activeShifts.push('OT เที่ยง');
+                                            if (l.shifts?.otEvening) activeShifts.push('OT เย็น');
+                                            if (l.leave?.active) activeShifts.push('ลางาน');
+
+                                            return (
+                                                <div key={l.id} style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    alignItems: 'center', 
+                                                    padding: '8px 12px', 
+                                                    background: '#ffffff', 
+                                                    borderRadius: '10px', 
+                                                    border: '1px solid #f1f5f9' 
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                        <div style={{ 
+                                                            width: 24, 
+                                                            height: 24, 
+                                                            borderRadius: 6, 
+                                                            background: l.membership === 'Internal' ? '#eff6ff' : '#f0fdf4', 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            justifyContent: 'center', 
+                                                            flexShrink: 0 
+                                                        }}>
+                                                            {l.membership === 'Internal' ? <User size={12} color="#2563eb" /> : <HardHat size={12} color="#059669" />}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {l.employeeId ? `${l.employeeId} : ` : ''}{l.staffName || l.affiliation}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                                        {activeShifts.map((sh, sIdx) => {
+                                                            let bg = '#dbeafe';
+                                                            let text = '#1e40af';
+                                                            if (sh.startsWith('OT')) { bg = '#fef3c7'; text = '#92400e'; }
+                                                            if (sh === 'ลางาน') { bg = '#fee2e2'; text = '#991b1b'; }
+                                                            return (
+                                                                <span key={sIdx} style={{ 
+                                                                    fontSize: '0.65rem', 
+                                                                    fontWeight: 800, 
+                                                                    padding: '2px 6px', 
+                                                                    borderRadius: '6px', 
+                                                                    background: bg, 
+                                                                    color: text 
+                                                                }}>
+                                                                    {sh}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                        {Number(l.amount) > 1 && (
+                                                            <span style={{ fontSize: '0.65rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#e2e8f0', color: '#475569' }}>
+                                                                จำนวน {l.amount} คน
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Attached Photos Card */}
+                                <div style={{ 
+                                    background: '#f8fafc', 
+                                    borderRadius: '16px', 
+                                    border: '1px solid #e2e8f0', 
+                                    padding: '1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Camera size={14} color="#64748b" /> รูปภาพที่แนบรายงาน
+                                    </h4>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#166534' }}>
+                                            <CheckCircle2 size={12} color="#15803d" />
+                                            <span>รูปถ่ายหน้างาน ({sitePhotos.filter(Boolean).length} รูป)</span>
+                                        </div>
+                                        {laborRegularPhotos.some(Boolean) && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#166534' }}>
+                                                <CheckCircle2 size={12} color="#15803d" />
+                                                <span>รูปถ่ายคนงานปกติ ({laborRegularPhotos.filter(Boolean).length} รูป)</span>
+                                            </div>
+                                        )}
+                                        {(laborOtMorningPhotos.some(Boolean) || laborOtNoonPhotos.some(Boolean) || laborOtEveningPhotos.some(Boolean)) && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#166534' }}>
+                                                <CheckCircle2 size={12} color="#15803d" />
+                                                <span>รูปถ่ายคนงาน OT ({laborOtMorningPhotos.filter(Boolean).length + laborOtNoonPhotos.filter(Boolean).length + laborOtEveningPhotos.filter(Boolean).length} รูป)</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Site Notes (หมายเหตุ) Card */}
+                                <div style={{ 
+                                    background: '#f8fafc', 
+                                    borderRadius: '16px', 
+                                    border: '1px solid #e2e8f0', 
+                                    padding: '1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px'
+                                }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Info size={14} color="#64748b" /> หมายเหตุ (Site Notes)
+                                    </h4>
+                                    <p style={{ 
+                                        margin: '4px 0 0 0', 
+                                        fontSize: '0.8rem', 
+                                        fontWeight: note ? 700 : 500, 
+                                        color: note ? '#334155' : '#94a3b8', 
+                                        background: '#ffffff',
+                                        padding: '10px 12px',
+                                        borderRadius: '10px',
+                                        border: '1px solid #f1f5f9',
+                                        whiteSpace: 'pre-wrap',
+                                        lineHeight: 1.4
+                                    }}>
+                                        {note || 'ไม่ได้ระบุหมายเหตุเพิ่มเติม'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Modal Action Buttons */}
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem' }}>
+                                <button 
+                                    onClick={() => setShowSummaryModal(false)}
+                                    style={{ 
+                                        flex: 1, 
+                                        padding: '12px', 
+                                        borderRadius: '14px', 
+                                        border: '2px solid #cbd5e1', 
+                                        background: '#ffffff', 
+                                        color: '#475569',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 800, 
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        textAlign: 'center'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = '#94a3b8';
+                                        e.currentTarget.style.background = '#f8fafc';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = '#cbd5e1';
+                                        e.currentTarget.style.background = '#ffffff';
+                                    }}
+                                >
+                                    กลับไปแก้ไข
+                                </button>
+                                <button 
+                                    onClick={handleFinalSubmit}
+                                    disabled={submittingRef.current || isSubmitting}
+                                    style={{ 
+                                        flex: 1, 
+                                        padding: '12px', 
+                                        borderRadius: '14px', 
+                                        border: 'none', 
+                                        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', 
+                                        color: '#ffffff',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 800, 
+                                        cursor: (submittingRef.current || isSubmitting) ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!isSubmitting) {
+                                            e.currentTarget.style.transform = 'translateY(-1px)';
+                                            e.currentTarget.style.boxShadow = '0 6px 16px rgba(37, 99, 235, 0.35)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!isSubmitting) {
+                                            e.currentTarget.style.transform = 'translateY(0)';
+                                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.25)';
+                                        }
+                                    }}
+                                >
+                                    {(submittingRef.current || isSubmitting) ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            <span>กำลังส่งรายงาน...</span>
+                                        </>
+                                    ) : (
+                                        <span>ส่งรายงานเลย</span>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {showUnlockModal && selectedTaskInfo && (
                 <div style={{ 
                     position: 'fixed', 
@@ -1575,7 +2199,14 @@ const DailyReport = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>{selectedTaskInfo.task.name}</h2>
+                                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                <span>{selectedTaskInfo.task.name}</span>
+                                                {selectedTaskInfo.task.currentRevision && selectedTaskInfo.task.currentRevision !== 'rev00' && (
+                                                    <span style={{ color: '#ef4444', fontWeight: 900, background: '#fef2f2', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fca5a5', fontSize: '0.72rem' }}>
+                                                        งานแก้ไข - REV. {parseInt(selectedTaskInfo.task.currentRevision.replace('rev', ''))}
+                                                    </span>
+                                                )}
+                                            </h2>
                                         </div>
 
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end', minWidth: '200px', marginLeft: '20px' }}>
@@ -1950,7 +2581,7 @@ const DailyReport = () => {
                                         {isEditingExisting && (
                                             <>
                                                 <button onClick={() => setActiveModal('Internal')} style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={14} /> คนงานบริษัท (Internal)</button>
-                                                <button onClick={() => setActiveModal('Outsource')} style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={14} /> คนงานผู้รับเหมา (Subio)</button>
+                                                <button onClick={() => setActiveModal('Outsource')} style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={14} /> ทีมงานผู้รับเหมา (Subco)</button>
                                             </>
                                         )}
                                     </div>
@@ -1990,7 +2621,7 @@ const DailyReport = () => {
                                                                         {l.employeeId ? `${l.employeeId} : ` : ''}{l.staffName || l.affiliation}
                                                                     </div>
                                                                     <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>
-                                                                        {l.membership === 'Internal' ? 'คนงานบริษัท (Internal)' : 'ทีมงานผู้รับเหมา (Subio)'}
+                                                                        {l.membership === 'Internal' ? 'คนงานบริษัท (Internal)' : 'ทีมงานผู้รับเหมา (Subco)'}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -2268,7 +2899,17 @@ const DailyReport = () => {
                                                     max="100"
                                                     value={progress}
                                                     disabled={!isProgressNotePhotosEditable}
-                                                    onChange={(e) => setProgress(Math.min(progressBounds.max, Math.max(progressBounds.min, parseInt(e.target.value) || 0)))}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value, 10);
+                                                        if (isNaN(val)) {
+                                                            setProgress(0);
+                                                        } else {
+                                                            setProgress(Math.min(100, Math.max(0, val)));
+                                                        }
+                                                    }}
+                                                    onBlur={() => {
+                                                        setProgress(Math.min(progressBounds.max, Math.max(progressBounds.min, progress)));
+                                                    }}
                                                     style={{
                                                         width: '100%',
                                                         padding: '8px 30px 8px 12px',
@@ -2424,7 +3065,37 @@ const DailyReport = () => {
                                         {/* Shift Photos: Slot-based with labels */}
                                         {(['regular', 'otMorning', 'otNoon', 'otEvening'] as const).map(shiftKey => {
                                             if (activePhotoTab !== shiftKey) return null;
-                                            const slotLabels = shiftKey === 'regular' ? ['เข้า', 'พักเที่ยง', 'เข้าบ่าย', 'ออก'] : ['เข้า', 'ออก'];
+
+                                            // Derive time labels from labor shiftTimes
+                                            const getShiftTime = (key: 'day' | 'otMorning' | 'otNoon' | 'otEvening') => {
+                                                const times = labor.filter(l => l.shifts?.[key === 'day' ? 'normal' : key]).map(l => l.shiftTimes?.[key]).filter(Boolean);
+                                                return times[0] || '';
+                                            };
+                                            const parseStart = (range: string) => range?.split(' - ')[0] || '';
+                                            const parseEnd = (range: string) => range?.split(' - ')[1] || '';
+
+                                            let slotLabels: string[];
+                                            if (shiftKey === 'regular') {
+                                                const dayRange = getShiftTime('day');
+                                                const startT = parseStart(dayRange);
+                                                const endT = parseEnd(dayRange);
+                                                slotLabels = [
+                                                    startT ? `เช้า (${startT})` : 'เช้า',
+                                                    'พักเที่ยง (12:00)',
+                                                    'เข้าบ่าย (13:00)',
+                                                    endT ? `ออก (${endT})` : 'ออก',
+                                                ];
+                                            } else {
+                                                const otKey = shiftKey as 'otMorning' | 'otNoon' | 'otEvening';
+                                                const otRange = getShiftTime(otKey);
+                                                const startT = parseStart(otRange);
+                                                const endT = parseEnd(otRange);
+                                                slotLabels = [
+                                                    startT ? `เข้า (${startT})` : 'เข้า',
+                                                    endT ? `ออก (${endT})` : 'ออก',
+                                                ];
+                                            }
+
                                             const shiftPhotos = {
                                                 regular: laborRegularPhotos,
                                                 otMorning: laborOtMorningPhotos,
@@ -2546,7 +3217,7 @@ const DailyReport = () => {
                                         {[...(selectedTaskInfo.task.history || [])]
                                             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                             .map((h) => {
-                                                    const totalManpower = h.labor.reduce((acc: number, l: any) => acc + l.amount, 0);
+                                                    const totalManpower = h.labor.reduce((acc: number, l: any) => acc + (Number(l.amount) || 1), 0);
                                                     return (
                                                         <div 
                                                             key={h.id} 
@@ -2641,22 +3312,27 @@ const DailyReport = () => {
                                     <line x1="6" y1="6" x2="18" y2="18"></line>
                                 </svg>
                             </button>
-                            <div style={{ flex: 1 }}></div>
-                            <button
-                                onClick={handleSubmit}
-                                disabled={isSubmitting || isUploading}
-                                style={{
-                                    padding: '12px 32px', borderRadius: '14px', border: 'none',
-                                    background: (isSubmitting || isUploading) ? '#94a3b8' : '#2563eb',
-                                    color: '#fff', fontWeight: 900, cursor: (isSubmitting || isUploading) ? 'not-allowed' : 'pointer',
-                                    boxShadow: (isSubmitting || isUploading) ? 'none' : '0 4px 6px rgba(37, 99, 235, 0.2)',
-                                    display: 'flex', alignItems: 'center', gap: '8px'
-                                }}
-                            >
-                                {(isSubmitting || isUploading) && <Loader2 className="animate-spin" size={20} />}
-                                {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันการส่งรายงาน'}
-                            </button>
+                            {(!hasHistoryForSelectedDate || isEditingExisting) && (
+                                <>
+                                    <div style={{ flex: 1 }}></div>
+                                    <button
+                                        onClick={handleSubmit}
+                                        disabled={isSubmitting || isUploading}
+                                        style={{
+                                            padding: '12px 32px', borderRadius: '14px', border: 'none',
+                                            background: (isSubmitting || isUploading) ? '#94a3b8' : '#2563eb',
+                                            color: '#fff', fontWeight: 900, cursor: (isSubmitting || isUploading) ? 'not-allowed' : 'pointer',
+                                            boxShadow: (isSubmitting || isUploading) ? 'none' : '0 4px 6px rgba(37, 99, 235, 0.2)',
+                                            display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        {(isSubmitting || isUploading) && <Loader2 className="animate-spin" size={20} />}
+                                        {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันการส่งรายงาน'}
+                                    </button>
+                                </>
+                            )}
                         </div>
+
                     </>
                 )}
             </div>
@@ -2676,6 +3352,65 @@ const DailyReport = () => {
                         alt="Zoomed view" 
                     />
                 </div>
+            )}
+
+            {modalAlert && modalAlert.isOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(12px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2000, padding: '2rem', animation: 'fadeIn 0.3s ease'
+                }}>
+                    <div style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255, 255, 255, 0.4)', borderRadius: '24px',
+                        padding: '2.5rem', maxWidth: '480px', width: '100%', textAlign: 'center',
+                        boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.1)',
+                        animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    }}>
+                        <div style={{
+                            width: '64px', height: '64px', borderRadius: '20px',
+                            background: modalAlert.type === 'success' 
+                                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                                : modalAlert.type === 'warning'
+                                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                                    : modalAlert.type === 'error'
+                                        ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                                        : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 1.5rem auto', boxShadow: '0 8px 16px rgba(0,0,0,0.1)'
+                        }}>
+                            {modalAlert.type === 'success' ? <CheckCircle2 size={32} /> :
+                             modalAlert.type === 'warning' ? <AlertCircle size={32} /> :
+                             modalAlert.type === 'error' ? <XCircle size={32} /> : <Info size={32} />}
+                        </div>
+                        <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>{modalAlert.title}</h3>
+                        <p style={{ margin: '0 0 2rem 0', fontSize: '0.95rem', color: '#475569', lineHeight: 1.6, fontWeight: 500 }}>{modalAlert.message}</p>
+                        <button
+                            onClick={() => setModalAlert(null)}
+                            style={{
+                                width: '100%', padding: '12px 24px', background: '#0f172a', color: '#ffffff',
+                                border: 'none', borderRadius: '14px', fontSize: '0.95rem', fontWeight: 700,
+                                cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)'
+                            }}
+                        >
+                            ตกลง
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {isReviewModalOpen && reviewTaskInfo && (
+                <TaskReviewModal
+                    isOpen={isReviewModalOpen}
+                    onClose={() => {
+                        setIsReviewModalOpen(false);
+                        setReviewTaskInfo(null);
+                    }}
+                    workOrder={reviewTaskInfo.wo}
+                    task={reviewTaskInfo.task}
+                    onConfirm={handleConfirmReview}
+                />
             )}
         </div>
     );

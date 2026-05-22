@@ -2,15 +2,13 @@ import { FileText, User, Phone } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderCard from './WorkOrderCard';
 import { useWorkOrders } from '../context/WorkOrderContext';
-import LoadingOverlay from './LoadingOverlay';
-import { useState } from 'react';
+
 
 interface WorkOrderDetailModalProps {
     isOpen: boolean;
     onClose: () => void;
     wo: WorkOrder;
     onTaskClick: (task: MasterTask, categoryId: string, workOrderId: string, categoryName?: string) => void;
-    onComplete?: (wo: WorkOrder) => void;
     taskDecisions?: Record<string, 'Approved' | 'Assigned' | 'Rejected'>;
 }
 
@@ -19,11 +17,10 @@ const WorkOrderDetailModal = ({
     onClose,
     wo,
     onTaskClick,
-    onComplete,
     taskDecisions
 }: WorkOrderDetailModalProps) => {
     const { staff } = useWorkOrders();
-    const [isSubmitting, setIsSubmitting] = useState(false);
+
 
     if (!isOpen) return null;
 
@@ -46,7 +43,7 @@ const WorkOrderDetailModal = ({
             zIndex: 1000,
             padding: '2rem'
         }} onClick={onClose}>
-            <LoadingOverlay isVisible={isSubmitting} />
+
             <div
                 style={{
                     backgroundColor: '#f8fafc',
@@ -178,47 +175,6 @@ const WorkOrderDetailModal = ({
                         taskDecisions={taskDecisions}
                     />
                 </div>
-
-                {/* Footer */}
-                {onComplete && (
-                    <div style={{
-                        padding: '1.5rem 2.5rem',
-                        background: '#ffffff',
-                        borderTop: '1px solid #f1f5f9',
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        gap: '1rem'
-                    }}>
-                        <button
-                            onClick={async () => {
-                                if (onComplete) {
-                                    setIsSubmitting(true);
-                                    try {
-                                        await onComplete(wo);
-                                    } finally {
-                                        setIsSubmitting(false);
-                                    }
-                                }
-                            }}
-                            disabled={isSubmitting}
-                            style={{
-                                background: '#4f46e5',
-                                color: '#ffffff',
-                                border: 'none',
-                                padding: '12px 24px',
-                                borderRadius: '12px',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.3)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                            }}
-                        >
-                            <FileText size={18} /> บันทึกผลการตรวจสอบ
-                        </button>
-                    </div>
-                )}
             </div>
         </div >
     );

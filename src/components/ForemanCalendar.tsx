@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { Calendar as CalendarIcon, FileText, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Calendar as CalendarIcon, FileText, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock, X, Camera } from 'lucide-react';
 import { WorkOrder, Project } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import ImageOverlay from './ImageOverlay';
 import { AnalogTimePicker } from './AnalogTimePicker';
+import { db } from '../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 interface ForemanCalendarProps {
     workOrders: WorkOrder[];
@@ -79,6 +81,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                         note: (h as any).notes || h.note || '',
                                         photos: h.photos || [],
                                         laborPhotos: h.laborPhotos || [],
+                                        photosPayload: (h as any).photosPayload || null,
                                         labor: h.labor || [],
                                         type: h.type || 'Normal',
                                         normalHours, otHours, manpower,
@@ -250,8 +253,10 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
 };
 
 const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, events: any[], onClose: () => void }) => {
-    const { addTaskUpdate, workOrders, staff: masterStaff, contractors: masterContractors } = useWorkOrders();
+    const { addTaskUpdate, workOrders, contractors: masterContractors } = useWorkOrders();
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [previewImagesList, setPreviewImagesList] = useState<{ url: string; label: string }[]>([]);
+    const [previewImageIndex, setPreviewImageIndex] = useState<number>(0);
     const [isEditingId, setIsEditingId] = useState<string | null>(null);
     const [tempLabor, setTempLabor] = useState<any[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -262,6 +267,122 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
     // Add Person Modal State
     const [showSelection, setShowSelection] = useState<'Internal' | 'Subco' | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [dailyContractors, setDailyContractors] = useState<any[]>([]);
+
+    useEffect(() => {
+        const unsub = onSnapshot(collection(db, 'dailyContractors'), (snap) => {
+            setDailyContractors(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        });
+        return () => unsub();
+    }, []);
+
+    const getEventPhotos = (ev: any) => {
+        const list: { url: string; label: string }[] = [];
+        
+        // Helper to get shift times from labor records
+        const getShiftTime = (key: 'day' | 'otMorning' | 'otNoon' | 'otEvening') => {
+            if (!ev.labor || !Array.isArray(ev.labor)) return '';
+            const times = ev.labor
+                .filter((l: any) => l.shifts?.[key === 'day' ? 'normal' : key])
+                .map((l: any) => l.shiftTimes?.[key])
+                .filter(Boolean);
+            return times[0] || '';
+        };
+        const parseStart = (range: string) => range?.split(' - ')[0] || '';
+        const parseEnd = (range: string) => range?.split(' - ')[1] || '';
+
+        // Retrieve dynamic shift times for labels
+        const normalRange = getShiftTime('day');
+        const normalStart = parseStart(normalRange) || '08:00';
+        const normalEnd = parseEnd(normalRange) || '17:00';
+
+        const otMorningRange = getShiftTime('otMorning');
+        const otMorningStart = parseStart(otMorningRange) || '06:00';
+        const otMorningEnd = parseEnd(otMorningRange) || '08:00';
+
+        const otNoonRange = getShiftTime('otNoon');
+        const otNoonStart = parseStart(otNoonRange) || '12:00';
+        const otNoonEnd = parseEnd(otNoonRange) || '13:00';
+
+        const otEveningRange = getShiftTime('otEvening');
+        const otEveningStart = parseStart(otEveningRange) || '18:00';
+        const otEveningEnd = parseEnd(otEveningRange) || '21:00';
+
+        if (ev.photos) {
+            if (Array.isArray(ev.photos)) {
+                // Legacy format (flat array of site photos)
+                ev.photos.forEach((url: string) => {
+                    list.push({ url, label: 'รูปถ่ายหน้างาน (Site)' });
+                });
+            } else {
+                // Structured object format
+                const photosObj = ev.photos;
+                
+                // 1. Site photos
+                if (photosObj.site && Array.isArray(photosObj.site)) {
+                    photosObj.site.forEach((url: string) => {
+                        list.push({ url, label: 'รูปถ่ายหน้างาน (Site)' });
+                    });
+                }
+                
+                // 2. Labor photos grouped by shift
+                if (photosObj.laborByShift) {
+                    const laborShift = photosObj.laborByShift;
+                    
+                    // Regular shift
+                    if (laborShift.regular && Array.isArray(laborShift.regular)) {
+                        const regularLabels = [
+                            `กะปกติ: เข้า (${normalStart})`,
+                            'กะปกติ: พักเที่ยง (12:00)',
+                            'กะปกติ: เข้าบ่าย (13:00)',
+                            `กะปกติ: ออก (${normalEnd})`
+                        ];
+                        laborShift.regular.forEach((url: string, idx: number) => {
+                            if (url) {
+                                list.push({ url, label: regularLabels[idx] || 'กะปกติ' });
+                            }
+                        });
+                    }
+                    
+                    // OT Morning
+                    if (laborShift.otMorning) {
+                        const shift = laborShift.otMorning;
+                        if (shift.in) list.push({ url: shift.in, label: `OT เช้า: เข้า (${otMorningStart})` });
+                        if (shift.out) list.push({ url: shift.out, label: `OT เช้า: ออก (${otMorningEnd})` });
+                    }
+
+                    // OT Noon
+                    if (laborShift.otNoon) {
+                        const shift = laborShift.otNoon;
+                        if (shift.in) list.push({ url: shift.in, label: `OT เที่ยง: เข้า (${otNoonStart})` });
+                        if (shift.out) list.push({ url: shift.out, label: `OT เที่ยง: ออก (${otNoonEnd})` });
+                    }
+
+                    // OT Evening
+                    if (laborShift.otEvening) {
+                        const shift = laborShift.otEvening;
+                        if (shift.in) list.push({ url: shift.in, label: `OT เย็น: เข้า (${otEveningStart})` });
+                        if (shift.out) list.push({ url: shift.out, label: `OT เย็น: ออก (${otEveningEnd})` });
+                    }
+                }
+            }
+        }
+        
+        // Fallback for legacy laborPhotos
+        if (list.length === 0 && ev.laborPhotos && Array.isArray(ev.laborPhotos)) {
+            ev.laborPhotos.forEach((url: string) => {
+                list.push({ url, label: 'รูปถ่ายกำลังพล (Labor)' });
+            });
+        }
+        
+        return list;
+    };
+
+    const openPhotoViewer = (imageList: { url: string; label: string }[], index: number) => {
+        setPreviewImagesList(imageList);
+        setPreviewImageIndex(index);
+        setPreviewImage(imageList[index]?.url || null);
+    };
 
     const formattedDate = new Date(dateStr).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -349,7 +470,8 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
         if (type === 'Internal') {
             newRecord.staffId = person.id;
             newRecord.staffName = person.name;
-            newRecord.affiliation = person.affiliation || 'General';
+            newRecord.employeeId = person.employeeId || person.id.replace('DC-', '') || '';
+            newRecord.affiliation = person.skillId || person.affiliation || person.department || 'General';
         } else {
             newRecord.contractorId = person.id;
             newRecord.affiliation = person.name;
@@ -361,9 +483,26 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
     };
 
     const filteredMasters = useMemo(() => {
-        const list = showSelection === 'Internal' ? masterStaff : masterContractors;
-        return list.filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
-    }, [showSelection, searchQuery, masterStaff, masterContractors]);
+        // Normalize query: trim + collapse whitespace + lowercase
+        const q = searchQuery.replace(/\s+/g, ' ').trim().toLowerCase();
+        if (showSelection === 'Internal') {
+            const internalStaffList = dailyContractors.filter(c => (c.department || '').toLowerCase().endsWith('wh'));
+            if (!q) return internalStaffList;
+            return internalStaffList.filter(p => {
+                const name = (p.name || '').replace(/\s+/g, ' ').toLowerCase();
+                const empId = (p.employeeId || '').toLowerCase();
+                const dept = (p.department || p.affiliation || p.skillId || '').toLowerCase();
+                return name.includes(q) || empId.includes(q) || dept.includes(q);
+            });
+        } else {
+            if (!q) return masterContractors;
+            return masterContractors.filter(p => {
+                const name = (p.name || '').replace(/\s+/g, ' ').toLowerCase();
+                const specialty = (p.specialty || []).join(' ').toLowerCase();
+                return name.includes(q) || specialty.includes(q);
+            });
+        }
+    }, [showSelection, searchQuery, dailyContractors, masterContractors]);
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
@@ -453,6 +592,22 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                             const isEditing = isEditingId === ev.taskId;
                             const currentLabor = isEditing ? tempLabor : (ev.labor || []);
 
+                            // Compute manpower counts
+                            let internalCount = 0;
+                            let outsourceCount = 0;
+                            currentLabor.forEach((lab: any) => {
+                                const isInternal = lab.membership === 'Internal'
+                                    || (lab.membership !== 'Outsource' && !lab.contractorId)
+                                    || (lab.workerId && String(lab.workerId).startsWith('DC-'))
+                                    || (lab.staffId && String(lab.staffId).startsWith('DC-'));
+                                const amt = Number(lab.amount) || 1;
+                                if (isInternal) {
+                                    internalCount += amt;
+                                } else {
+                                    outsourceCount += amt;
+                                }
+                            });
+
                             return (
                                 <div key={idx} style={{ background: '#fff', borderRadius: '20px', border: isEditing ? `2px solid ${ev.color?.border || '#6366f1'}` : '1px solid #e2e8f0', borderLeft: `6px solid ${ev.color?.border || '#6366f1'}`, padding: '24px', boxShadow: isEditing ? `0 15px 40px -10px ${ev.color?.border || '#6366f1'}40` : 'none' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
@@ -461,23 +616,50 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                                             <h4 style={{ fontSize: '1.15rem', fontWeight: 950, color: '#0f172a', margin: '6px 0 0' }}>{ev.taskName}</h4>
                                         </div>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 850, color: '#3b82f6', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '3px 8px', borderRadius: '6px' }}>
+                                                    บริษัท: {internalCount} คน
+                                                </span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 850, color: '#10b981', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '6px' }}>
+                                                    ซับ: {outsourceCount} คน
+                                                </span>
+                                            </div>
                                             {!isEditing && (
                                                 <button onClick={() => startEditing(ev)} style={{ background: '#fff', border: '1px solid #e2e8f0', color: '#6366f1', padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 850, cursor: 'pointer' }}>
                                                     <Edit2 size={14} style={{ marginRight: '6px' }} /> แก้ไข
                                                 </button>
                                             )}
-                                            {ev.laborPhotos && ev.laborPhotos.length > 0 && !isEditing && (
-                                                <div style={{ display: 'flex', gap: '4px' }}>
-                                                    {ev.laborPhotos.slice(0, 3).map((photoUrl: string, idx: number) => (
-                                                        <img key={idx} src={photoUrl} alt="Labor" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #e2e8f0', cursor: 'pointer', background: '#f1f5f9' }} onClick={() => setPreviewImage(photoUrl)} />
-                                                    ))}
-                                                    {ev.laborPhotos.length > 3 && (
-                                                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 900, color: '#64748b', cursor: 'pointer' }} onClick={() => setPreviewImage(ev.laborPhotos[3])}>
-                                                            +{ev.laborPhotos.length - 3}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
+                                            {!isEditing && (() => {
+                                                const allPhotos = getEventPhotos(ev);
+                                                if (allPhotos.length === 0) return null;
+                                                return (
+                                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                                        {allPhotos.slice(0, 3).map((ph, pidx) => (
+                                                            <img 
+                                                                key={pidx} 
+                                                                src={ph.url} 
+                                                                alt={ph.label} 
+                                                                title={ph.label}
+                                                                style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #e2e8f0', cursor: 'pointer', background: '#f1f5f9', transition: 'transform 0.15s' }} 
+                                                                onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                                                                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                                                                onClick={() => openPhotoViewer(allPhotos, pidx)} 
+                                                            />
+                                                        ))}
+                                                        {allPhotos.length > 3 && (
+                                                            <div 
+                                                                title="ดูรูปภาพเพิ่มเติม"
+                                                                style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 900, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }} 
+                                                                onMouseOver={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.transform = 'scale(1.05)'; }}
+                                                                onMouseOut={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.transform = 'scale(1)'; }}
+                                                                onClick={() => openPhotoViewer(allPhotos, 3)}
+                                                            >
+                                                                +{allPhotos.length - 3}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 
@@ -510,8 +692,35 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                                                     <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fff', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1' }}><Users size={18} /></div>
                                                     <div style={{ flex: 1 }}>
-                                                        <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0f172a' }}>{lab.staffName || lab.affiliation}</div>
-                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{lab.membership === 'Internal' ? 'คนงานบริษัท' : 'ซับเหมอ'}</div>
+                                                        {(() => {
+                                                            const isInternal = lab.membership === 'Internal'
+                                                                || (lab.membership !== 'Outsource' && !lab.contractorId)
+                                                                || (lab.workerId && String(lab.workerId).startsWith('DC-'))
+                                                                || (lab.staffId && String(lab.staffId).startsWith('DC-'));
+                                                            const workerId = lab.workerId || lab.staffId || lab.contractorId;
+                                                            const matchingContractor = isInternal 
+                                                                ? dailyContractors.find(c => c.id === workerId)
+                                                                : masterContractors.find(c => c.id === workerId);
+                                                            const empId = isInternal 
+                                                                ? (lab.employeeId || matchingContractor?.employeeId || (workerId && String(workerId).startsWith('DC-') ? String(workerId).replace('DC-', '') : ''))
+                                                                : (lab.contractorId || matchingContractor?.id || '');
+                                                            const name = isInternal 
+                                                                ? (lab.workerName || lab.staffName || matchingContractor?.name || lab.affiliation || 'ไม่ระบุชื่อ')
+                                                                : (matchingContractor?.name || lab.affiliation || lab.workerName || 'ไม่ระบุชื่อ');
+                                                            const label = isInternal ? 'คนงานบริษัท (Internal)' : 'ทีมงานผู้รับเหมา (Subco)';
+                                                            
+                                                            const empIdStr = empId ? `${empId} : ` : '';
+                                                            return (
+                                                                <>
+                                                                    <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0f172a' }}>
+                                                                        {empIdStr}{name}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.75rem', color: isInternal ? '#3b82f6' : '#10b981', fontWeight: 800 }}>
+                                                                        {label}
+                                                                    </div>
+                                                                </>
+                                                            );
+                                                        })()}
                                                     </div>
                                                     {isEditing && (
                                                         <button onClick={() => removePerson(lIdx)} style={{ background: '#fef2f2', border: 'none', width: '32px', height: '32px', borderRadius: '8px', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
@@ -572,11 +781,187 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
 
                                         {isEditing && (
                                             <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                                                <button onClick={() => setShowSelection('Internal')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px dashed #cbd5e1', background: '#fff', color: '#64748b', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Plus size={16} /> ทีมบริษัท</button>
-                                                <button onClick={() => setShowSelection('Subco')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px dashed #cbd5e1', background: '#fff', color: '#64748b', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Plus size={16} /> ทีมซับ</button>
+                                                <button onClick={() => setShowSelection('Internal')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px dashed #cbd5e1', background: '#fff', color: '#64748b', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Plus size={16} /> ทีมงานบริษัท (Internal)</button>
+                                                <button onClick={() => setShowSelection('Subco')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px dashed #cbd5e1', background: '#fff', color: '#64748b', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Plus size={16} /> ทีมงานผู้รับเหมา (Subco)</button>
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Dedicated Daily Report Photos Section */}
+                                    {!isEditing && (() => {
+                                        const allPhotos = getEventPhotos(ev);
+                                        if (allPhotos.length === 0) return null;
+
+                                        const photosObj = ev.photos || {};
+                                        const sitePhotos = Array.isArray(photosObj) ? [] : (photosObj.site || []);
+                                        const laborShift = Array.isArray(photosObj) ? null : (photosObj.laborByShift || null);
+                                        const legacyLabor = ev.laborPhotos || [];
+
+                                        const getShiftTime = (key: 'day' | 'otMorning' | 'otNoon' | 'otEvening') => {
+                                            if (!ev.labor || !Array.isArray(ev.labor)) return '';
+                                            const times = ev.labor
+                                                .filter((l: any) => l.shifts?.[key === 'day' ? 'normal' : key])
+                                                .map((l: any) => l.shiftTimes?.[key])
+                                                .filter(Boolean);
+                                            return times[0] || '';
+                                        };
+                                        const parseStart = (range: string) => range?.split(' - ')[0] || '';
+                                        const parseEnd = (range: string) => range?.split(' - ')[1] || '';
+
+                                        const normalRange = getShiftTime('day');
+                                        const normalStart = parseStart(normalRange) || '08:00';
+                                        const normalEnd = parseEnd(normalRange) || '17:00';
+
+                                        const otMorningRange = getShiftTime('otMorning');
+                                        const otMorningStart = parseStart(otMorningRange) || '06:00';
+                                        const otMorningEnd = parseEnd(otMorningRange) || '08:00';
+
+                                        const otNoonRange = getShiftTime('otNoon');
+                                        const otNoonStart = parseStart(otNoonRange) || '12:00';
+                                        const otNoonEnd = parseEnd(otNoonRange) || '13:00';
+
+                                        const otEveningRange = getShiftTime('otEvening');
+                                        const otEveningStart = parseStart(otEveningRange) || '18:00';
+                                        const otEveningEnd = parseEnd(otEveningRange) || '21:00';
+
+                                        // Function to open photo in full screen viewer using the index from allPhotos
+                                        const handlePhotoClick = (url: string) => {
+                                            const idx = allPhotos.findIndex(p => p.url === url);
+                                            if (idx !== -1) {
+                                                openPhotoViewer(allPhotos, idx);
+                                            }
+                                        };
+
+                                        // Helper to render thumbnail with label underneath
+                                        const renderPhotoThumbnail = (url: string, subLabel: string, fullLabel: string) => (
+                                            <div key={url} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '70px' }}>
+                                                <img 
+                                                    src={url} 
+                                                    alt={fullLabel}
+                                                    title={fullLabel}
+                                                    style={{ width: '70px', height: '70px', borderRadius: '12px', objectFit: 'cover', border: '1.5px solid #e2e8f0', cursor: 'pointer', background: '#f8fafc', transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }} 
+                                                    onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.borderColor = '#6366f1'; }}
+                                                    onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                                                    onClick={() => handlePhotoClick(url)} 
+                                                />
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textAlign: 'center', wordBreak: 'break-word', lineHeight: 1.2 }}>{subLabel}</span>
+                                            </div>
+                                        );
+
+                                        const hasSitePhotos = sitePhotos.length > 0;
+                                        const hasLaborPhotos = (laborShift && (
+                                            (laborShift.regular && laborShift.regular.some(Boolean)) || 
+                                            laborShift.otMorning || 
+                                            laborShift.otNoon || 
+                                            laborShift.otEvening
+                                        )) || legacyLabor.length > 0;
+
+                                        return (
+                                            <div style={{ background: '#f8fafc', borderRadius: '20px', padding: '18px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+                                                <h5 style={{ fontSize: '0.85rem', fontWeight: 900, color: '#334155', margin: '0 0 14px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <Camera size={16} color="#6366f1" /> รูปถ่ายรายงานประจำวัน
+                                                </h5>
+
+                                                {/* 1. Site Photos Category */}
+                                                {hasSitePhotos && (
+                                                    <div style={{ marginBottom: hasLaborPhotos ? '16px' : 0 }}>
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#475569', background: '#e2e8f0', padding: '4px 10px', borderRadius: '8px', display: 'inline-block', marginBottom: '10px' }}>
+                                                            รูปถ่ายหน้างาน (Site)
+                                                        </div>
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                            {sitePhotos.map((url: string, pIdx: number) => (
+                                                                url && renderPhotoThumbnail(url, `รูปที่ ${pIdx + 1}`, 'รูปถ่ายหน้างาน (Site)')
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* 2. Labor Photos Category */}
+                                                {hasLaborPhotos && (
+                                                    <div>
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#1e40af', background: '#dbeafe', padding: '4px 10px', borderRadius: '8px', display: 'inline-block', marginBottom: '10px' }}>
+                                                            รูปถ่ายกำลังพล (Labor)
+                                                        </div>
+
+                                                        {/* Structured Labor Photos */}
+                                                        {laborShift ? (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                {/* Regular Shift */}
+                                                                {laborShift.regular && laborShift.regular.some(Boolean) && (
+                                                                    <div>
+                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', marginBottom: '6px' }}>
+                                                                            เวลาทำงานปกติ ({normalStart} - {normalEnd})
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                                            {(() => {
+                                                                                const regularSubLabels = ['เข้า', 'พักเที่ยง', 'เข้าบ่าย', 'ออก'];
+                                                                                const regularFullLabels = [
+                                                                                    `กะปกติ: เข้า (${normalStart})`,
+                                                                                    'กะปกติ: พักเที่ยง (12:00)',
+                                                                                    'กะปกติ: เข้าบ่าย (13:00)',
+                                                                                    `กะปกติ: ออก (${normalEnd})`
+                                                                                ];
+                                                                                return laborShift.regular.map((url: string, rIdx: number) => {
+                                                                                    if (!url) return null;
+                                                                                    return renderPhotoThumbnail(url, regularSubLabels[rIdx] || 'กะปกติ', regularFullLabels[rIdx] || 'กะปกติ');
+                                                                                });
+                                                                            })()}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* OT Morning */}
+                                                                {laborShift.otMorning && (
+                                                                    <div>
+                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', marginBottom: '6px' }}>
+                                                                            OT เช้า ({otMorningStart} - {otMorningEnd})
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                                            {laborShift.otMorning.in && renderPhotoThumbnail(laborShift.otMorning.in, 'เข้า', `OT เช้า: เข้า (${otMorningStart})`)}
+                                                                            {laborShift.otMorning.out && renderPhotoThumbnail(laborShift.otMorning.out, 'ออก', `OT เช้า: ออก (${otMorningEnd})`)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* OT Noon */}
+                                                                {laborShift.otNoon && (
+                                                                    <div>
+                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', marginBottom: '6px' }}>
+                                                                            OT เที่ยง ({otNoonStart} - {otNoonEnd})
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                                            {laborShift.otNoon.in && renderPhotoThumbnail(laborShift.otNoon.in, 'เข้า', `OT เที่ยง: เข้า (${otNoonStart})`)}
+                                                                            {laborShift.otNoon.out && renderPhotoThumbnail(laborShift.otNoon.out, 'ออก', `OT เที่ยง: ออก (${otNoonEnd})`)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* OT Evening */}
+                                                                {laborShift.otEvening && (
+                                                                    <div>
+                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', marginBottom: '6px' }}>
+                                                                            OT เย็น ({otEveningStart} - {otEveningEnd})
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                                            {laborShift.otEvening.in && renderPhotoThumbnail(laborShift.otEvening.in, 'เข้า', `OT เย็น: เข้า (${otEveningStart})`)}
+                                                                            {laborShift.otEvening.out && renderPhotoThumbnail(laborShift.otEvening.out, 'ออก', `OT เย็น: ออก (${otEveningEnd})`)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            /* Legacy Labor Photos */
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                                {legacyLabor.map((url: string, pIdx: number) => (
+                                                                    url && renderPhotoThumbnail(url, `รูปที่ ${pIdx + 1}`, 'รูปถ่ายกำลังพล (Labor)')
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
 
                                     {isEditing && (
                                         <div style={{ display: 'flex', gap: '12px' }}>
@@ -600,7 +985,7 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                                 <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                                 <input
                                     autoFocus
-                                    placeholder={`ค้นหาชื่อ${showSelection === 'Internal' ? 'พนักงาน' : 'ทีมซับ'}...`}
+                                    placeholder={`ค้นหาชื่อ${showSelection === 'Internal' ? 'คนงานบริษัท (Internal)' : 'ทีมงานผู้รับเหมา (Subco)'}...`}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     style={{ width: '100%', padding: '12px 12px 12px 40px', borderRadius: '12px', border: '2px solid #6366f1', background: '#f8faff', fontSize: '1rem', fontWeight: 700 }}
@@ -610,12 +995,18 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                         <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
                             {filteredMasters.map((p: any) => (
                                 <div key={p.id} onClick={() => addPerson(p, showSelection)} style={{ padding: '16px', borderRadius: '12px', border: '1px solid #f1f5f9', marginBottom: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }} onMouseOver={(e) => e.currentTarget.style.background = '#f8faff'} onMouseOut={(e) => e.currentTarget.style.background = 'none'}>
-                                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1', fontWeight: 900 }}>{p.name?.[0]}</div>
-                                    <div>
-                                        <div style={{ fontWeight: 900, color: '#0f172a' }}>{p.name}</div>
-                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{p.affiliation || 'General'}</div>
+                                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: showSelection === 'Internal' ? '#eff6ff' : '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: showSelection === 'Internal' ? '#3b82f6' : '#10b981', fontWeight: 900, fontSize: '1rem', flexShrink: 0 }}>{p.name?.[0]}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {showSelection === 'Internal' && p.employeeId ? (
+                                                <><span style={{ color: '#6366f1', fontWeight: 800, fontSize: '0.85rem', marginRight: '6px' }}>{p.employeeId}</span>{p.name}</>
+                                            ) : p.name}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', color: showSelection === 'Internal' ? '#3b82f6' : '#10b981', fontWeight: 700, marginTop: '2px' }}>
+                                            {showSelection === 'Internal' ? (p.department || p.affiliation || p.skillId || 'General') : (p.specialty?.[0] || p.affiliation || 'ผู้รับเหมา')}
+                                        </div>
                                     </div>
-                                    <Plus size={18} style={{ marginLeft: 'auto', color: '#6366f1' }} />
+                                    <Plus size={18} style={{ marginLeft: 'auto', color: showSelection === 'Internal' ? '#3b82f6' : '#10b981', flexShrink: 0 }} />
                                 </div>
                             ))}
                         </div>
@@ -631,7 +1022,21 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                     />
                 )}
 
-                <ImageOverlay src={previewImage || ''} isOpen={!!previewImage} onClose={() => setPreviewImage(null)} />
+                <ImageOverlay 
+                    src={previewImage || ''} 
+                    isOpen={!!previewImage} 
+                    onClose={() => {
+                        setPreviewImage(null);
+                        setPreviewImagesList([]);
+                        setPreviewImageIndex(0);
+                    }} 
+                    images={previewImagesList}
+                    currentIndex={previewImageIndex}
+                    onIndexChange={(idx) => {
+                        setPreviewImageIndex(idx);
+                        setPreviewImage(previewImagesList[idx]?.url || null);
+                    }}
+                />
             </div>
         </div>
     );

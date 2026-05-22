@@ -24,6 +24,90 @@ interface WorkOrderContextType {
 
 const WorkOrderContext = createContext<WorkOrderContextType | undefined>(undefined);
 
+// ✅ Dropdown category list — same order as ForemanReportModal.tsx
+// Position 1-indexed: หมวดงานทั่วไป=0001, งานโครงสร้าง=0002, งานปูนฉาบ=0003, งานกระเบื้อง=0004, ...
+const CATEGORIES_LIST = [
+    'หมวดงานทั่วไป (General)',        // pos 1 → 0001
+    'งานโครงสร้าง',                    // pos 2 → 0002
+    'งานปูนฉาบ/ผิวพื้นผนัง',          // pos 3 → 0003
+    'งานกระเบื้อง/สุขภัณฑ์',          // pos 4 → 0004
+    'งานไฟฟ้า',                        // pos 5 → 0005
+    'งานระบบประปา/สุขาภิบาล',         // pos 6 → 0006
+    'งานสี/เคลือบผิว',                 // pos 7 → 0007
+    'งานฝ้าเพดาน',                     // pos 8 → 0008
+    'งานบานประตู/หน้าต่าง',            // pos 9 → 0009
+    'งานอลูมิเนียม/มุ้งลวด',           // pos 10 → 0010
+    'งานเฟอร์นิเจอร์บิวท์อิน',        // pos 11 → 0011
+    'งานระบบปรับอากาศ (Air)',           // pos 12 → 0012
+    'งานระบบโทรศัพท์/อินเตอร์เน็ต',   // pos 13 → 0013
+    'งานระบบแจ้งเหตุเพลิงใหม่',       // pos 14 → 0014
+    'งานระบบความปลอดภัย',              // pos 15 → 0015
+    'งานพื้น/พื้นไม้ลามิเนต',          // pos 16 → 0016
+];
+
+// ✅ Helper to format category and task IDs according to the LB structure
+//
+// Parses WO ID like: ART-2026-WOA-0002
+//   projectCode = "ART"  (first segment)
+//   jobCode     = "WOA"  (second-to-last segment)
+//   woSeq       = "0002" (last segment)
+//
+// Category ID: [ProjectCode]-[JobCode]-[CatTypePos4digits]
+//   e.g. งานกระเบื้อง in ART project → ART-WOA-0004   (unique per project + category type)
+//
+// Task ID: [ProjectCode]-[JobCode]-[WOSeq]-[globalTaskSeq7digits]
+//   e.g. ART-WOA-0002-0000001   (globally unique: no two tasks in any project/WO can share this)
+//
+// ONLY applies to WOA/WOP work orders. All other codes are untouched.
+const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
+    if (!categories || categories.length === 0) return [];
+
+    // Guard: only WOA/WOP
+    const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
+    if (!isWoaWop) return categories;
+
+    // Parse WO ID — e.g. ART-2026-WOA-0002
+    const parts = woId.split('-');
+    const projectCode = parts[0].toUpperCase();                                        // "ART"
+    const jobCode     = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA'; // "WOA"
+    const woSeq       = parts.length >= 1 ? parts[parts.length - 1] : '0001';          // "0002"
+
+    // Global task counter — increments across ALL categories in this WO (prevents internal dups)
+    let globalTaskCounter = 0;
+
+    return categories.map((cat, catIndex) => {
+        const catName = (cat.name || '').trim().toLowerCase();
+        const listIndex = CATEGORIES_LIST.findIndex(n => n.trim().toLowerCase() === catName);
+
+        // 1-indexed category type position; fallback to array position if name not found
+        const position = listIndex >= 0 ? listIndex + 1 : catIndex + 1;
+
+        // Category ID: ProjectCode-JobCode-CatTypeSeq4digits
+        // e.g. ART-WOA-0004  (tiles in ART project, any WO number)
+        const computedCatId = `${projectCode}-${jobCode}-${String(position).padStart(4, '0')}`;
+
+        // Task ID: ProjectCode-JobCode-WOSeq-globalTaskSeq7digits
+        // e.g. ART-WOA-0002-0000001  (globally unique across all projects and WOs)
+        const tasks = cat.tasks ? cat.tasks.map((task: any) => {
+            globalTaskCounter++;
+            const computedTaskId = `${projectCode}-${jobCode}-${woSeq}-${String(globalTaskCounter).padStart(7, '0')}`;
+            return {
+                ...task,
+                id: computedTaskId,
+                taskCode: computedTaskId,
+                catId: computedCatId
+            };
+        }) : [];
+
+        return {
+            ...cat,
+            id: computedCatId,
+            catId: computedCatId,
+            tasks
+        };
+    });
+};
+
 export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
     const { user } = useAuth();
     const [allWorkOrders, setAllWorkOrders] = useState<WorkOrder[]>([]);
@@ -37,19 +121,28 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const categoriesSnap = await getDocs(collection(db, 'workOrders', woId, 'categories'));
         const categories: Category[] = [];
 
-        for (const catDoc of categoriesSnap.docs) {
+        // Sort categories alphabetically by document ID for stable deterministic ordering
+        const sortedCategoryDocs = [...categoriesSnap.docs].sort((a, b) => a.id.localeCompare(b.id));
+
+        for (const catDoc of sortedCategoryDocs) {
             const catData = catDoc.data();
             const tasksSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks'));
             const tasks: MasterTask[] = [];
 
-            for (const taskDoc of tasksSnap.docs) {
+            // Sort tasks alphabetically by document ID for stable deterministic ordering
+            const sortedTaskDocs = [...tasksSnap.docs].sort((a, b) => a.id.localeCompare(b.id));
+
+            for (const taskDoc of sortedTaskDocs) {
                 const taskData = taskDoc.data();
                 const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport'));
                 const dailyreports = reportsSnap.docs.map(d => ({ ...d.data(), id: d.id }) as DailyReport);
                 
+                const taskCode = taskDoc.id;
+
                 tasks.push({ 
                     ...taskData, 
                     id: taskDoc.id, 
+                    taskCode,
                     dailyreports,
                     history: dailyreports // ✅ Backward compatibility for legacy UI components
                 } as unknown as MasterTask);
@@ -147,20 +240,81 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
     const getWorkOrderById = (id: string) => workOrders.find(wo => wo.id === id);
 
     const addWorkOrder = async (wo: WorkOrder) => {
-        const { categories, ...rest } = wo;
+        const isWoaWop = wo.id.toUpperCase().includes('WOA') || wo.id.toUpperCase().includes('WOP');
+        
+        if (!isWoaWop) {
+            // Standard/Legacy write for non-WOA/WOP systems (unmodified)
+            const { categories, ...rest } = wo;
+            await setDoc(doc(db, 'workOrders', wo.id), rest);
+            if (categories && categories.length > 0) {
+                const batch = writeBatch(db);
+                for (const cat of categories) {
+                    const catRef = doc(db, 'workOrders', wo.id, 'categories', cat.id);
+                    const { tasks, ...catRest } = cat;
+                    batch.set(catRef, catRest);
+
+                    if (tasks) {
+                        for (const task of tasks) {
+                            const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', task.id);
+                            batch.set(taskRef, task);
+                        }
+                    }
+                }
+                await batch.commit();
+            }
+            return;
+        }
+
+        // Format categories and tasks to have structured document IDs matching the LB format for WOA/WOP
+        const formattedCategories = formatCategoriesAndTasks(wo.id, wo.categories || []);
+        const woWithFormattedCategories = {
+            ...wo,
+            categories: formattedCategories
+        };
+        const { categories, ...rest } = woWithFormattedCategories;
+        
+        // Clean up any existing categories/tasks for this work order to prevent orphans
+        try {
+            const oldCategoriesSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories'));
+            if (!oldCategoriesSnap.empty) {
+                const deleteBatch = writeBatch(db);
+                for (const catDoc of oldCategoriesSnap.docs) {
+                    const oldTasksSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks'));
+                    for (const taskDoc of oldTasksSnap.docs) {
+                        const oldReportsSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport'));
+                        for (const reportDoc of oldReportsSnap.docs) {
+                            deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport', reportDoc.id));
+                        }
+                        deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id));
+                    }
+                    deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id));
+                }
+                await deleteBatch.commit();
+            }
+        } catch (error) {
+            console.error("Error cleaning up legacy subcollections in addWorkOrder:", error);
+        }
+
         await setDoc(doc(db, 'workOrders', wo.id), rest);
         
-        if (categories && categories.length > 0) {
+        if (formattedCategories && formattedCategories.length > 0) {
             const batch = writeBatch(db);
-            for (const cat of categories) {
+            for (const cat of formattedCategories) {
                 const catRef = doc(db, 'workOrders', wo.id, 'categories', cat.id);
                 const { tasks, ...catRest } = cat;
                 batch.set(catRef, catRest);
 
                 if (tasks) {
                     for (const task of tasks) {
+                        const { dailyreports, dailyReport, ...taskRest } = task;
                         const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', task.id);
-                        batch.set(taskRef, task);
+                        batch.set(taskRef, taskRest);
+
+                        const reportsToSave = dailyreports || dailyReport || [];
+                        for (const report of reportsToSave) {
+                            const reportRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', task.id, 'dailyreport', report.id);
+                            batch.set(reportRef, report);
+                        }
                     }
                 }
             }
@@ -169,18 +323,73 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const saveEvaluation = async (id: string, status: string, categories: any[]) => {
+        const isWoaWop = id.toUpperCase().includes('WOA') || id.toUpperCase().includes('WOP');
+        
+        if (!isWoaWop) {
+            // Standard/Legacy write for non-WOA/WOP systems (unmodified)
+            const batch = writeBatch(db);
+            batch.update(doc(db, 'workOrders', id), { status, lastUpdate: new Date().toISOString() });
+            if (categories) {
+                for (const cat of categories) {
+                    const catRef = doc(db, 'workOrders', id, 'categories', cat.id);
+                    const { tasks, ...catRest } = cat;
+                    batch.set(catRef, catRest);
+
+                    if (tasks) {
+                        for (const task of tasks) {
+                            const taskRef = doc(db, 'workOrders', id, 'categories', cat.id, 'tasks', task.id);
+                            batch.set(taskRef, task);
+                        }
+                    }
+                }
+            }
+            await batch.commit();
+            return;
+        }
+
+        const formattedCategories = formatCategoriesAndTasks(id, categories || []);
+        
+        // Clean up any existing categories/tasks for this work order to prevent orphans
+        try {
+            const oldCategoriesSnap = await getDocs(collection(db, 'workOrders', id, 'categories'));
+            if (!oldCategoriesSnap.empty) {
+                const deleteBatch = writeBatch(db);
+                for (const catDoc of oldCategoriesSnap.docs) {
+                    const oldTasksSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks'));
+                    for (const taskDoc of oldTasksSnap.docs) {
+                        const oldReportsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport'));
+                        for (const reportDoc of oldReportsSnap.docs) {
+                            deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport', reportDoc.id));
+                        }
+                        deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id));
+                    }
+                    deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id));
+                }
+                await deleteBatch.commit();
+            }
+        } catch (error) {
+            console.error("Error cleaning up legacy subcollections in saveEvaluation:", error);
+        }
+
         const batch = writeBatch(db);
         batch.update(doc(db, 'workOrders', id), { status, lastUpdate: new Date().toISOString() });
 
-        for (const cat of categories) {
+        for (const cat of formattedCategories) {
             const catRef = doc(db, 'workOrders', id, 'categories', cat.id);
             const { tasks, ...catRest } = cat;
             batch.set(catRef, catRest);
 
             if (tasks) {
                 for (const task of tasks) {
+                    const { dailyreports, dailyReport, ...taskRest } = task;
                     const taskRef = doc(db, 'workOrders', id, 'categories', cat.id, 'tasks', task.id);
-                    batch.set(taskRef, task);
+                    batch.set(taskRef, taskRest);
+
+                    const reportsToSave = dailyreports || dailyReport || [];
+                    for (const report of reportsToSave) {
+                        const reportRef = doc(db, 'workOrders', id, 'categories', cat.id, 'tasks', task.id, 'dailyreport', report.id);
+                        batch.set(reportRef, report);
+                    }
                 }
             }
         }

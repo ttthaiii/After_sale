@@ -125,6 +125,15 @@ export interface MasterTask {
     unlockedDates?: Record<string, { unlockedUntil: string, reason?: string }>; // For retroactive admin unlocking
     
     dailyreports?: DailyReport[]; 
+    
+    // Revision-related fields for tracking SLA round-trips and owner feedback
+    currentRevision?: string;
+    revisionId?: string;
+    revisionName?: string;
+    revisionCreatedAt?: any;
+    ownerName?: string;
+    notes?: string;
+    updatedAt?: string;
 }
 
 export interface Attachment {

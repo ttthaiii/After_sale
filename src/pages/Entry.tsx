@@ -11,7 +11,8 @@ import {
     AlertCircle,
     CheckCircle2,
     XCircle,
-    ClipboardCheck
+    ClipboardCheck,
+    Info
 } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -31,8 +32,14 @@ const Entry = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    const [modalAlert, setModalAlert] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'success' | 'info' | 'warning' | 'error';
+    } | null>(null);
 
-    // ✅ Deep Link: Handle highlighting instead of immediate edit
+    // ✅ Deep Link: Handle status checking & auto-open edit modal (Case B)
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const workOrderId = params.get('id');
@@ -40,18 +47,39 @@ const Entry = () => {
         if (workOrderId && workOrders.length > 0) {
             const wo = workOrders.find(w => w.id === workOrderId);
             if (wo) {
-                setHighlightedId(workOrderId);
-                
-                // Scroll to the element if possible (using ID or a slight delay)
-                setTimeout(() => {
-                    const el = document.getElementById(`wo-card-${workOrderId}`);
-                    if (el) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                }, 100);
+                if (wo.status === 'Rejected' || wo.status === 'Draft') {
+                    setHighlightedId(workOrderId);
+                    handleEditDraftOrEvaluating(wo);
+                    
+                    // Scroll to the element if possible (using ID or a slight delay)
+                    setTimeout(() => {
+                        const el = document.getElementById(`wo-card-${workOrderId}`);
+                        if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 100);
 
-                // Clear highlight after 5 seconds
-                setTimeout(() => setHighlightedId(null), 5000);
+                    // Clear highlight after 5 seconds
+                    setTimeout(() => setHighlightedId(null), 5000);
+                } else {
+                    const statusThaiMap: Record<string, string> = {
+                        'Evaluating': 'อยู่ระหว่างให้แอดมินประเมิน',
+                        'Pending': 'รออนุมัติขั้นสุดท้าย',
+                        'Approved': 'ได้รับอนุมัติและพร้อมทำงานแล้ว',
+                        'Partially Approved': 'อนุมัติบางส่วนและเริ่มงานแล้ว',
+                        'In Progress': 'กำลังดำเนินการก่อสร้าง/ซ่อมแซม',
+                        'Completed': 'เสร็จสิ้นเรียบร้อยแล้ว',
+                        'Verified': 'ตรวจสอบความสมบูรณ์แล้ว',
+                        'Cancelled': 'ถูกยกเลิกแล้ว'
+                    };
+                    
+                    setModalAlert({
+                        isOpen: true,
+                        title: 'ขั้นตอนการทำงานเปลี่ยนไปแล้ว',
+                        message: `ใบสั่งงานนี้ได้รับการดำเนินการส่งแก้ไขและเปลี่ยนขั้นตอนไปแล้ว (สถานะปัจจุบัน: ${statusThaiMap[wo.status] || wo.status}) จึงไม่สามารถเข้าสู่หน้าจอแก้ไขได้อีก`,
+                        type: 'info'
+                    });
+                }
 
                 // Clear the ID from URL
                 const newParams = new URLSearchParams(location.search);
@@ -60,7 +88,7 @@ const Entry = () => {
                 navigate({ search: newSearch ? `?${newSearch}` : '' }, { replace: true });
             }
         }
-    }, [location.search, workOrders]);
+    }, [location.search, workOrders, navigate]);
 
     const handleCreateNew = (type: WorkOrderType) => {
         setSelectedType(type);
@@ -630,6 +658,52 @@ const Entry = () => {
                 onClose={() => setIsEditModalOpen(false)} 
                 editWorkOrder={selectedOrder || undefined}
             />
+
+            {modalAlert && modalAlert.isOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(12px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2000, padding: '2rem', animation: 'fadeIn 0.3s ease'
+                }}>
+                    <div style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255, 255, 255, 0.4)', borderRadius: '24px',
+                        padding: '2.5rem', maxWidth: '480px', width: '100%', textAlign: 'center',
+                        boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.1)',
+                        animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    }}>
+                        <div style={{
+                            width: '64px', height: '64px', borderRadius: '20px',
+                            background: modalAlert.type === 'success' 
+                                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                                : modalAlert.type === 'warning'
+                                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                                    : modalAlert.type === 'error'
+                                        ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                                        : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 1.5rem auto', boxShadow: '0 8px 16px rgba(0,0,0,0.1)'
+                        }}>
+                            {modalAlert.type === 'success' ? <CheckCircle2 size={32} /> :
+                             modalAlert.type === 'warning' ? <AlertCircle size={32} /> :
+                             modalAlert.type === 'error' ? <XCircle size={32} /> : <Info size={32} />}
+                        </div>
+                        <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>{modalAlert.title}</h3>
+                        <p style={{ margin: '0 0 2rem 0', fontSize: '0.95rem', color: '#475569', lineHeight: 1.6, fontWeight: 500 }}>{modalAlert.message}</p>
+                        <button
+                            onClick={() => setModalAlert(null)}
+                            style={{
+                                width: '100%', padding: '12px 24px', background: '#0f172a', color: '#ffffff',
+                                border: 'none', borderRadius: '14px', fontSize: '0.95rem', fontWeight: 700,
+                                cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)'
+                            }}
+                        >
+                            ตกลง
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
