@@ -1,4 +1,4 @@
-import { FileText, Download, Camera, User, UserCheck, CheckCircle, Clock, Activity, ChevronDown } from 'lucide-react';
+import { FileText, Download, Camera, User, UserCheck, CheckCircle, Clock, Activity, ChevronDown, Printer, Star, RotateCcw } from 'lucide-react';
 import { WorkOrder, MasterTask, Project, Staff, Contractor } from '../types';
 
 interface HistoryDetailModalProps {
@@ -9,28 +9,41 @@ interface HistoryDetailModalProps {
     staff: Staff[];
     contractors: Contractor[]; // Leaving for future use in team list if needed, but for now we'll mark as ignored if unused
     currentUserId?: string;
+    selectedTaskId?: string | null; // Track specific task clicked in history
 }
 
-const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, currentUserId }: HistoryDetailModalProps) => {
+const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, currentUserId, selectedTaskId }: HistoryDetailModalProps) => {
     if (!isOpen) return null;
 
     const project = projects.find(p => p.id === workOrder.projectId);
 
+    const allTasks = (workOrder.categories || []).flatMap(cat => cat.tasks || []);
+    const clickedTask = selectedTaskId ? allTasks.find(t => t && t.id === selectedTaskId) : null;
+
     // Calculate Actual End Date dynamically based on history and submission timestamps
     let endDateStr = '-';
-    const allTasks = (workOrder.categories || []).flatMap(cat => cat.tasks || []);
-    const validTasks = allTasks.filter(t => t && t.status !== 'Rejected');
+    const validTasks = (clickedTask ? [clickedTask] : allTasks).filter(t => {
+        if (!t) return false;
+        if (clickedTask) return true; // Always show if explicitly clicked
+        const isAdminOrFakeReject = t.status === 'Rejected' && 
+            (!t.responsibleStaffIds || t.responsibleStaffIds.length === 0);
+        return !isAdminOrFakeReject;
+    });
     const totalCount = validTasks.length > 0 ? validTasks.length : allTasks.length;
     const completedCount = validTasks.filter(t => t && t.status === 'Completed').length;
     const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-    if (workOrder.status === 'Completed' || percentage === 100) {
+    if (clickedTask?.status === 'Rejected' || workOrder.status === 'Rejected') {
+        endDateStr = 'ปฏิเสธงาน';
+    } else if ((clickedTask?.status as string) === 'Cancelled' || workOrder.status === 'Cancelled') {
+        endDateStr = 'ยกเลิก';
+    } else if (workOrder.status === 'Completed' || percentage === 100) {
         let latestDate = new Date(workOrder.createdAt).getTime();
         if (workOrder.submittedAt) {
             latestDate = new Date(workOrder.submittedAt).getTime();
         }
         // Scan task histories for the last reported progress
-        allTasks.forEach(t => {
+        (clickedTask ? [clickedTask] : allTasks).forEach(t => {
             if (t && t.history) {
                 t.history.forEach(h => {
                     const d = new Date(h.date).getTime();
@@ -39,8 +52,6 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
             }
         });
         endDateStr = new Date(latestDate).toLocaleDateString('th-TH');
-    } else if (workOrder.status === 'Rejected' || workOrder.status === 'Cancelled') {
-        endDateStr = 'ถูกยกเลิก';
     } else {
         endDateStr = 'ยังไม่จบโครงการ';
     }
@@ -96,17 +107,322 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
         };
     };
 
-    return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem'
-        }}>
-            <div style={{
-                background: '#ffffff', width: '100%', maxWidth: '1000px', maxHeight: '90vh',
-                borderRadius: '32px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+    const renderStatusBadge = () => {
+        const targetStatus = clickedTask ? clickedTask.status : workOrder.status;
+
+        if (clickedTask) {
+            if (targetStatus === 'Rejected') {
+                const foremanId = clickedTask.responsibleStaffIds?.[0];
+                return !foremanId ? (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#fef2f2',
+                        color: '#ef4444',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #fee2e2'
+                    }}>
+                        ปฏิเสธโดยแอดมิน
+                    </span>
+                ) : (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#fff1f2',
+                        color: '#be123c',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #ffe4e6'
+                    }}>
+                        ส่งคืนแก้ไข (ลูกค้า)
+                    </span>
+                );
+            }
+            if (targetStatus === 'Completed' || targetStatus === 'Verified') {
+                if (targetStatus === 'Verified') {
+                    return (
+                        <span style={{
+                            fontSize: '0.8rem',
+                            fontWeight: 800,
+                            background: '#ecfdf5',
+                            color: '#10b981',
+                            padding: '4px 12px',
+                            borderRadius: '99px',
+                            border: '1px solid #d1fae5'
+                        }}>
+                            สำเร็จสมบูรณ์
+                        </span>
+                    );
+                }
+                return (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#fffbeb',
+                        color: '#d97706',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #fef3c7'
+                    }}>
+                        รอ Owner ตรวจรับ
+                    </span>
+                );
+            }
+            if (targetStatus === 'Evaluating') {
+                return (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#f5f3ff',
+                        color: '#7c3aed',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #ddd6fe'
+                    }}>
+                        รอมอบหมาย
+                    </span>
+                );
+            }
+            if (targetStatus === 'Cancelled') {
+                return (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #e2e8f0'
+                    }}>
+                        ยกเลิกใบงาน
+                    </span>
+                );
+            }
+            if (targetStatus === 'Assigned') {
+                return (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#fff7ed',
+                        color: '#f97316',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #ffedd5'
+                    }}>
+                        มอบหมายแล้ว
+                    </span>
+                );
+            }
+            return (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #bfdbfe'
+                }}>
+                    กำลังดำเนินการ
+                </span>
+            );
+        }
+
+        if (targetStatus === 'Rejected' || workOrder.status === 'Rejected') {
+            const overallForemanId = allTasks.find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
+            const foremanId = overallForemanId;
+
+            return !foremanId ? (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#fef2f2',
+                    color: '#ef4444',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #fee2e2'
+                }}>
+                    ปฏิเสธโดยแอดมิน
+                </span>
+            ) : (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#fff1f2',
+                    color: '#be123c',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #ffe4e6'
+                }}>
+                    ส่งคืนแก้ไข (ลูกค้า)
+                </span>
+            );
+        }
+        if (targetStatus === 'Completed' || targetStatus === 'Verified' || percentage === 100) {
+            if (targetStatus === 'Verified') {
+                return (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        background: '#ecfdf5',
+                        color: '#10b981',
+                        padding: '4px 12px',
+                        borderRadius: '99px',
+                        border: '1px solid #d1fae5'
+                    }}>
+                        สำเร็จสมบูรณ์
+                    </span>
+                );
+            }
+            return (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#fffbeb',
+                    color: '#d97706',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #fef3c7'
+                }}>
+                    รอ Owner ตรวจรับ
+                </span>
+            );
+        }
+        if (targetStatus === 'Evaluating' || workOrder.status === 'Evaluating') {
+            return (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#f5f3ff',
+                    color: '#7c3aed',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #ddd6fe'
+                }}>
+                    รอมอบหมาย
+                </span>
+            );
+        }
+        if (targetStatus === 'Cancelled' || workOrder.status === 'Cancelled') {
+            return (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#f1f5f9',
+                    color: '#64748b',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #e2e8f0'
+                }}>
+                    ยกเลิกใบงาน
+                </span>
+            );
+        }
+        if (completedCount > 0 && !clickedTask) {
+            return (
+                <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    background: '#eff6ff',
+                    color: '#6366f1',
+                    padding: '4px 12px',
+                    borderRadius: '99px',
+                    border: '1px solid #dbeafe'
+                }}>
+                    เสร็จบางส่วน
+                </span>
+            );
+        }
+        return (
+            <span style={{
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                padding: '4px 12px',
+                borderRadius: '99px',
+                border: '1px solid #bfdbfe'
             }}>
+                กำลังดำเนินการ
+            </span>
+        );
+    };
+
+    return (
+        <div 
+            id="print-area-modal-overlay"
+            style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem'
+            }}
+        >
+            <style>{`
+                @media print {
+                    /* Hide scrollbars, modal backdrops, side elements */
+                    html, body {
+                        background: #ffffff !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        width: 210mm !important;
+                        height: auto !important;
+                    }
+                    /* Ensure parent divs do not render, only show the print-area-modal-overlay */
+                    body > div:not(#root) {
+                        display: none !important;
+                    }
+                    #root > div > div:not(#print-area-modal-overlay) {
+                        display: none !important;
+                    }
+                    #print-area-modal-overlay {
+                        position: absolute !important;
+                        top: 0 !important;
+                        left: 0 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        background: #ffffff !important;
+                        backdrop-filter: none !important;
+                        padding: 0 !important;
+                        display: block !important;
+                        z-index: 99999 !important;
+                        overflow: visible !important;
+                    }
+                    #print-area-modal-content {
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        max-height: none !important;
+                        border: none !important;
+                        border-radius: 0 !important;
+                        box-shadow: none !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        overflow: visible !important;
+                        display: block !important;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                    .print-section {
+                        page-break-inside: avoid !important;
+                        margin-bottom: 20px !important;
+                    }
+                    .print-signatures {
+                        display: flex !important;
+                        justify-content: space-between !important;
+                        margin-top: 50px !important;
+                        page-break-inside: avoid !important;
+                    }
+                }
+            `}</style>
+            <div 
+                id="print-area-modal-content"
+                style={{
+                    background: '#ffffff', width: '100%', maxWidth: '1000px', maxHeight: '90vh',
+                    borderRadius: '32px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+                }}
+            >
                 {/* Header */}
                 <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: workOrder.status === 'Rejected' ? '#fffafb' : '#f8fafc' }}>
                     <div>
@@ -114,17 +430,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                             <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
                                 {workOrder.status === 'Rejected' ? 'รายละเอียดการปฏิเสธงาน (Rejected Details)' : 'สรุปผลการดำเนินงาน (Work Summary)'}
                             </span>
-                            <span style={{
-                                fontSize: '0.8rem',
-                                fontWeight: 800,
-                                background: workOrder.status === 'Rejected' ? '#fef2f2' : '#ecfdf5',
-                                color: workOrder.status === 'Rejected' ? '#ef4444' : '#10b981',
-                                padding: '4px 12px',
-                                borderRadius: '99px',
-                                border: `1px solid ${workOrder.status === 'Rejected' ? '#fee2e2' : '#d1fae5'}`
-                            }}>
-                                {workOrder.status === 'Rejected' ? 'รายการถูกปฏิเสธ' : 'ปิดงานสำเร็จสมบูรณ์'}
-                            </span>
+                            {renderStatusBadge()}
                             {workOrder.status === 'Rejected' && (
                                 <span style={{
                                     fontSize: '0.8rem',
@@ -145,39 +451,71 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         </div>
                         <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>เลขที่ใบงาน: {workOrder.id} | โครงการ: {project?.name}</div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: '#f8fafc',
-                            border: '1px solid #cbd5e1',
-                            width: '44px',
-                            height: '44px',
-                            borderRadius: '50%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: '#000000',
-                            transition: 'all 0.2s',
-                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                            padding: 0
-                        }}
-                        onMouseOver={e => {
-                            e.currentTarget.style.background = '#000000';
-                            e.currentTarget.style.color = '#ffffff';
-                            e.currentTarget.style.borderColor = '#000000';
-                        }}
-                        onMouseOut={e => {
-                            e.currentTarget.style.background = '#f8fafc';
-                            e.currentTarget.style.color = '#000000';
-                            e.currentTarget.style.borderColor = '#cbd5e1';
-                        }}
-                    >
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} className="no-print">
+                        <button
+                            onClick={() => window.print()}
+                            style={{
+                                background: '#eff6ff',
+                                border: '1px solid #bfdbfe',
+                                borderRadius: '12px',
+                                padding: '10px 16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                cursor: 'pointer',
+                                color: '#1d4ed8',
+                                fontWeight: 800,
+                                fontSize: '0.85rem',
+                                transition: 'all 0.2s',
+                                boxShadow: '0 2px 4px rgba(37, 99, 235, 0.08)'
+                            }}
+                            onMouseOver={e => {
+                                e.currentTarget.style.background = '#1d4ed8';
+                                e.currentTarget.style.color = '#ffffff';
+                                e.currentTarget.style.borderColor = '#1d4ed8';
+                            }}
+                            onMouseOut={e => {
+                                e.currentTarget.style.background = '#eff6ff';
+                                e.currentTarget.style.color = '#1d4ed8';
+                                e.currentTarget.style.borderColor = '#bfdbfe';
+                            }}
+                        >
+                            <Printer size={16} /> พิมพ์เอกสารใบส่งมอบงาน
+                        </button>
+                        <button
+                            onClick={onClose}
+                            style={{
+                                background: '#f8fafc',
+                                border: '1px solid #cbd5e1',
+                                width: '44px',
+                                height: '44px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: '#000000',
+                                transition: 'all 0.2s',
+                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                                padding: 0
+                            }}
+                            onMouseOver={e => {
+                                e.currentTarget.style.background = '#000000';
+                                e.currentTarget.style.color = '#ffffff';
+                                e.currentTarget.style.borderColor = '#000000';
+                            }}
+                            onMouseOut={e => {
+                                e.currentTarget.style.background = '#f8fafc';
+                                e.currentTarget.style.color = '#000000';
+                                e.currentTarget.style.borderColor = '#cbd5e1';
+                            }}
+                        >
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -206,14 +544,14 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                             </div>
                         </div>
                         <div style={{ background: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                            {workOrder.status === 'Rejected' ? (
+                            {(clickedTask?.status === 'Rejected' || workOrder.status === 'Rejected') ? (
                                 <>
                                     <div style={{ color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <FileText size={14} /> เหตุผลในการปฏิเสธงาน (Reason for Rejection)
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {(() => {
-                                            const allTasks = (workOrder.categories || []).flatMap(cat => cat.tasks || []);
+                                            const allTasks = (workOrder.categories || []).flatMap(cat => cat.tasks || []).filter(t => !selectedTaskId || t.id === selectedTaskId);
                                             const reasons = Array.from(new Set(allTasks.filter(t => t).map(t => t.rootCause).filter(Boolean)));
                                             
                                             if (reasons.length === 0) {
@@ -236,7 +574,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         {(() => {
-                                            const allTasks = (workOrder.categories || []).flatMap(cat => cat.tasks || []);
+                                            const allTasks = (workOrder.categories || []).flatMap(cat => cat.tasks || []).filter(t => !selectedTaskId || t.id === selectedTaskId);
                                             
                                             // Count tasks per foreman
                                             const foremanTaskCounts: Record<string, number> = {};
@@ -290,7 +628,13 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         </h3>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                            {(workOrder.categories || []).flatMap(cat => (cat.tasks || []).map(t => ({ ...t, categoryName: cat.name }))).filter(task => task && task.status !== 'Rejected').map((task, idx) => {
+                            {(workOrder.categories || []).flatMap(cat => (cat.tasks || []).map(t => ({ ...t, categoryName: cat.name }))).filter(task => {
+                                if (!task) return false;
+                                if (selectedTaskId && task.id !== selectedTaskId) return false;
+                                const isAdminOrFakeReject = task.status === 'Rejected' && 
+                                    (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0);
+                                return !isAdminOrFakeReject;
+                            }).map((task, idx) => {
                                 const performance = getSLAPerformance(task as any);
                                 const isCompleted = task.status === 'Completed' || task.dailyProgress === 100;
                                 const isUserContributor = currentUserId && (
@@ -321,10 +665,16 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                         alignItems: 'center',
                                                         gap: '8px'
                                                     }}>
-                                                        {isCompleted ? (
+                                                                                        {isCompleted ? (
                                                             <CheckCircle size={18} style={{ color: '#10b981' }} />
+                                                        ) : task.status === 'Rejected' ? (
+                                                            <RotateCcw size={18} style={{ color: '#be123c' }} />
+                                                        ) : task.status === 'In Progress' ? (
+                                                            <Clock size={18} style={{ color: '#3b82f6' }} />
+                                                        ) : task.status === 'Assigned' ? (
+                                                            <Clock size={18} style={{ color: '#f97316' }} />
                                                         ) : (
-                                                            <Clock size={18} style={{ color: '#6366f1' }} />
+                                                            <Clock size={18} style={{ color: '#94a3b8' }} />
                                                         )}
                                                         {idx + 1}. {task.name}
                                                     </div>
@@ -333,11 +683,45 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                         fontWeight: 800,
                                                         padding: '4px 10px',
                                                         borderRadius: '8px',
-                                                        background: isCompleted ? '#ecfdf5' : '#eff6ff',
-                                                        color: isCompleted ? '#10b981' : '#6366f1',
-                                                        border: `1px solid ${isCompleted ? '#d1fae5' : '#dbeafe'}`
+                                                        background: isCompleted 
+                                                            ? '#ecfdf5' 
+                                                            : task.status === 'Rejected'
+                                                                ? '#fff1f2'
+                                                                : task.status === 'In Progress' 
+                                                                    ? '#eff6ff' 
+                                                                    : task.status === 'Assigned' 
+                                                                        ? '#fff7ed' 
+                                                                        : '#f8fafc',
+                                                        color: isCompleted 
+                                                            ? '#10b981' 
+                                                            : task.status === 'Rejected'
+                                                                ? '#be123c'
+                                                                : task.status === 'In Progress' 
+                                                                    ? '#3b82f6' 
+                                                                    : task.status === 'Assigned' 
+                                                                        ? '#f97316' 
+                                                                        : '#64748b',
+                                                        border: `1px solid ${
+                                                            isCompleted 
+                                                                ? '#d1fae5' 
+                                                                : task.status === 'Rejected'
+                                                                    ? '#ffe4e6'
+                                                                    : task.status === 'In Progress' 
+                                                                        ? '#dbeafe' 
+                                                                        : task.status === 'Assigned' 
+                                                                            ? '#ffedd5' 
+                                                                            : '#e2e8f0'
+                                                        }`
                                                     }}>
-                                                        {isCompleted ? 'สำเร็จ' : 'กำลังดำเนินการ'}
+                                                        {isCompleted 
+                                                            ? 'สำเร็จ' 
+                                                            : task.status === 'Rejected'
+                                                                ? 'ส่งคืนแก้ไข (ลูกค้า)'
+                                                                : task.status === 'In Progress' 
+                                                                    ? 'กำลังดำเนินการ' 
+                                                                    : task.status === 'Assigned' 
+                                                                        ? 'มอบหมายแล้ว' 
+                                                                        : 'รอมอบหมาย'}
                                                     </div>
                                                     {task.responsibleStaffIds && task.responsibleStaffIds.length > 0 && (
                                                         <span style={{
@@ -545,11 +929,84 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                     </div>
                                 );
                             })}
-                        </div>
                     </div>
                 </div>
 
-                {/* Footer / Actions */}
+                {/* Handover & Quality Certificate Section (Print and View) */}
+                <div style={{ 
+                    marginTop: '3rem', 
+                    padding: '24px', 
+                    background: '#fafbfc', 
+                    borderRadius: '20px', 
+                    border: '1px solid #e2e8f0',
+                    pageBreakInside: 'avoid',
+                    margin: '0 0 1.5rem 0'
+                }} className="print-section">
+                    <h4 style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', margin: '0 0 1.25rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <CheckCircle size={18} style={{ color: '#10b981' }} /> 
+                        การตรวจรับและส่งมอบงานคุณภาพ (Official Handover & Inspection)
+                    </h4>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
+                        {/* Left Side: Rating & Evaluation Checklist */}
+                        <div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>คะแนนประเมินโดยลูกค้า</div>
+                            {workOrder.status === 'Verified' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a' }}>
+                                            {((workOrder as any).overallSatisfaction || '5.0')}
+                                        </span>
+                                        <div style={{ display: 'flex', color: '#f59e0b' }}>
+                                            <Star size={20} fill="#f59e0b" style={{ stroke: 'none' }} />
+                                        </div>
+                                        <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>(ผ่านการตรวจรับงานสำเร็จสมบูรณ์)</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 600 }}>ยังไม่ได้รับคะแนนประเมิน</div>
+                            )}
+                        </div>
+                        
+                        {/* Right Side: Notes */}
+                        <div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>ความคิดเห็นเพิ่มเติมจากลูกค้า</div>
+                            <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 600, background: '#ffffff', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', minHeight: '60px' }}>
+                                {(workOrder as any).notes || 'ไม่มีข้อคิดเห็นเพิ่มเติม'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Signatures */}
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        marginTop: '2.5rem', 
+                        paddingTop: '2rem', 
+                        borderTop: '1px dashed #cbd5e1' 
+                    }} className="print-signatures">
+                        <div style={{ textAlign: 'center', width: '200px' }}>
+                            <div style={{ height: '40px', borderBottom: '1px solid #475569', marginBottom: '8px' }}></div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>ลงชื่อ: {workOrder.reporterName ? (workOrder.reporterName.startsWith('คุณ') ? workOrder.reporterName : `คุณ${workOrder.reporterName}`) : 'ผู้แจ้งซ่อม'}</div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>นิติบุคคล / ผู้แจ้งซ่อม</div>
+                        </div>
+                        <div style={{ textAlign: 'center', width: '200px' }}>
+                            <div style={{ height: '40px', borderBottom: '1px solid #475569', marginBottom: '8px' }}></div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>
+                                {(() => {
+                                    const foremanTask = (clickedTask && clickedTask.responsibleStaffIds && clickedTask.responsibleStaffIds.length > 0) ? clickedTask : allTasks.find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0);
+                                    const fId = foremanTask?.responsibleStaffIds?.[0];
+                                    const foreman = staff.find(s => s.id === fId);
+                                    return `ลงชื่อ: ${foreman ? (foreman.name.startsWith('คุณ') ? foreman.name : `คุณ${foreman.name}`) : 'โฟร์แมนผู้ส่งมอบ'}`;
+                                })()}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>โฟร์แมนผู้ควบคุมงาน</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer / Actions */}
                 <div style={{ padding: '24px 32px', borderTop: '1px solid #f1f5f9', background: '#fcfcfd', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: '1rem' }}>
                         <button style={{

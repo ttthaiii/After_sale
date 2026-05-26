@@ -11,6 +11,13 @@ export interface User {
 
 export type TaskStatus = 'Pending' | 'Assigned' | 'In Progress' | 'Completed' | 'Verified' | 'Approved' | 'Rejected';
 
+export interface TaskAssignee {
+    employeeId: string;
+    name: string;
+    roleId: string;
+    id?: string; // For backwards compatibility with old assignee.id
+}
+
 export interface LaborRecord {
     id: string;
     membership: 'Internal' | 'Outsource';
@@ -35,6 +42,20 @@ export interface LaborRecord {
     workHours?: string; // e.g. "08:00 - 17:00"
     contractorId?: string; // For linking to master data
     employeeId?: string; // Add for labor database compatibility
+    workerId?: string; // Add for LB compatibility
+    workerName?: string; // Add for LB compatibility
+    expectedShifts?: {
+        normal: boolean;
+        otMorning: boolean;
+        otNoon: boolean;
+        otEvening: boolean;
+    }; // Add for LB compatibility
+    expectedHours?: {
+        normal: number;
+        otMorning: number;
+        otNoon: number;
+        otEvening: number;
+    }; // Add for LB compatibility
     leave?: {
         active: boolean;
         time?: string;
@@ -92,14 +113,27 @@ export interface MasterTask {
     id: string; // master_task_id or taskId
     name: string;
     title?: string;
-    status: TaskStatus | 'upcoming' | 'in-progress' | 'completed';
+    status: TaskStatus | 'upcoming' | 'in-progress' | 'for-checking' | 'completed';
     beforePhotoUrl?: string;
     afterPhotoUrl?: string;
     latestPhotoUrl?: string;
     dailyProgress: number; 
     dueDate?: string;
     assignee?: string; 
-    assignees?: { id: string, name: string }[];
+    assignees?: TaskAssignee[];
+    
+    // LB System Fields compatibility
+    taskId?: string;
+    taskName?: string;
+    workOrderId?: string;
+    workOrderCode?: string;
+    workOrderName?: string;
+    categoryId?: string;
+    categoryName?: string;
+    projectId?: string;
+    isSupportRequest?: boolean;
+    attachmentsCount?: number;
+    isActive?: boolean;
     
     sourceSystem?: string;
     taskCode?: string;
@@ -134,6 +168,8 @@ export interface MasterTask {
     ownerName?: string;
     notes?: string;
     updatedAt?: string;
+    evaluationChecklist?: Record<string, number | boolean>;
+    overallSatisfaction?: number;
 }
 
 export interface Attachment {

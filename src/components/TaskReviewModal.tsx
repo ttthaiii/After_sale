@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { WorkOrder, MasterTask } from '../types';
 import { 
-    X, Camera, CheckCircle2, XCircle, QrCode, 
+    Camera, CheckCircle2, XCircle, QrCode, 
     Copy, Check, UserCheck, AlertTriangle, FileText, 
-    ArrowRight, Share2, HelpCircle 
+    ArrowRight, Share2, HelpCircle
 } from 'lucide-react';
 
 interface TaskReviewModalProps {
@@ -21,6 +21,8 @@ interface TaskReviewModalProps {
             rejectReason?: string;
             notes?: string;
             currentRevision?: string;
+            evaluationChecklist?: Record<string, number | boolean>;
+            overallSatisfaction?: number;
         }
     ) => Promise<void>;
 }
@@ -41,7 +43,21 @@ export default function TaskReviewModal({
     const [notes, setNotes] = useState('');
     const [copied, setCopied] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
+    const [afterPhotoIndex, setAfterPhotoIndex] = useState(0);
+ 
+    // Evaluation States (Approve Rating System - 5 Diagnostic Parameters)
+    const [workQualityRating, setWorkQualityRating] = useState(5);
+    const [cleanlinessRating, setCleanlinessRating] = useState(5);
+    const [professionalismRating, setProfessionalismRating] = useState(5);
+    const [specAccuracyRating, setSpecAccuracyRating] = useState(5);
+    const [handoverRating, setHandoverRating] = useState(5);
+ 
+    // Defect Checklist States (Reject Defect Diagnostics)
+    const [cosmeticDefect, setCosmeticDefect] = useState(false);
+    const [functionalDefect, setFunctionalDefect] = useState(false);
+    const [cleanlinessDefect, setCleanlinessDefect] = useState(false);
+    const [specDefect, setSpecDefect] = useState(false);
+ 
     // Reset forms on reopen or task change
     useEffect(() => {
         setActionType(null);
@@ -50,10 +66,117 @@ export default function TaskReviewModal({
         setNotes('');
         setCopied(false);
         setIsSubmitting(false);
+        setAfterPhotoIndex(0);
+        
+        // Reset ratings
+        setWorkQualityRating(5);
+        setCleanlinessRating(5);
+        setProfessionalismRating(5);
+        setSpecAccuracyRating(5);
+        setHandoverRating(5);
+ 
+        // Reset defects
+        setCosmeticDefect(false);
+        setFunctionalDefect(false);
+        setCleanlinessDefect(false);
+        setSpecDefect(false);
     }, [task.id, isOpen]);
 
     if (!isOpen) return null;
-
+ 
+    // Helper to render segmented rating controls
+    const renderSegmentedRating = (
+        label: string,
+        subLabel: string,
+        value: number,
+        onChange: (val: number) => void
+    ) => {
+        const getLabelText = (val: number) => {
+            switch (val) {
+                case 1: return 'ต้องปรับปรุงด่วน (Critical)';
+                case 2: return 'ไม่ผ่านมาตรฐาน (Substandard)';
+                case 3: return 'ผ่านตามมาตรฐาน (Meets Specs)';
+                case 4: return 'ดีมาก (High Quality)';
+                case 5: return 'ดีเยี่ยมเกินคาด (Outstanding)';
+                default: return '';
+            }
+        };
+ 
+        const getColors = (val: number) => {
+            switch (val) {
+                case 1:
+                    return { activeText: '#ffffff', activeBg: '#ef4444', text: '#b91c1c', bg: '#fef2f2', border: '#fca5a5' };
+                case 2:
+                    return { activeText: '#ffffff', activeBg: '#f97316', text: '#c2410c', bg: '#fff7ed', border: '#fdbb2d' };
+                case 3:
+                    return { activeText: '#ffffff', activeBg: '#d97706', text: '#b45309', bg: '#fffbeb', border: '#fde68a' };
+                case 4:
+                    return { activeText: '#ffffff', activeBg: '#10b981', text: '#047857', bg: '#ecfdf5', border: '#a7f3d0' };
+                case 5:
+                    return { activeText: '#ffffff', activeBg: '#059669', text: '#065f46', bg: '#f0fdf4', border: '#86efac' };
+                default:
+                    return { activeText: '#ffffff', activeBg: '#10b981', text: '#047857', bg: '#ecfdf5', border: '#a7f3d0' };
+            }
+        };
+ 
+        const colors = getColors(value);
+ 
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#ffffff', padding: '14px 18px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 900, color: '#1e293b', display: 'block' }}>{label}</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', display: 'block' }}>{subLabel}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '12px' }}>
+                        {[1, 2, 3, 4, 5].map((score) => {
+                            const isSelected = value === score;
+                            return (
+                                <button
+                                    key={score}
+                                    type="button"
+                                    onClick={() => onChange(score)}
+                                    style={{
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        width: '40px',
+                                        height: '40px',
+                                        fontWeight: 900,
+                                        fontSize: '0.95rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s',
+                                        background: isSelected ? colors.activeBg : 'transparent',
+                                        color: isSelected ? '#ffffff' : '#475569',
+                                        boxShadow: isSelected ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                                    }}
+                                    onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = '#e2e8f0'; }}
+                                    onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    {score}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 900,
+                        color: colors.text,
+                        background: colors.bg,
+                        border: `1px solid ${colors.border}`,
+                        padding: '3px 10px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '22px'
+                    }}>
+                        {getLabelText(value)}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+ 
     // Find task category
     const category = workOrder.categories.find(c => c.tasks.some(t => t.id === task.id));
     const categoryName = category?.name || 'หมวดงานทั่วไป';
@@ -63,8 +186,49 @@ export default function TaskReviewModal({
     const currentRev = task.currentRevision || 'rev00';
     const revDisplay = currentRev === 'rev00' ? 'REV. 0 (ครั้งแรก)' : `REV. ${parseInt(currentRev.replace('rev', ''))}`;
 
-    // Get assignee details
-    const responsibleName = task.assignee || 'ยังไม่มอบหมาย';
+    // Get assignee details with robust foreman fallbacks
+    const responsibleName = task.assignee || 
+        (task.assignees && task.assignees.length > 0 ? task.assignees[0].name : '') || 
+        workOrder.reporterName || 
+        'ไม่ระบุ';
+
+    // Extract site images from the task history item reported at 100% progress
+    const afterPhotos: string[] = [];
+    if (task.history && task.history.length > 0) {
+        // First find history item reported at 100% progress
+        const history100 = task.history.find(h => h.progress === 100);
+        if (history100 && history100.photos) {
+            if (Array.isArray(history100.photos)) {
+                afterPhotos.push(...history100.photos);
+            } else if (history100.photos.site && Array.isArray(history100.photos.site)) {
+                afterPhotos.push(...history100.photos.site);
+            }
+        }
+        
+        // Fallback: If no 100% progress update with photos exists, check any update with photos
+        if (afterPhotos.length === 0) {
+            const anyHistoryWithPhotos = task.history.find(h => {
+                if (!h.photos) return false;
+                if (Array.isArray(h.photos)) return h.photos.length > 0;
+                return (h.photos.site && h.photos.site.length > 0);
+            });
+            if (anyHistoryWithPhotos && anyHistoryWithPhotos.photos) {
+                if (Array.isArray(anyHistoryWithPhotos.photos)) {
+                    afterPhotos.push(...anyHistoryWithPhotos.photos);
+                } else if (anyHistoryWithPhotos.photos.site) {
+                    afterPhotos.push(...anyHistoryWithPhotos.photos.site);
+                }
+            }
+        }
+    }
+
+    // Fallback: If still empty, check task latestPhotoUrl or afterPhotoUrl
+    if (afterPhotos.length === 0) {
+        if (task.latestPhotoUrl) afterPhotos.push(task.latestPhotoUrl);
+        if (task.afterPhotoUrl && !afterPhotos.includes(task.afterPhotoUrl)) {
+            afterPhotos.push(task.afterPhotoUrl);
+        }
+    }
 
     // Owner Review Public Link Mockup
     const protocol = window.location.protocol;
@@ -84,9 +248,20 @@ export default function TaskReviewModal({
         }
         setIsSubmitting(true);
         try {
+            const evaluationChecklist: Record<string, number | boolean> = {
+                workQuality: workQualityRating,
+                siteCleanliness: cleanlinessRating,
+                foremanProfessionalism: professionalismRating,
+                specAccuracy: specAccuracyRating,
+                handoverCare: handoverRating
+            };
+            const overallSatisfaction = parseFloat(((workQualityRating + cleanlinessRating + professionalismRating + specAccuracyRating + handoverRating) / 5).toFixed(2));
+
             await onConfirm(workOrder.id, categoryId, task.id, 'Verified', {
                 ownerName: ownerName.trim(),
                 notes: notes.trim(),
+                evaluationChecklist,
+                overallSatisfaction
             });
             onClose();
         } catch (error) {
@@ -108,9 +283,17 @@ export default function TaskReviewModal({
             const revNum = parseInt(currentRev.replace('rev', '')) || 0;
             const nextRev = `rev${String(revNum + 1).padStart(2, '0')}`;
 
+            const evaluationChecklist: Record<string, number | boolean> = {
+                cosmeticDefect,
+                functionalDefect,
+                cleanlinessDefect,
+                specDefect
+            };
+
             await onConfirm(workOrder.id, categoryId, task.id, 'Rejected', {
                 rejectReason: rejectReason.trim(),
-                currentRevision: nextRev
+                currentRevision: nextRev,
+                evaluationChecklist
             });
             onClose();
         } catch (error) {
@@ -189,7 +372,10 @@ export default function TaskReviewModal({
                             e.currentTarget.style.color = '#64748b';
                         }}
                     >
-                        <X size={18} strokeWidth={2.5} />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
                     </button>
                 </div>
 
@@ -217,15 +403,71 @@ export default function TaskReviewModal({
                             </div>
                         </div>
 
-                        {/* After Photo Card */}
-                        <div style={{ background: '#ffffff', borderRadius: '20px', padding: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
+                        {/* After Photo Card with Slider */}
+                        <div style={{ background: '#ffffff', borderRadius: '20px', padding: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', position: 'relative' }}>
                             <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <Camera size={13} />
                                 <span>ภาพผลงานล่าสุด (AFTER / LATEST)</span>
                             </div>
-                            <div style={{ width: '100%', height: '200px', borderRadius: '12px', background: '#f1f5f9', overflow: 'hidden', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {task.latestPhotoUrl || task.afterPhotoUrl ? (
-                                    <img src={task.latestPhotoUrl || task.afterPhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="After" />
+                            <div style={{ width: '100%', height: '200px', borderRadius: '12px', background: '#f1f5f9', overflow: 'hidden', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                {afterPhotos.length > 0 ? (
+                                    <>
+                                        <img src={afterPhotos[afterPhotoIndex]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={`After ${afterPhotoIndex + 1}`} />
+                                        {afterPhotos.length > 1 && (
+                                            <>
+                                                {/* Left Navigation */}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setAfterPhotoIndex(prev => (prev === 0 ? afterPhotos.length - 1 : prev - 1));
+                                                    }}
+                                                    style={{
+                                                        position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)',
+                                                        background: 'rgba(255, 255, 255, 0.85)', border: 'none', borderRadius: '50%',
+                                                        width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        cursor: 'pointer', zIndex: 10, boxShadow: '0 2px 6px rgba(0,0,0,0.15)', color: '#0f172a',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#ffffff'}
+                                                    onMouseOut={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.85)'}
+                                                >
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="15 18 9 12 15 6"></polyline>
+                                                    </svg>
+                                                </button>
+                                                {/* Right Navigation */}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setAfterPhotoIndex(prev => (prev === afterPhotos.length - 1 ? 0 : prev + 1));
+                                                    }}
+                                                    style={{
+                                                        position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                                                        background: 'rgba(255, 255, 255, 0.85)', border: 'none', borderRadius: '50%',
+                                                        width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        cursor: 'pointer', zIndex: 10, boxShadow: '0 2px 6px rgba(0,0,0,0.15)', color: '#0f172a',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#ffffff'}
+                                                    onMouseOut={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.85)'}
+                                                >
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="9 18 15 12 9 6"></polyline>
+                                                    </svg>
+                                                </button>
+                                                {/* Counter Indicator Overlay */}
+                                                <div style={{
+                                                    position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)',
+                                                    background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', padding: '3px 10px', borderRadius: '20px',
+                                                    color: '#ffffff', fontSize: '0.68rem', fontWeight: 900, zIndex: 10, letterSpacing: '0.05em'
+                                                }}>
+                                                    {afterPhotoIndex + 1} / {afterPhotos.length}
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
                                 ) : (
                                     <div style={{ textAlign: 'center', color: '#cbd5e1' }}>
                                         <Camera size={32} />
@@ -294,7 +536,7 @@ export default function TaskReviewModal({
                             }}
                         >
                             <UserCheck size={16} />
-                            โฟร์แมนระบุผลจากการคุยหน้างานจริง (Self-Submit)
+                            โฟร์แมนบันทึกผล (Self-Submit)
                         </button>
                         <button
                             onClick={() => setActiveTab('qr-code')}
@@ -317,7 +559,7 @@ export default function TaskReviewModal({
                             }}
                         >
                             <QrCode size={16} />
-                            ส่ง QR Code ให้ OWNER สแกนตรวจรับ (Owner Quick-Pass)
+                            Owner สแกน QR (Quick-Pass)
                         </button>
                     </div>
 
@@ -356,7 +598,7 @@ export default function TaskReviewModal({
                                         </div>
                                         <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 900, color: '#064e3b' }}>อนุมัติผ่านงาน (Approve)</h3>
                                         <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', fontWeight: 600, lineHeight: 1.4 }}>
-                                            ผลงานเรียบร้อยสมบูรณ์ และ Owner ยืนยันให้ผ่านการตรวจรับ ต้องการปิดรายการงานนี้อย่างเป็นถาวร
+                                            ผลงานสมบูรณ์และผ่านการตรวจรับโดยลูกค้า เพื่อปิดงานถาวร
                                         </p>
                                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#10b981', fontWeight: 800, fontSize: '0.85rem', marginTop: '1.25rem' }}>
                                             <span>กรอกข้อมูลตรวจรับ</span>
@@ -391,9 +633,9 @@ export default function TaskReviewModal({
                                         <div style={{ width: '64px', height: '64px', background: '#ef4444', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', marginBottom: '1.25rem', boxShadow: '0 8px 16px -4px rgba(239, 68, 68, 0.3)' }}>
                                             <XCircle size={32} />
                                         </div>
-                                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 900, color: '#7f1d1d' }}>ตีกลับแก้ไข / ไม่ผ่าน (Reject)</h3>
+                                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 900, color: '#7f1d1d' }}>ตีกลับแก้ไข (Reject)</h3>
                                         <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', fontWeight: 600, lineHeight: 1.4 }}>
-                                            พบจุดชำรุด งานไม่เรียบร้อย หรือ Owner ไม่ผ่านการตรวจ ต้องการส่งคืนช่างเพื่อเริ่มทำความคืบหน้า (0%) ใหม่
+                                            พบจุดชำรุดหรืองานไม่เรียบร้อย เพื่อส่งกลับให้ช่างแก้ไขใหม่ (0%)
                                         </p>
                                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontWeight: 800, fontSize: '0.85rem', marginTop: '1.25rem' }}>
                                             <span>ระบุสาเหตุตีกลับงาน</span>
@@ -408,24 +650,51 @@ export default function TaskReviewModal({
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
                                         <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#064e3b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <CheckCircle2 size={20} style={{ color: '#10b981' }} />
-                                            <span>ยืนยันการอนุมัติผ่านงานตรวจรับ (Approve Form)</span>
+                                            <span>อนุมัติผ่านงาน (Approve)</span>
                                         </h4>
                                         <button 
                                             onClick={() => setActionType(null)}
-                                            style={{ background: 'transparent', border: 'none', color: '#64748b', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}
+                                            style={{ background: 'transparent', border: 'none', color: '#64748b', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                         >
-                                            ย้อนกลับเพื่อเลือกใหม่
+                                            ← ย้อนกลับ
                                         </button>
                                     </div>
+ 
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                        
+                                        {/* Evaluation Rating Checklist Section */}
+                                        <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '24px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginBottom: '4px' }}>
+                                                📊 ประเมินคุณภาพการส่งมอบงาน (5 Diagnostic Parameters)
+                                            </div>
+                                            
+                                            {renderSegmentedRating('1. คุณภาพฝีมือและการตกแต่งผิว (Workmanship & Finishing)', 'ความเรียบร้อย สวยงาม และความเนียนละเอียดของผิวงาน', workQualityRating, setWorkQualityRating)}
+                                            {renderSegmentedRating('2. ความถูกต้องตรงตามแบบและสเปก (Specification Accuracy)', 'ความถูกต้องของรุ่นวัสดุ สี แบบแปลน และข้อตกลง', specAccuracyRating, setSpecAccuracyRating)}
+                                            {renderSegmentedRating('3. ความสะอาดและการจัดการพื้นที่หน้างาน (Site Cleanliness)', 'การทำความสะอาดเศษฝุ่น เศษปูน และความเรียบร้อยของหน้างานหลังทำเสร็จ', cleanlinessRating, setCleanlinessRating)}
+                                            {renderSegmentedRating('4. การส่งมอบและการแนะนำการใช้งาน (Client Handover)', 'การให้คำสาธิตวิธีดูแลรักษา อธิบายฟังก์ชัน และทดสอบร่วมกับลูกค้า', handoverRating, setHandoverRating)}
+                                            {renderSegmentedRating('5. ความสุภาพและการประสานงานทีมงาน (Professionalism & Conduct)', 'มารยาท การแต่งกาย อัธยาศัยดี และการประสานงานของทีมงานหน้างาน', professionalismRating, setProfessionalismRating)}
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            {/* Dynamic Overall Score */}
+                                            <div style={{ 
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                                                marginTop: '8px', padding: '12px 16px', borderRadius: '16px', 
+                                                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', 
+                                                border: '1.5px solid #a7f3d0' 
+                                            }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#064e3b' }}>🎯 คะแนนเฉลี่ยความพึงพอใจโดยรวม:</span>
+                                                <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#047857' }}>
+                                                    {((workQualityRating + cleanlinessRating + professionalismRating + specAccuracyRating + handoverRating) / 5).toFixed(2)} / 5.00
+                                                </span>
+                                            </div>
+                                        </div>
+
                                         <div>
                                             <label style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#334155', marginBottom: '6px' }}>
-                                                ชื่อผู้แทน Owner หรือ ลูกค้าที่เป็นผู้ตรวจหน้างานจริง <span style={{ color: '#ef4444' }}>*</span>
+                                                ชื่อลูกค้าผู้ตรวจงาน <span style={{ color: '#ef4444' }}>*</span>
                                             </label>
                                             <input 
                                                 type="text" 
-                                                placeholder="ตัวอย่าง: คุณสมชาย (เจ้าของบ้าน), นิติบุคคลโครงการ..."
+                                                placeholder="ระบุชื่อลูกค้า หรือผู้แทนที่ร่วมเดินตรวจงาน..."
                                                 value={ownerName}
                                                 onChange={e => setOwnerName(e.target.value)}
                                                 style={{
@@ -435,14 +704,14 @@ export default function TaskReviewModal({
                                                 }}
                                             />
                                         </div>
-
+ 
                                         <div>
                                             <label style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#334155', marginBottom: '6px' }}>
-                                                หมายเหตุ / รายละเอียดการตรวจรับเพิ่มเติม (ถ้ามี)
+                                                ความคิดเห็นเพิ่มเติม / อื่น ๆ (ถ้ามี)
                                             </label>
                                             <textarea 
                                                 rows={3} 
-                                                placeholder="ป้อนรายละเอียดข้อมูลการปิดงาน หรือ คำชมเชย/เพิ่มเติมจากลูกค้า..."
+                                                placeholder="ระบุข้อเสนอแนะ ข้อคิดเห็นเพิ่มเติม หรือคำชื่นชมสำหรับช่าง..."
                                                 value={notes}
                                                 onChange={e => setNotes(e.target.value)}
                                                 style={{
@@ -452,7 +721,7 @@ export default function TaskReviewModal({
                                                 }}
                                             />
                                         </div>
-
+ 
                                         <button
                                             onClick={handleSubmitApproval}
                                             disabled={isSubmitting || !ownerName.trim()}
@@ -472,7 +741,7 @@ export default function TaskReviewModal({
                                             }}
                                         >
                                             <CheckCircle2 size={18} />
-                                            <span>{isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันและปิดจบงานโดยสมบูรณ์'}</span>
+                                            <span>{isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันอนุมัติและปิดงาน'}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -482,31 +751,155 @@ export default function TaskReviewModal({
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
                                         <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#7f1d1d', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <XCircle size={20} style={{ color: '#ef4444' }} />
-                                            <span>ยืนยันการปฏิเสธงาน / ส่งกลับแก้ไข (Reject & Create Revision)</span>
+                                            <span>ส่งกลับแก้ไข (Reject)</span>
                                         </h4>
                                         <button 
                                             onClick={() => setActionType(null)}
-                                            style={{ background: 'transparent', border: 'none', color: '#64748b', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}
+                                            style={{ background: 'transparent', border: 'none', color: '#64748b', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                         >
-                                            ย้อนกลับเพื่อเลือกใหม่
+                                            ← ย้อนกลับ
                                         </button>
                                     </div>
-
-                                    <div style={{ background: '#fef2f2', padding: '12px 16px', borderRadius: '12px', border: '1px solid #fee2e2', color: '#991b1b', fontSize: '0.8rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                                        <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+ 
+                                    <div style={{ background: '#fef2f2', padding: '10px 14px', borderRadius: '12px', border: '1px solid #fee2e2', color: '#991b1b', fontSize: '0.8rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <AlertTriangle size={14} style={{ flexShrink: 0 }} />
                                         <div>
-                                            การส่งตีกลับแก้ไขงาน จะส่งผลให้โปรเกรสความคืบหน้าของงานถูกรีเซ็ตกลับเป็น **0%** และเพิ่มประวัติรุ่นการทำงานเป็นรอบแก้ถัดไป (**REV. 1**, **REV. 2**...) เพื่อสะสมข้อมูลแรงงานต่อเนื่อง และคงค่า SLA ดั้งเดิมเอาไว้คอยกำกับงานแก้ชิ้นนี้
+                                            ⚠️ การปฏิเสธจะรีเซ็ตความคืบหน้าเป็น 0% และเพิ่มรอบแก้ (REV) ใหม่
                                         </div>
                                     </div>
+ 
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                        
+                                        {/* Defect Diagnostics Section */}
+                                        <div style={{ background: '#faf5f5', padding: '1.25rem', borderRadius: '20px', border: '1px solid #fecaca', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#7f1d1d', borderBottom: '1px solid #fee2e2', paddingBottom: '8px' }}>
+                                                🔍 ระบุจุดบกพร่องที่ตรวจพบ (Defect Diagnostics)
+                                            </div>
+                                            
+                                            {/* Defect 1 */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #fee2e2' }}>
+                                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569' }}>1. จุดบกพร่องความสวยงาม / งานสีผิว (Cosmetic Defect)</span>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCosmeticDefect(true)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: cosmeticDefect ? '#fee2e2' : 'transparent', color: cosmeticDefect ? '#ef4444' : '#64748b',
+                                                            border: cosmeticDefect ? '1.5px solid #fca5a5' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        พบ
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCosmeticDefect(false)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: !cosmeticDefect ? '#ecfdf5' : 'transparent', color: !cosmeticDefect ? '#10b981' : '#64748b',
+                                                            border: !cosmeticDefect ? '1.5px solid #a7f3d0' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        ไม่พบ
+                                                    </button>
+                                                </div>
+                                            </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            {/* Defect 2 */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #fee2e2' }}>
+                                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569' }}>2. จุดบกพร่องฟังก์ชันใช้งาน / โครงสร้าง (Functional Defect)</span>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFunctionalDefect(true)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: functionalDefect ? '#fee2e2' : 'transparent', color: functionalDefect ? '#ef4444' : '#64748b',
+                                                            border: functionalDefect ? '1.5px solid #fca5a5' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        พบ
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFunctionalDefect(false)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: !functionalDefect ? '#ecfdf5' : 'transparent', color: !functionalDefect ? '#10b981' : '#64748b',
+                                                            border: !functionalDefect ? '1.5px solid #a7f3d0' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        ไม่พบ
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Defect 3 */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #fee2e2' }}>
+                                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569' }}>3. ปัญหาเศษวัสดุ / ความสกปรกหน้างาน (Site Debris)</span>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCleanlinessDefect(true)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: cleanlinessDefect ? '#fee2e2' : 'transparent', color: cleanlinessDefect ? '#ef4444' : '#64748b',
+                                                            border: cleanlinessDefect ? '1.5px solid #fca5a5' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        พบ
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCleanlinessDefect(false)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: !cleanlinessDefect ? '#ecfdf5' : 'transparent', color: !cleanlinessDefect ? '#10b981' : '#64748b',
+                                                            border: !cleanlinessDefect ? '1.5px solid #a7f3d0' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        ไม่พบ
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Defect 4 */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #fee2e2' }}>
+                                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569' }}>4. ชนิดวัสดุ / สีไม่ตรงสเปกสัญญา (Spec Mismatch)</span>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSpecDefect(true)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: specDefect ? '#fee2e2' : 'transparent', color: specDefect ? '#ef4444' : '#64748b',
+                                                            border: specDefect ? '1.5px solid #fca5a5' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        พบ
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSpecDefect(false)}
+                                                        style={{
+                                                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                                            background: !specDefect ? '#ecfdf5' : 'transparent', color: !specDefect ? '#10b981' : '#64748b',
+                                                            border: !specDefect ? '1.5px solid #a7f3d0' : '1.5px solid #e2e8f0', transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        ไม่พบ
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         <div>
                                             <label style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#334155', marginBottom: '6px' }}>
-                                                ระบุสาเหตุที่ไม่ผ่าน และจุดงานที่ช่างต้องนำไปปรับปรุงแก้ไข <span style={{ color: '#ef4444' }}>*</span>
+                                                รายละเอียดชำรุดเพิ่มเติม / อื่น ๆ <span style={{ color: '#ef4444' }}>*</span>
                                             </label>
                                             <textarea 
-                                                rows={4} 
-                                                placeholder="ตัวอย่าง: กระเบื้องขอบไม่เสมอกัน มีความต่างระดับ ร่องยาแนวไม่เต็ม, สีผนังห้องรับแขกทาไม่สม่ำเสมอเป็นรอยหยดน้ำ..."
+                                                rows={3} 
+                                                placeholder="อธิบายจุดชำรุดหรืองานที่ไม่เรียบร้อยอื่น ๆ เพิ่มเติม เพื่อให้ช่างแก้ไขได้ตรงจุด..."
                                                 value={rejectReason}
                                                 onChange={e => setRejectReason(e.target.value)}
                                                 style={{
@@ -516,7 +909,7 @@ export default function TaskReviewModal({
                                                 }}
                                             />
                                         </div>
-
+ 
                                         <button
                                             onClick={handleSubmitRejection}
                                             disabled={isSubmitting || !rejectReason.trim()}
@@ -536,7 +929,7 @@ export default function TaskReviewModal({
                                             }}
                                         >
                                             <XCircle size={18} />
-                                            <span>{isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันปฏิเสธงานและสร้าง Revision ใหม่'}</span>
+                                            <span>{isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันปฏิเสธงาน'}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -632,22 +1025,26 @@ export default function TaskReviewModal({
 
                 {/* Footer */}
                 <div style={{
-                    padding: '1.25rem 2rem',
+                    padding: '1rem 2rem',
                     background: '#ffffff',
-                    display: 'flex', gap: '1rem',
+                    display: 'flex',
                     borderTop: '1px solid #f1f5f9',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    justifyContent: 'flex-end'
                 }}>
                     <button
                         onClick={onClose}
                         style={{
-                            flex: 1, padding: '12px', borderRadius: '12px',
-                            border: '1.5px solid #e2e8f0', background: '#f8fafc',
-                            color: '#64748b', fontWeight: 800, cursor: 'pointer',
-                            fontSize: '0.9rem'
+                            padding: '10px 24px', borderRadius: '12px',
+                            border: '1.5px solid #cbd5e1', background: '#f8fafc',
+                            color: '#475569', fontWeight: 900, cursor: 'pointer',
+                            fontSize: '0.88rem', transition: 'all 0.2s',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                         }}
+                        onMouseOver={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#475569'; }}
                     >
-                        ย้อนกลับ / ปิดหน้าต่าง
+                        ปิดหน้าต่าง
                     </button>
                 </div>
             </div>

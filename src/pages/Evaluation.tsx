@@ -116,8 +116,8 @@ const Evaluation = () => {
                 // Sync taskDecisions with current Firestore statuses
                 const decisions: Record<string, 'Approved' | 'Assigned' | 'Rejected'> = {};
                 updatedWo.categories.flatMap(c => c.tasks).forEach(t => {
-                    if (t.status === 'Approved' || t.status === 'Assigned' || t.status === 'Rejected') {
-                        decisions[t.id] = t.status as any;
+                    if (t.status === 'Approved' || t.status === 'Assigned' || t.status === 'Rejected' || t.status === 'Verified') {
+                        decisions[t.id] = t.status === 'Verified' ? 'Approved' : t.status as any;
                     }
                 });
                 setTaskDecisions(decisions);

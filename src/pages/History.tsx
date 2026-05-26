@@ -3,8 +3,8 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import HistoryDetailModal from '../components/HistoryDetailModal';
 import MasterFilter from '../components/MasterFilter';
-import { Archive, Search, Building2, User2, RotateCcw, ChevronRight, FileSpreadsheet, FileText, CheckCircle, SlidersHorizontal, Layers, Clock, XCircle } from 'lucide-react';
-import { WorkOrder } from '../types';
+import { Archive, Search, Building2, User2, RotateCcw, ChevronRight, FileSpreadsheet, FileText, CheckCircle, SlidersHorizontal, Layers, Clock, XCircle, Star } from 'lucide-react';
+import { WorkOrder, MasterTask } from '../types';
 import { logService } from '../services/logService';
 
 const History = () => {
@@ -30,25 +30,26 @@ const History = () => {
     const [selectedSlaStatus, setSelectedSlaStatus] = useState('');
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [activeSubTab, setActiveSubTab] = useState<'Active' | 'Archived'>('Archived');
 
     // Base history work orders (before applying search/dropdown filters)
     const baseHistoryWorkOrders = useMemo(() => {
         return workOrders.filter(wo => {
+            const isOfficiallyFinished = wo.status === 'Completed' || wo.status === 'Verified' || wo.status === 'Rejected' || wo.status === 'Cancelled' || wo.isArchived;
             if (currentRole === 'Foreman') {
-                const isOfficiallyFinished = wo.status === 'Completed' || wo.status === 'Rejected' || wo.status === 'Cancelled' || wo.isArchived;
                 const matchesUser = (id: string) => id === CURRENT_USER_ID || (user?.employeeId && id === user.employeeId);
                 
-                const hasCompletedOwnTask = wo.categories.some(cat =>
+                const hasTaskAssigned = wo.categories.some(cat =>
                     cat.tasks.some(task => 
-                        task.responsibleStaffIds?.some(id => matchesUser(id)) && 
-                        task.status?.toLowerCase() === 'completed'
+                        task.responsibleStaffIds?.some(id => matchesUser(id))
                     )
                 );
                 const isReporter = matchesUser(wo.reporterId || '');
                 
-                return isOfficiallyFinished || hasCompletedOwnTask || isReporter;
+                return isOfficiallyFinished || hasTaskAssigned || isReporter;
             } else {
-                return wo.status === 'Completed' || wo.status === 'Rejected' || wo.status === 'Cancelled' || wo.isArchived;
+                return isOfficiallyFinished;
             }
         });
     }, [workOrders, currentRole, CURRENT_USER_ID, user?.employeeId]);
@@ -108,6 +109,96 @@ const History = () => {
         }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [baseHistoryWorkOrders, searchTerm, selectedProjectId, selectedStaffId, selectedMonth, selectedWeek, selectedCategory, selectedSlaStatus]);
 
+    // Flatten all work orders into all tasks first (1-to-1) before separating by active/archived tabs
+    const allHistoryTasks = useMemo(() => {
+        const list: { 
+            wo: WorkOrder; 
+            task: MasterTask; 
+            categoryName: string;
+            taskIndex: number;
+            totalTasksCount: number;
+        }[] = [];
+        
+        archivedWorkOrders.forEach(wo => {
+            const allTasks = wo.categories.flatMap(cat => cat.tasks || []);
+            
+            // Filter out fake/placeholder rejected tasks (status is 'Rejected', no staff assigned, and rootCause is empty or missing)
+            const nonFakeTasks = allTasks.filter(t => {
+                if (!t) return false;
+                const isFakeReject = t.status === 'Rejected' && 
+                    (!t.responsibleStaffIds || t.responsibleStaffIds.length === 0) &&
+                    (!t.rootCause || t.rootCause.trim() === '');
+                return !isFakeReject;
+            });
+            const totalCount = nonFakeTasks.length;
+            
+            wo.categories.forEach(cat => {
+                const tasks = cat.tasks || [];
+                tasks.forEach((task, tIdx) => {
+                    if (!task) return;
+                    
+                    const isFakeReject = task.status === 'Rejected' && 
+                        (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0) &&
+                        (!task.rootCause || task.rootCause.trim() === '');
+                    if (isFakeReject) return;
+                    
+                    list.push({ 
+                        wo, 
+                        task, 
+                        categoryName: cat.name,
+                        taskIndex: tIdx + 1,
+                        totalTasksCount: totalCount
+                    });
+                });
+            });
+        });
+        return list;
+    }, [archivedWorkOrders]);
+
+    // Calculate accurate Task counts for each sub-tab
+    const activeTasksCount = useMemo(() => {
+        return allHistoryTasks.filter(item => {
+            const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
+            const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
+            const isTaskClosed = 
+                (item.task.status as string) === 'Verified' || 
+                item.wo.status === 'Verified' || 
+                item.wo.status === 'Cancelled' || 
+                ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
+                (item.wo.status === 'Rejected' && !foremanId);
+            return !isTaskClosed;
+        }).length;
+    }, [allHistoryTasks]);
+
+    const archivedTasksCount = useMemo(() => {
+        return allHistoryTasks.filter(item => {
+            const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
+            const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
+            const isTaskClosed = 
+                (item.task.status as string) === 'Verified' || 
+                item.wo.status === 'Verified' || 
+                item.wo.status === 'Cancelled' || 
+                ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
+                (item.wo.status === 'Rejected' && !foremanId);
+            return isTaskClosed;
+        }).length;
+    }, [allHistoryTasks]);
+
+    // Choose which list to render in the table based on selected sub-tab
+    const displayedTasks = useMemo(() => {
+        return allHistoryTasks.filter(item => {
+            const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
+            const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
+            const isTaskClosed = 
+                (item.task.status as string) === 'Verified' || 
+                item.wo.status === 'Verified' || 
+                item.wo.status === 'Cancelled' || 
+                ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
+                (item.wo.status === 'Rejected' && !foremanId);
+            return activeSubTab === 'Active' ? !isTaskClosed : isTaskClosed;
+        });
+    }, [allHistoryTasks, activeSubTab]);
+
     const clearFilters = () => {
         setSearchTerm('');
         setSelectedProjectId('');
@@ -140,7 +231,11 @@ const History = () => {
                     </div>
                     <div>
                         <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em' }}>ประวัติงาน (Job History)</h1>
-                        <span style={{ color: '#64748b', fontSize: '1rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>รายการที่ปิดงานเสร็จสมบูรณ์แล้ว ทั้งหมด {archivedWorkOrders.length} รายการ</span>
+                        <span style={{ color: '#64748b', fontSize: '1rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                            {activeSubTab === 'Active' 
+                                ? `รายการงานย่อยที่อยู่ระหว่างดำเนินการและรอตรวจรับ ทั้งหมด ${activeTasksCount} รายการ` 
+                                : `คลังประวัติและเอกสารส่งมอบงานสำเร็จ/ยกเลิก ทั้งหมด ${archivedTasksCount} รายการ`}
+                        </span>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -255,82 +350,159 @@ const History = () => {
                     </div>
                 )}
 
-            {/* Compact List Table */}
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '1.25rem', background: '#f1f5f9', padding: '4px', borderRadius: '16px', width: 'fit-content' }}>
+                <button
+                    onClick={() => setActiveSubTab('Active')}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 24px',
+                        borderRadius: '12px',
+                        border: 'none',
+                        background: activeSubTab === 'Active' ? '#ffffff' : 'transparent',
+                        color: activeSubTab === 'Active' ? '#4f46e5' : '#64748b',
+                        fontWeight: 800,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        boxShadow: activeSubTab === 'Active' ? '0 4px 12px -2px rgba(79, 70, 229, 0.12)' : 'none',
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                >
+                    <Clock size={16} />
+                    รายการงานปัจจุบัน ({activeTasksCount})
+                </button>
+                <button
+                    onClick={() => setActiveSubTab('Archived')}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 24px',
+                        borderRadius: '12px',
+                        border: 'none',
+                        background: activeSubTab === 'Archived' ? '#ffffff' : 'transparent',
+                        color: activeSubTab === 'Archived' ? '#4f46e5' : '#64748b',
+                        fontWeight: 800,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        boxShadow: activeSubTab === 'Archived' ? '0 4px 12px -2px rgba(79, 70, 229, 0.12)' : 'none',
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                >
+                    <Archive size={16} />
+                    คลังประวัติสำเร็จ/ยกเลิก ({archivedTasksCount})
+                </button>
+            </div>
+                                 {/* Compact List Table */}
             <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                         <tr>
-                            <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b', whiteSpace: 'nowrap' }}>เลขที่ใบงาน</th>
-                            <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>โครงการ</th>
+                            <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b', whiteSpace: 'nowrap' }}>เลขที่ใบงาน / รายการซ่อม</th>
+                            <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>โครงการ / หมวดงาน</th>
                             <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>ยูนิต</th>
                             <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>วันที่เริ่ม - จบ</th>
                             <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>ผู้แจ้งซ่อม</th>
-                            <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>โฟร์แมน</th>
-                            <th style={{ padding: '16px 12px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b', textAlign: 'center' }}>ความคืบหน้า</th>
+                            <th style={{ padding: '16px 24px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b' }}>ผู้รับผิดชอบ / ช่าง</th>
+                            {activeSubTab === 'Active' ? (
+                                <th style={{ padding: '16px 12px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b', textAlign: 'center' }}>ความคืบหน้า</th>
+                            ) : (
+                                <th style={{ padding: '16px 12px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b', textAlign: 'center' }}>การประเมิน</th>
+                            )}
                             <th style={{ padding: '16px 12px', fontSize: '0.85rem', fontWeight: 900, color: '#64748b', textAlign: 'center' }}>สถานะ</th>
                             <th style={{ padding: '16px 12px' }}></th>
                         </tr>
                     </thead>
                     <tbody>
-                        {archivedWorkOrders.length === 0 ? (
+                        {displayedTasks.length === 0 ? (
                             <tr>
-                                <td colSpan={8} style={{ padding: '4rem', textAlign: 'center', color: '#94a3b8', fontWeight: 600 }}>ไม่พบรายการสถิติประวัติงานที่ค้นหา</td>
+                                <td colSpan={9} style={{ padding: '4rem', textAlign: 'center', color: '#94a3b8', fontWeight: 600 }}>
+                                    {activeSubTab === 'Active' 
+                                        ? 'ไม่พบรายการงานที่อยู่ระหว่างดำเนินการ' 
+                                        : 'ไม่พบรายการสถิติประวัติงานส่งมอบแล้ว'}
+                                </td>
                             </tr>
                         ) : (
-                            archivedWorkOrders.map(wo => {
+                            displayedTasks.map(item => {
+                                const wo = item.wo;
+                                const task = item.task;
                                 const project = projects.find(p => p.id === wo.projectId);
 
-                                // ✅ Find the primary Foreman assigned to this WO
-                                const allTasks = wo.categories.flatMap(cat => cat.tasks);
+                                // Find the primary Foreman assigned to this WO
+                                const allTasks = wo.categories.flatMap(cat => cat.tasks || []);
                                 const foremanId = allTasks.find(t => t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
-                                const foreman = staff.find(s => s.id === foremanId);
+                                const taskStaffId = task.responsibleStaffIds?.[0];
+                                const staffMember = staff.find(s => s.id === taskStaffId) || staff.find(s => s.id === foremanId);
 
-                                const validTasks = allTasks.filter(t => t.status !== 'Rejected');
-                                const totalCount = validTasks.length > 0 ? validTasks.length : allTasks.length;
-                                const completedCount = validTasks.filter(t => t.status?.toLowerCase() === 'completed').length;
-                                const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                                // Calculate task progress dynamically
+                                let taskProgress = task.dailyProgress || 0;
+                                if (task.status?.toLowerCase() === 'completed' || task.status === 'Verified') {
+                                    taskProgress = 100;
+                                } else if (task.status?.toLowerCase() === 'in-progress' && taskProgress === 0) {
+                                    taskProgress = 50;
+                                }
 
-                                // Determine Actual End Date dynamically based on history and submission timestamps
+                                // Determine End Date dynamically based on task status, wo status, or history
                                 let endDateStr = '-';
-                                if (wo.status?.toLowerCase() === 'completed' || percentage === 100) {
+                                if (task.status === 'Verified' || wo.status === 'Verified') {
                                     let latestDate = new Date(wo.createdAt).getTime();
                                     if (wo.submittedAt) {
                                         latestDate = new Date(wo.submittedAt).getTime();
                                     }
-                                    // Scan task histories for the last reported progress
-                                    allTasks.forEach(t => {
-                                        t.history?.forEach(h => {
-                                            const d = new Date(h.date).getTime();
-                                            if (d > latestDate) latestDate = d;
-                                        });
+                                    task.history?.forEach((h: any) => {
+                                        const d = new Date(h.date).getTime();
+                                        if (d > latestDate) latestDate = d;
                                     });
                                     endDateStr = new Date(latestDate).toLocaleDateString('th-TH');
-                                } else if (wo.status === 'Rejected' || wo.status === 'Cancelled') {
-                                    endDateStr = 'ถูกยกเลิก';
+                                } else if (task.status === 'Rejected' || wo.status === 'Rejected') {
+                                    endDateStr = 'ปฏิเสธงาน';
+                                } else if (wo.status === 'Cancelled') {
+                                    endDateStr = 'ยกเลิก';
                                 } else {
-                                    endDateStr = 'ยังไม่จบโครงการ';
+                                    endDateStr = 'ยังไม่เสร็จ';
                                 }
 
                                 return (
                                     <tr
-                                        key={wo.id}
-                                        onClick={() => setSelectedWO(wo)}
+                                        key={`${wo.id}-${task.id}`}
+                                        onClick={() => {
+                                            setSelectedWO(wo);
+                                            setSelectedTaskId(task.id);
+                                        }}
                                         style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: 'background 0.2s' }}
                                         onMouseOver={e => e.currentTarget.style.background = '#fcfcfd'}
                                         onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                                     >
-                                        <td style={{ padding: '16px 24px', fontWeight: 800, color: '#0f172a', fontSize: '0.9rem' }}>{wo.id}</td>
+                                        {/* WorkOrder ID & Repair Task */}
                                         <td style={{ padding: '16px 24px' }}>
-                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '6px' }}>
-                                                {project?.name || wo.projectId}
-                                            </span>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.9rem' }}>{wo.id}</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 600 }}>{task.name || 'ไม่ระบุชื่อรายการ'}</span>
+                                            </div>
                                         </td>
+
+                                        {/* Project / Category */}
+                                        <td style={{ padding: '16px 24px' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                                                <span style={{ fontSize: '0.8rem', fontWeight: 700, background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '6px' }}>
+                                                    {project?.name || wo.projectId}
+                                                </span>
+                                                <span style={{ fontSize: '0.75rem', color: '#4b5563', fontWeight: 600 }}>{item.categoryName}</span>
+                                            </div>
+                                        </td>
+
+                                        {/* Location */}
                                         <td style={{ padding: '16px 24px', fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>{wo.locationName}</td>
+
+                                        {/* Date Start - End */}
                                         <td style={{ padding: '16px 24px', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>
                                             {new Date(wo.createdAt).toLocaleDateString('th-TH')} - {endDateStr}
                                         </td>
+
+                                        {/* Reporter */}
                                         <td style={{ padding: '16px 24px' }}>
-                                            {/* Reporter */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 800, fontSize: '0.9rem' }}>
                                                 <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
                                                     <User2 size={12} />
@@ -338,44 +510,81 @@ const History = () => {
                                                 {wo.reporterName.startsWith('คุณ') ? wo.reporterName : `คุณ${wo.reporterName}`}
                                             </div>
                                         </td>
+
+                                        {/* Responsible Staff / Foreman */}
                                         <td style={{ padding: '16px 24px' }}>
-                                            {/* Foreman */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontWeight: 600, fontSize: '0.85rem' }}>
                                                 <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', background: '#eef2ff', border: '1px solid #e0e7ff', flexShrink: 0 }}>
-                                                    {foreman?.profileImage ? (
-                                                        <img loading="lazy" src={foreman.profileImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    {staffMember?.profileImage ? (
+                                                        <img loading="lazy" src={staffMember.profileImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                     ) : (
                                                         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}><User2 size={12} /></div>
                                                     )}
                                                 </div>
-                                                {foreman ? (foreman.name.startsWith('คุณ') ? foreman.name : `คุณ${foreman.name}`) : 'ไม่ได้ระบุ'}
+                                                {staffMember ? (staffMember.name.startsWith('คุณ') ? staffMember.name : `คุณ${staffMember.name}`) : 'ไม่ได้ระบุ'}
                                             </div>
                                         </td>
-                                        <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: percentage === 100 ? '#10b981' : '#64748b' }}>
-                                                    {completedCount}/{totalCount}
-                                                </span>
-                                                <div style={{ width: '60px', height: '4px', background: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
-                                                    <div style={{ width: `${percentage}%`, height: '100%', background: percentage === 100 ? '#10b981' : '#6366f1' }} />
+
+                                        {/* Progress or Rating */}
+                                        {activeSubTab === 'Active' ? (
+                                            <td style={{ padding: '16px 12px', textAlign: 'center' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '0.85rem', fontWeight: 800, color: taskProgress === 100 ? '#10b981' : '#64748b' }}>
+                                                        {taskProgress}%
+                                                    </span>
+                                                    <div style={{ width: '60px', height: '4px', background: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${taskProgress}%`, height: '100%', background: taskProgress === 100 ? '#10b981' : '#1d4ed8' }} />
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </td>
+                                            </td>
+                                        ) : (
+                                            <td style={{ padding: '16px 12px', textAlign: 'center' }}>
+                                                {(task.status === 'Verified' || wo.status === 'Verified') && task.status !== 'Rejected' ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
+                                                            <Star size={14} fill="#f59e0b" style={{ stroke: 'none' }} />
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#0f172a' }}>
+                                                                {(task as any).satisfaction || (wo as any).overallSatisfaction || '5.0'}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>ผลประเมิน</span>
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 500 }}>-</span>
+                                                )}
+                                            </td>
+                                        )}
+
+                                        {/* Status Badge */}
                                         <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                                            {wo.status === 'Rejected' ? (
-                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#ef4444', background: '#fef2f2', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fee2e2' }}>
-                                                    <XCircle size={14} /> ยกเลิก
+                                            {wo.status === 'Cancelled' ? (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#64748b', background: '#f1f5f9', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #e2e8f0' }}>
+                                                    <XCircle size={14} /> ยกเลิกใบงาน
                                                 </div>
-                                            ) : (wo.status?.toLowerCase() === 'completed' || percentage === 100) ? (
+                                            ) : (task.status as string) === 'Rejected' || (wo.status === 'Rejected' && (task.status as string) !== 'Verified') ? (
+                                                (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0) || !foremanId ? (
+                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#ef4444', background: '#fef2f2', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fee2e2' }}>
+                                                        <XCircle size={14} /> ปฏิเสธโดยแอดมิน
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#be123c', background: '#fff1f2', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #ffe4e6' }}>
+                                                        <RotateCcw size={14} /> ส่งคืนแก้ไข (ลูกค้า)
+                                                    </div>
+                                                )
+                                            ) : (task.status as string) === 'Verified' || (wo.status === 'Verified' && (task.status as string) !== 'Rejected') ? (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#10b981', background: '#ecfdf5', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #d1fae5' }}>
-                                                    <CheckCircle size={14} /> สำเร็จ
+                                                    <CheckCircle size={14} /> สำเร็จสมบูรณ์
                                                 </div>
-                                            ) : completedCount > 0 ? (
-                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#6366f1', background: '#eff6ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #dbeafe' }}>
-                                                    <Clock size={14} /> เสร็จบางส่วน
+                                            ) : (task.status as string)?.toLowerCase() === 'completed' ? (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', background: '#fffbeb', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fef3c7' }}>
+                                                    <Clock size={14} /> รอ Owner ตรวจรับ
+                                                </div>
+                                            ) : (task.status as string) === 'Evaluating' || wo.status === 'Evaluating' ? (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#7c3aed', background: '#f5f3ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #ddd6fe' }}>
+                                                    <User2 size={14} /> รอมอบหมาย [แอดมิน]
                                                 </div>
                                             ) : (
-                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#f59e0b', background: '#fffbeb', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fef3c7' }}>
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #bfdbfe' }}>
                                                     <Clock size={14} /> กำลังดำเนินการ
                                                 </div>
                                             )}
@@ -384,7 +593,7 @@ const History = () => {
                                             <ChevronRight size={20} />
                                         </td>
                                     </tr>
-                                )
+                                );
                             })
                         )}
                     </tbody>
@@ -396,11 +605,15 @@ const History = () => {
                 <HistoryDetailModal
                     isOpen={!!selectedWO}
                     workOrder={selectedWO}
-                    onClose={() => setSelectedWO(null)}
+                    onClose={() => {
+                        setSelectedWO(null);
+                        setSelectedTaskId(null);
+                    }}
                     projects={projects}
                     staff={staff}
                     contractors={contractors}
                     currentUserId={user?.id}
+                    selectedTaskId={selectedTaskId}
                 />
             )}
         </div>

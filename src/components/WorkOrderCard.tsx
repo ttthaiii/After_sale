@@ -392,8 +392,8 @@ const WorkOrderCard = ({
                                                                     ((task as any).images && (task as any).images.length > 0 && (task as any).images[0]) ||
                                                                     task.beforePhotoUrl;
                                                                 const currentStatus = taskDecisions?.[task.id] || task.status;
-                                                                const isDecided = currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Rejected';
-                                                                const trBgColor = (currentStatus === 'Approved' || currentStatus === 'Assigned')
+                                                                const isDecided = currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Rejected' || currentStatus === 'Verified';
+                                                                const trBgColor = (currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Verified')
                                                                     ? 'rgba(16, 185, 129, 0.03)'
                                                                     : currentStatus === 'Rejected'
                                                                         ? 'rgba(239, 68, 68, 0.03)'
@@ -466,7 +466,7 @@ const WorkOrderCard = ({
                                                                             </div>
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'center' }}>
-                                                                            {currentStatus === 'Approved' || currentStatus === 'Assigned' ? (
+                                                                            {currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Verified' ? (
                                                                                 <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                                     <CheckCircle2 size={24} />
                                                                                 </div>

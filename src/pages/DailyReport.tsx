@@ -488,9 +488,10 @@ const DailyReport = () => {
         }
     }, [user]);
 
-    const { newTasks, inProgressTasks } = useMemo(() => {
+    const { newTasks, inProgressTasks, pendingInspectionTasks } = useMemo(() => {
         const _newTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
         const _inProgressTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
+        const _pendingInspectionTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
 
         workOrders.forEach(wo => {
             // Only show work orders that are active (Approved, Partially Approved, Pending, In Progress, Evaluating)
@@ -525,7 +526,6 @@ const DailyReport = () => {
                                 wo, 
                                 categoryId: cat.id 
                             };
-                            const hasProgress = actualProgress > 0;
                             
                             if (searchTerm) {
                                 const match = (task.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -534,14 +534,19 @@ const DailyReport = () => {
                                 if (!match) return;
                             }
 
-                            if (hasProgress) _inProgressTasks.push(item);
-                            else _newTasks.push(item);
+                            if (actualProgress === 100) {
+                                _pendingInspectionTasks.push(item);
+                            } else if (actualProgress > 0) {
+                                _inProgressTasks.push(item);
+                            } else {
+                                _newTasks.push(item);
+                            }
                         }
                     });
                 });
             });
 
-            return { newTasks: _newTasks, inProgressTasks: _inProgressTasks };
+            return { newTasks: _newTasks, inProgressTasks: _inProgressTasks, pendingInspectionTasks: _pendingInspectionTasks };
         }, [workOrders, searchTerm, foremanId, user?.role]);
 
     // ✅ Deep Link: Open Work Order if ID is in URL with Completed/Inactive Verification (Case C)
@@ -550,8 +555,10 @@ const DailyReport = () => {
         const workOrderId = params.get('id');
 
         if (workOrderId && workOrders.length > 0) {
-            // Find task in either newTasks or inProgressTasks
-            const item = newTasks.find(n => n.wo.id === workOrderId) || inProgressTasks.find(i => i.wo.id === workOrderId);
+            // Find task in either newTasks, inProgressTasks, or pendingInspectionTasks
+            const item = newTasks.find(n => n.wo.id === workOrderId) || 
+                         inProgressTasks.find(i => i.wo.id === workOrderId) ||
+                         pendingInspectionTasks.find(p => p.wo.id === workOrderId);
             
             if (item) {
                 setHighlightedId(workOrderId);
@@ -990,6 +997,8 @@ const DailyReport = () => {
             rejectReason?: string;
             notes?: string;
             currentRevision?: string;
+            evaluationChecklist?: Record<string, number | boolean>;
+            overallSatisfaction?: number;
         }
     ) => {
         try {
@@ -1000,6 +1009,8 @@ const DailyReport = () => {
                     status: 'Verified',
                     ownerName: updates.ownerName || '',
                     notes: updates.notes || '',
+                    evaluationChecklist: updates.evaluationChecklist || {},
+                    overallSatisfaction: updates.overallSatisfaction || 0,
                     updatedAt: now
                 });
                 
@@ -1019,6 +1030,7 @@ const DailyReport = () => {
                     revisionName: updates.rejectReason || '',
                     revisionCreatedAt: now,
                     currentRevision: updates.currentRevision || 'rev01',
+                    evaluationChecklist: updates.evaluationChecklist || {},
                     dailyProgress: 0,
                     updatedAt: now
                 });
@@ -1175,6 +1187,18 @@ const DailyReport = () => {
                         otMorning: l.shifts?.otMorning || false,
                         otNoon: l.shifts?.otNoon || false,
                     },
+                    expectedShifts: {
+                        normal: l.shifts?.normal || false,
+                        otEvening: l.shifts?.otEvening || false,
+                        otMorning: l.shifts?.otMorning || false,
+                        otNoon: l.shifts?.otNoon || false,
+                    },
+                    expectedHours: {
+                        normal: l.shifts?.normal ? 8 : 0,
+                        otMorning: l.shifts?.otMorning ? 2 : 0,
+                        otNoon: l.shifts?.otNoon ? 1 : 0,
+                        otEvening: l.shifts?.otEvening ? 3 : 0,
+                    },
                     amount: l.amount || 1
                 }));
 
@@ -1191,7 +1215,7 @@ const DailyReport = () => {
                         custom: true
                     },
                     medCertFileUrl: l.leave?.medCertFileUrl || '',
-                    leaveType: l.leave?.medCertFileUrl ? 'Paid' : 'Unpaid'
+                    leaveType: l.leave?.medCertFileUrl ? 'paid' : 'unpaid'
                 }));
 
             // Structure photos payload — LB-compatible Firestore format
@@ -1217,8 +1241,9 @@ const DailyReport = () => {
                 ...laborOtEveningPhotos.filter(Boolean),
             ];
 
-            const updateId = (isEditingExisting && existingHistory) ? existingHistory.id : `h-${Date.now()}`;
-            const newUpdate: TaskUpdate = {
+            const isWoaWop = selectedTaskInfo.wo.id.toUpperCase().includes('WOA') || selectedTaskInfo.wo.id.toUpperCase().includes('WOP');
+            const updateId = isWoaWop ? reportDate : ((isEditingExisting && existingHistory) ? existingHistory.id : `h-${Date.now()}`);
+            const newUpdate: TaskUpdate & { projectLocationId?: string } = {
                 id: updateId,
                 date: `${reportDate}T${new Date().toISOString().split('T')[1]}`,
                 note,
@@ -1227,7 +1252,8 @@ const DailyReport = () => {
                 laborPhotos: mergedLaborPhotos,
                 labor: laborPayload as any,
                 leave: leavePayload,
-                type: reportType
+                type: reportType,
+                projectLocationId: selectedTaskInfo.wo.projectId || ''
             };
 
             await addTaskUpdate(selectedTaskInfo.wo.id, selectedTaskInfo.categoryId, selectedTaskInfo.task.id, newUpdate as any);
@@ -1469,7 +1495,7 @@ const DailyReport = () => {
                         <Building2 size={11} style={{ flexShrink: 0 }} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{wo.locationName}</span>
                     </div>
                     {isCompleted100 && (
-                        <div style={{ marginTop: '6px' }}>
+                        <div style={{ marginTop: '4px' }}>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -1480,20 +1506,23 @@ const DailyReport = () => {
                                     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                                     color: '#ffffff',
                                     border: 'none',
-                                    padding: '5px 10px',
+                                    padding: '6px 12px',
                                     borderRadius: '8px',
                                     fontWeight: 800,
-                                    fontSize: '0.7rem',
+                                    fontSize: '0.72rem',
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.2)',
-                                    transition: 'all 0.2s'
+                                    gap: '6px',
+                                    boxShadow: '0 4px 10px rgba(16, 185, 129, 0.25)',
+                                    transition: 'all 0.2s',
+                                    marginTop: '4px'
                                 }}
+                                onMouseOver={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                                onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
                             >
-                                <UserCheck size={11} />
-                                <span>ตรวจรับงานร่วมกับ Owner</span>
+                                <UserCheck size={12} style={{ flexShrink: 0 }} />
+                                <span>ตรวจรับงาน</span>
                             </button>
                         </div>
                     )}
@@ -2097,10 +2126,11 @@ const DailyReport = () => {
                         </div>
                     </div>
                     <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-                        {newTasks.length === 0 && inProgressTasks.length === 0 ? <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8' }}><div style={{ fontSize: '0.9rem', fontWeight: 700 }}>ไม่มีงานที่ต้องรายงานในขณะนี้</div></div> :
+                        {newTasks.length === 0 && inProgressTasks.length === 0 && pendingInspectionTasks.length === 0 ? <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8' }}><div style={{ fontSize: '0.9rem', fontWeight: 700 }}>ไม่มีงานที่ต้องรายงานในขณะนี้</div></div> :
                             <>
                                 {newTasks.length > 0 && <div style={{ marginBottom: '1.5rem' }}><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#f59e0b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}><Bell size={12} fill="currentColor" /> งานใหม่ (New Assignments)</h3>{newTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, true))}</div>}
-                                {inProgressTasks.length > 0 && <div><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase' }}>งานที่กำลังทำ (In Progress)</h3>{inProgressTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, false))}</div>}
+                                {inProgressTasks.length > 0 && <div style={{ marginBottom: '1.5rem' }}><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase' }}>งานที่กำลังทำ (In Progress)</h3>{inProgressTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, false))}</div>}
+                                {pendingInspectionTasks.length > 0 && <div><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#10b981', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}><CheckCircle2 size={12} style={{ color: '#10b981' }} /> งานที่รอตรวจสอบ (Pending Inspection)</h3>{pendingInspectionTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, false))}</div>}
                             </>
                         }
                     </div>
