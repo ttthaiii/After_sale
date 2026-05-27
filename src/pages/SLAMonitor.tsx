@@ -641,6 +641,7 @@ const SLAMonitor = () => {
                                         const totalSisterTasksCount = allTasksInWO.length;
                                         const pendingSisterCount = allTasksInWO.filter(t => t.status === 'Pending').length;
                                         const evaluatedSisterCount = allTasksInWO.filter(t => t.status !== 'Pending' && t.status !== 'Rejected').length;
+                                         const rejectedSisterCount = allTasksInWO.filter(t => t.status === 'Rejected').length;
 
                                         return (
                                             <div 
@@ -727,8 +728,10 @@ const SLAMonitor = () => {
                                                     }}>
                                                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#312e81' }}><FileText size={11} /> ใบงานเดียวกัน ({totalSisterTasksCount}):</span>
                                                         {pendingSisterCount > 0 && <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '2px' }}>🔴 รอประเมิน {pendingSisterCount}</span>}
-                                                        {pendingSisterCount > 0 && evaluatedSisterCount > 0 && <span style={{ color: '#c7d2fe' }}>·</span>}
+                                                        {pendingSisterCount > 0 && (evaluatedSisterCount > 0 || rejectedSisterCount > 0) && <span style={{ color: '#c7d2fe' }}>·</span>}
                                                         {evaluatedSisterCount > 0 && <span style={{ color: '#2563eb', display: 'flex', alignItems: 'center', gap: '2px' }}>🔵 ประเมินแล้ว {evaluatedSisterCount}</span>}
+                                                        {evaluatedSisterCount > 0 && rejectedSisterCount > 0 && <span style={{ color: '#c7d2fe' }}>·</span>}
+                                                        {rejectedSisterCount > 0 && <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '2px' }}>⚫ ปฏิเสธ {rejectedSisterCount}</span>}
                                                     </div>
                                                 )}
                                                 
