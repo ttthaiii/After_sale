@@ -519,7 +519,7 @@ const DailyReport = () => {
 
             wo.categories.forEach(cat => {
                 cat.tasks.forEach(task => {
-                    if (task.status === 'Pending' || task.status === 'Verified') return;
+                    if (task.status === 'Pending' || task.status === 'Verified' || task.status === 'Rejected') return;
 
                     // Role Segregation & Access Control Logic
                     // 1. Is WO Owner? (Can see all tasks in read-only except their own executable ones)
