@@ -3,7 +3,7 @@ import { db, storage } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Project, Contractor } from '../types';
-import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock, TrendingUp, FileText, UserCheck, QrCode, Sparkles } from 'lucide-react';
+import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock, TrendingUp, FileText, QrCode, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import TaskReviewModal from '../components/TaskReviewModal';
 import CustomerInspectionMockup from '../components/CustomerInspectionMockup';
@@ -1681,35 +1681,20 @@ const DailyReport = () => {
                         <Building2 size={11} style={{ flexShrink: 0 }} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{wo.locationName}</span>
                     </div>
                     {isCompleted100 && (
-                        <div style={{ marginTop: '4px' }}>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setReviewTaskInfo({ task, wo });
-                                    setIsReviewModalOpen(true);
-                                }}
-                                style={{
-                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    padding: '6px 12px',
-                                    borderRadius: '8px',
-                                    fontWeight: 800,
-                                    fontSize: '0.72rem',
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    boxShadow: '0 4px 10px rgba(16, 185, 129, 0.25)',
-                                    transition: 'all 0.2s',
-                                    marginTop: '4px'
-                                }}
-                                onMouseOver={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-                                onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
-                            >
-                                <UserCheck size={12} style={{ flexShrink: 0 }} />
-                                <span>ตรวจรับงาน</span>
-                            </button>
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ 
+                                color: '#15803d', 
+                                background: '#dcfce7', 
+                                padding: '3px 8px', 
+                                borderRadius: '6px', 
+                                fontWeight: 800, 
+                                fontSize: '0.65rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                            }}>
+                                <CheckCircle2 size={10} style={{ color: '#10b981' }} /> รอส่งมอบภาพรวม
+                            </span>
                         </div>
                     )}
                 </div>
