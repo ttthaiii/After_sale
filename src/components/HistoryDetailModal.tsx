@@ -55,7 +55,25 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
     } else {
         endDateStr = 'ยังไม่จบโครงการ';
     }
-
+    // Helper to get labor photos from structured photos payload
+    const getLaborPhotos = (h: any): string[] => {
+        if (!h.photos) return [];
+        if (Array.isArray(h.photos)) return [];
+        const list: string[] = [];
+        const lbs = h.photos.laborByShift;
+        if (lbs) {
+            if (lbs.regular && Array.isArray(lbs.regular)) {
+                list.push(...lbs.regular.filter(Boolean));
+            }
+            ['otMorning', 'otNoon', 'otEvening'].forEach(otKey => {
+                if (lbs[otKey]) {
+                    if (lbs[otKey].in) list.push(lbs[otKey].in);
+                    if (lbs[otKey].out) list.push(lbs[otKey].out);
+                }
+            });
+        }
+        return list;
+    };
 
     // Helper: Calculate Time vs SLA
     const getSLAPerformance = (task: MasterTask) => {
@@ -81,16 +99,96 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
             ? task.actualCompletionTime
             : Math.max(1, Math.floor((completionDate.getTime() - reportDate.getTime()) / (1000 * 60 * 60)));
 
+        // Helper to get leave hours from time range string
+        const getLeaveHours = (timeRange: string): number => {
+            if (!timeRange) return 8;
+            if (timeRange === '08:00 - 17:00') return 8;
+            if (timeRange === '08:00 - 12:00' || timeRange === '13:00 - 17:00') return 4;
+            
+            try {
+                const parts = timeRange.split(' - ');
+                if (parts.length !== 2) return 8;
+                const [startStr, endStr] = parts;
+                const [sh, smStr] = startStr.split(':');
+                const [eh, emStr] = endStr.split(':');
+                const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
+                const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
+                let diffMin = endMin - startMin;
+                
+                if (startMin <= 720 && endMin >= 780) {
+                    diffMin -= 60;
+                }
+                const hrs = diffMin / 60;
+                return Math.max(0, hrs);
+            } catch (e) {
+                return 8;
+            }
+        };
+
+        // Helper to get shift hours from custom time range string
+        const getShiftHours = (timeRange: string, defaultHours: number): number => {
+            if (!timeRange) return defaultHours;
+            try {
+                const parts = timeRange.split(' - ');
+                if (parts.length !== 2) return defaultHours;
+                const [startStr, endStr] = parts;
+                const [sh, smStr] = startStr.split(':');
+                const [eh, emStr] = endStr.split(':');
+                const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
+                const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
+                let diffMin = endMin - startMin;
+                
+                if (startMin <= 720 && endMin >= 780) {
+                    diffMin -= 60;
+                }
+                const hrs = diffMin / 60;
+                return Math.max(0, hrs);
+            } catch (e) {
+                return defaultHours;
+            }
+        };
+
         // Calculate On-Site Time (derived from history labor logs)
         let totalOnSiteHours = 0;
         if (task.history) {
             task.history.forEach(update => {
+                const leaveList = update.leave || [];
+                const leaveMap = new Map<string, any>();
+                leaveList.forEach((lv: any) => {
+                    const wId = lv.workerId || lv.id || lv.staffId || '';
+                    if (wId) {
+                        leaveMap.set(wId, lv);
+                    }
+                });
+
                 (update.labor || []).forEach((l: any) => {
+                    const wId = l.workerId || l.staffId || l.contractorId || l.id;
+                    const hasLeave = leaveMap.has(wId);
+                    const leaveRecord = leaveMap.get(wId);
+                    
+                    let leaveHours = 0;
+                    if (hasLeave && leaveRecord) {
+                        const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
+                        leaveHours = getLeaveHours(leaveTimeRange);
+                    }
+
                     if (l.shifts) {
-                        if (l.shifts.normal) totalOnSiteHours += (l.amount * 8); // Normal shift ~ 8h
-                        if (l.shifts.otMorning) totalOnSiteHours += (l.amount * 2); // OT Morning ~ 2h
-                        if (l.shifts.otNoon) totalOnSiteHours += (l.amount * 1); // OT Noon ~ 1h
-                        if (l.shifts.otEvening) totalOnSiteHours += (l.amount * 3); // OT Evening ~ 3h
+                        let normalHr = 0;
+                        if (l.shifts.normal) {
+                            const regTime = l.shiftTimes?.day || '08:00 - 17:00';
+                            const duration = getShiftHours(regTime, 8);
+                            normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
+                        }
+                        totalOnSiteHours += (l.amount * normalHr);
+                        if (l.shifts.otMorning) {
+                            totalOnSiteHours += (l.amount * getShiftHours(l.shiftTimes?.otMorning, 2));
+                        }
+                        if (l.shifts.otNoon) {
+                            totalOnSiteHours += (l.amount * getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1));
+                        }
+                        if (l.shifts.otEvening) {
+                            totalOnSiteHours += (l.amount * getShiftHours(l.shiftTimes?.otEvening, 3));
+                        }
                     }
                 });
             });
@@ -900,25 +998,31 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                     )}
 
                                                                     {/* Labor Proof Photos (NEW) */}
-                                                                    {(h as any).laborPhotos && (h as any).laborPhotos.length > 0 && (
-                                                                        <div style={{ marginTop: '16px', padding: '12px', background: '#f0f9ff', borderRadius: '12px', border: '1px solid #e0f2fe' }}>
-                                                                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                <Camera size={14} /> รูปภาพหลักฐานแรงงาน / ทีมช่าง (Labor Proof):
+                                                                    {(() => {
+                                                                        const lPhotos = ((h as any).laborPhotos && (h as any).laborPhotos.length > 0)
+                                                                            ? (h as any).laborPhotos
+                                                                            : getLaborPhotos(h);
+                                                                        if (!lPhotos || lPhotos.length === 0) return null;
+                                                                        return (
+                                                                            <div style={{ marginTop: '16px', padding: '12px', background: '#f0f9ff', borderRadius: '12px', border: '1px solid #e0f2fe' }}>
+                                                                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                    <Camera size={14} /> รูปภาพหลักฐานแรงงาน / ทีมช่าง (Labor Proof):
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
+                                                                                    {lPhotos.map((photo: string, pIdx: number) => (
+                                                                                        <div key={pIdx} style={{ width: '100px', height: '100px', borderRadius: '10px', overflow: 'hidden', border: '2px solid #fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', flexShrink: 0 }}>
+                                                                                            <img 
+                                                                                                src={photo} 
+                                                                                                style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
+                                                                                                alt={`Labor Proof ${pIdx + 1}`}
+                                                                                                onClick={() => window.open(photo, '_blank')}
+                                                                                            />
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
                                                                             </div>
-                                                                            <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
-                                                                                {(h as any).laborPhotos.map((photo: string, pIdx: number) => (
-                                                                                    <div key={pIdx} style={{ width: '100px', height: '100px', borderRadius: '10px', overflow: 'hidden', border: '2px solid #fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', flexShrink: 0 }}>
-                                                                                        <img 
-                                                                                            src={photo} 
-                                                                                            style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
-                                                                                            alt={`Labor Proof ${pIdx + 1}`}
-                                                                                            onClick={() => window.open(photo, '_blank')}
-                                                                                        />
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
+                                                                        );
+                                                                    })()}
                                                                 </div>
                                                             </details>
                                                         );

@@ -399,6 +399,9 @@ const SLAMonitor = () => {
 
         // 4. Filtering
         const filtered = allTasks.filter(task => {
+            // Exclude rejected tasks — they are no longer tracked on the board
+            if (task.status === 'Rejected') return false;
+
             const matchesSearch = (task.taskCode || task.woId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (task.woLocation || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (task.name || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -595,9 +598,6 @@ const SLAMonitor = () => {
                         const progress = t.dailyProgress || 0;
                         
                         // Force Column Sync Logic
-                        if (effectiveStatus === 'Rejected') {
-                            effectiveStatus = 'Assigned';
-                        }
                         if (progress >= 100 && effectiveStatus !== 'Completed' && effectiveStatus !== 'Verified') {
                             effectiveStatus = 'Completed';
                         } else if (progress > 0 && progress < 100 && (effectiveStatus === 'Pending' || effectiveStatus === 'Assigned' || effectiveStatus === 'upcoming')) {
@@ -997,6 +997,33 @@ const SLAMonitor = () => {
                 // Get selected date report info
                 const selectedReport: any = reports.find((r: any) => r.date === selectedHistoryDate);
 
+                // Helper to get leave hours from time range string
+                const getLeaveHours = (timeRange: string): number => {
+                    if (!timeRange) return 8; // Default to full day if not specified
+                    if (timeRange === '08:00 - 17:00') return 8;
+                    if (timeRange === '08:00 - 12:00' || timeRange === '13:00 - 17:00') return 4;
+                    
+                    try {
+                        const parts = timeRange.split(' - ');
+                        if (parts.length !== 2) return 8;
+                        const [startStr, endStr] = parts;
+                        const [sh, smStr] = startStr.split(':');
+                        const [eh, emStr] = endStr.split(':');
+                        const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
+                        const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
+                        let diffMin = endMin - startMin;
+                        
+                        // Subtract lunch break (12:00 - 13:00 / 720 to 780 minutes) if it is fully inside
+                        if (startMin <= 720 && endMin >= 780) {
+                            diffMin -= 60;
+                        }
+                        const hrs = diffMin / 60;
+                        return Math.max(0, hrs);
+                    } catch (e) {
+                        return 8;
+                    }
+                };
+
                 // Math calculation for DC workers & hours
                 let siteWorkers = 0;
                 let supportWorkers = 0;
@@ -1008,31 +1035,94 @@ const SLAMonitor = () => {
 
                 if (selectedReport) {
                     const labor = selectedReport.labor || [];
+                    const leaveList = selectedReport.leave || [];
+                    const leaveMap = new Map<string, any>();
+                    leaveList.forEach((lv: any) => {
+                        const wId = lv.workerId || lv.id || lv.staffId || '';
+                        if (wId) {
+                            leaveMap.set(wId, lv);
+                        }
+                    });
+
                     labor.forEach((l: any) => {
                         const isSite = l.membership === 'Internal';
                         const amount = l.amount || 0;
+                        const wId = l.workerId || l.staffId || l.contractorId || l.id;
                         
-                        const normalHr = l.shifts?.normal ? 8 : 0;
-                        const otMorningHr = l.shifts?.otMorning ? 2 : 0;
-                        const otNoonHr = l.shifts?.otNoon ? 1 : 0;
-                        const otEveningHr = l.shifts?.otEvening ? 3 : 0;
+                        // Check if this worker has an active leave on this day
+                        const hasLeave = leaveMap.has(wId);
+                        const leaveRecord = leaveMap.get(wId);
+                        
+                        let leaveHours = 0;
+                        if (hasLeave && leaveRecord) {
+                            const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
+                            leaveHours = getLeaveHours(leaveTimeRange);
+                        }
+
+                        // Helper to get shift hours from custom time range string
+                        const getShiftHours = (timeRange: string, defaultHours: number): number => {
+                            if (!timeRange) return defaultHours;
+                            try {
+                                const parts = timeRange.split(' - ');
+                                if (parts.length !== 2) return defaultHours;
+                                const [startStr, endStr] = parts;
+                                const [sh, smStr] = startStr.split(':');
+                                const [eh, emStr] = endStr.split(':');
+                                const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
+                                const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
+                                let diffMin = endMin - startMin;
+                                
+                                // Subtract lunch break if it spans across it (12:00 - 13:00)
+                                if (startMin <= 720 && endMin >= 780) {
+                                    diffMin -= 60;
+                                }
+                                const hrs = diffMin / 60;
+                                return Math.max(0, hrs);
+                            } catch (e) {
+                                return defaultHours;
+                            }
+                        };
+
+                        // Calculate actual normal work hours
+                        let normalHr = 0;
+                        if (l.shifts?.normal) {
+                            const regTime = l.shiftTimes?.day || '08:00 - 17:00';
+                            const duration = getShiftHours(regTime, 8);
+                            // Only subtract leaveHours if the shift time has not already been adjusted
+                            normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
+                        }
+
+                        const otMorningHr = l.shifts?.otMorning ? getShiftHours(l.shiftTimes?.otMorning, 2) : 0;
+                        const otNoonHr = l.shifts?.otNoon ? getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1) : 0;
+                        const otEveningHr = l.shifts?.otEvening ? getShiftHours(l.shiftTimes?.otEvening, 3) : 0;
 
                         const totalHr = amount * (normalHr + otMorningHr + otNoonHr + otEveningHr);
 
+                        // How many workers (headcount) are active?
+                        // If they took a full-day leave (normalHr = 0 and no OT shifts are active), they worked 0 headcount.
+                        let activeWorkerCount = amount;
+                        if (hasLeave && leaveHours >= 8 && normalHr === 0 && !l.shifts?.otMorning && !l.shifts?.otNoon && !l.shifts?.otEvening) {
+                            activeWorkerCount = 0; // Full day leave, no OT → not on site
+                        } else if (hasLeave && leaveHours > 0) {
+                            // If they have leave, adjust active headcount proportional to their working time on normal shift
+                            const workingRatio = normalHr / 8;
+                            activeWorkerCount = amount * workingRatio;
+                        }
+
                         if (isSite) {
-                            siteWorkers += amount;
+                            siteWorkers += activeWorkerCount;
                             siteHours += totalHr;
                             siteShiftHours.day += amount * normalHr;
-                            siteShiftHours.otMorning += amount * (l.shifts?.otMorning ? 2 : 0);
-                            siteShiftHours.otNoon += amount * (l.shifts?.otNoon ? 1 : 0);
-                            siteShiftHours.otEvening += amount * (l.shifts?.otEvening ? 3 : 0);
+                            siteShiftHours.otMorning += amount * otMorningHr;
+                            siteShiftHours.otNoon += amount * otNoonHr;
+                            siteShiftHours.otEvening += amount * otEveningHr;
                         } else {
-                            supportWorkers += amount;
+                            supportWorkers += activeWorkerCount;
                             supportHours += totalHr;
                             supportShiftHours.day += amount * normalHr;
-                            supportShiftHours.otMorning += amount * (l.shifts?.otMorning ? 2 : 0);
-                            supportShiftHours.otNoon += amount * (l.shifts?.otNoon ? 1 : 0);
-                            supportShiftHours.otEvening += amount * (l.shifts?.otEvening ? 3 : 0);
+                            supportShiftHours.otMorning += amount * otMorningHr;
+                            supportShiftHours.otNoon += amount * otNoonHr;
+                            supportShiftHours.otEvening += amount * otEveningHr;
                         }
                     });
                 }
@@ -1073,8 +1163,22 @@ const SLAMonitor = () => {
                     if (selectedReport.photos) {
                         if (Array.isArray(selectedReport.photos)) {
                             photoArray = [...selectedReport.photos];
-                        } else if (selectedReport.photos.site && Array.isArray(selectedReport.photos.site)) {
-                            photoArray = [...selectedReport.photos.site];
+                        } else {
+                            if (selectedReport.photos.site && Array.isArray(selectedReport.photos.site)) {
+                                photoArray = [...photoArray, ...selectedReport.photos.site];
+                            }
+                            if (selectedReport.photos.laborByShift) {
+                                const lbs = selectedReport.photos.laborByShift;
+                                if (lbs.regular && Array.isArray(lbs.regular)) {
+                                    photoArray = [...photoArray, ...lbs.regular.filter(Boolean)];
+                                }
+                                ['otMorning', 'otNoon', 'otEvening'].forEach(otKey => {
+                                    if (lbs[otKey]) {
+                                        if (lbs[otKey].in) photoArray.push(lbs[otKey].in);
+                                        if (lbs[otKey].out) photoArray.push(lbs[otKey].out);
+                                    }
+                                });
+                            }
                         }
                     }
                     if (selectedReport.laborPhotos && Array.isArray(selectedReport.laborPhotos)) {

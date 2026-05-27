@@ -69,12 +69,7 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
 
     // Parse WO ID — e.g. ART-2026-WOA-0002
     const parts = woId.split('-');
-    const projectCode = parts[0].toUpperCase();                                        // "ART"
     const jobCode     = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA'; // "WOA"
-    const woSeq       = parts.length >= 1 ? parts[parts.length - 1] : '0001';          // "0002"
-
-    // Global task counter — increments across ALL categories in this WO (prevents internal dups)
-    let globalTaskCounter = 0;
 
     return categories.map((cat, catIndex) => {
         const catName = (cat.name || '').trim().toLowerCase();
@@ -87,11 +82,11 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
         // e.g. WOA-0004 or DBD-0001
         const computedCatId = `${jobCode}-${String(position).padStart(4, '0')}`;
 
-        // Task ID: ProjectCode-JobCode-WOSeq-globalTaskSeq7digits
-        // e.g. ART-WOA-0002-0000001  (globally unique across all projects and WOs)
-        const tasks = cat.tasks ? cat.tasks.map((task: any) => {
-            globalTaskCounter++;
-            const computedTaskId = `${projectCode}-${jobCode}-${woSeq}-${String(globalTaskCounter).padStart(7, '0')}`;
+        // Task ID: [categoryId]-[taskSeq3digits]
+        // e.g. WOA-0002-001 (matches LB style)
+        const tasks = cat.tasks ? cat.tasks.map((task: any, taskIndex: number) => {
+            const taskSeq = String(taskIndex + 1).padStart(3, '0');
+            const computedTaskId = `${computedCatId}-${taskSeq}`;
             return {
                 ...task,
                 id: computedTaskId,

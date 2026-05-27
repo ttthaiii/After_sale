@@ -322,10 +322,11 @@ const DailyReport = () => {
     const [isEditingExisting, setIsEditingExisting] = useState(false); // ✅ New state for Edit Mode
     const [showSummaryModal, setShowSummaryModal] = useState(false); // ✅ State to control summary modal popup
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadingLeaveCertId, setUploadingLeaveCertId] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const submittingRef = useRef(false);
     const [activeModal, setActiveModal] = useState<'Internal' | 'Outsource' | null>(null);
-    const [timePickerTarget, setTimePickerTarget] = useState<{ id: string, type: 'start' | 'end', shift: 'normal' | 'otMorning' | 'otEvening', currentValue: string } | null>(null);
+    const [timePickerTarget, setTimePickerTarget] = useState<{ id: string, type: 'start' | 'end', shift: 'normal' | 'otMorning' | 'otEvening' | 'leave', currentValue: string } | null>(null);
     const [reportType, setReportType] = useState<TaskUpdate['type']>('Update');
     const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -823,6 +824,24 @@ const DailyReport = () => {
         setActiveModal(null);
     };
 
+    const isTimeOverlap = (time1: string, time2: string) => {
+        if (!time1 || !time2 || time1.includes('--') || time2.includes('--')) return false;
+        const parse = (t: string) => {
+            const [start, end] = t.split(' - ').map((s) => {
+                const [h, m] = s.split(':').map(Number);
+                return h * 60 + (m || 0);
+            });
+            return { start, end };
+        };
+        try {
+            const t1 = parse(time1);
+            const t2 = parse(time2);
+            return t1.start < t2.end && t2.start < t1.end;
+        } catch (e) {
+            return false;
+        }
+    };
+
     const toggleShift = (id: string, shiftKey: 'normal' | 'otMorning' | 'otNoon' | 'otEvening') => {
         if (!isEditingExisting) return;
         setLabor(prev => prev.map(l => {
@@ -830,22 +849,68 @@ const DailyReport = () => {
             const currentShifts = l.shifts || { normal: false, otMorning: false, otNoon: false, otEvening: false };
             const isActive = !currentShifts[shiftKey];
             let newShiftTimes = { ...(l.shiftTimes || {}) };
+            let leaveObj = l.leave ? { ...l.leave } : { active: false, time: '08:00 - 17:00' };
+
             if (isActive && l.membership === 'Internal') {
                 if (shiftKey === 'otMorning' && !newShiftTimes.otMorning) newShiftTimes.otMorning = '06:00 - 08:00';
                 if (shiftKey === 'otNoon' && !newShiftTimes.otNoon) newShiftTimes.otNoon = '12:00 - 13:00';
                 if (shiftKey === 'otEvening' && !newShiftTimes.otEvening) newShiftTimes.otEvening = '18:00 - 21:00';
             }
-            return { ...l, shifts: { ...currentShifts, [shiftKey]: isActive }, shiftTimes: newShiftTimes };
+
+            // OT shift: if leave is active, block any OT that overlaps with leave time
+            if (isActive && shiftKey !== 'normal' && leaveObj.active) {
+                const otDefaultTimes: Record<string, string> = {
+                    otMorning: '06:00 - 08:00',
+                    otNoon: '12:00 - 13:00',
+                    otEvening: '18:00 - 21:00',
+                };
+                const otTime = (newShiftTimes as Record<string, string>)[shiftKey] || otDefaultTimes[shiftKey] || '';
+                if (otTime && isTimeOverlap(otTime, leaveObj.time || '08:00 - 17:00')) {
+                    return l; // Block: OT overlaps with leave → ignore the click
+                }
+            }
+
+            let updatedShifts = { ...currentShifts, [shiftKey]: isActive };
+
+            if (shiftKey === 'normal') {
+                if (isActive) {
+                    // Smart Adjustment: if normal time overlaps with active leave, adjust normal time to complement leave period
+                    const regTime = newShiftTimes.day || '08:00 - 17:00';
+                    if (leaveObj.active && isTimeOverlap(regTime, leaveObj.time || '08:00 - 17:00')) {
+                        const leaveTime = leaveObj.time || '08:00 - 17:00';
+                        if (leaveTime === '08:00 - 12:00') {
+                            newShiftTimes.day = '13:00 - 17:00'; // Morning leave → work afternoon
+                        } else if (leaveTime === '13:00 - 17:00') {
+                            newShiftTimes.day = '08:00 - 12:00'; // Afternoon leave → work morning
+                        } else {
+                            // Non-standard leave overlap → deactivate leave (cannot auto-adjust)
+                            leaveObj.active = false;
+                        }
+                    }
+                } else {
+                    // If normal work is unchecked, wipe all OT shifts
+                    updatedShifts.otMorning = false;
+                    updatedShifts.otNoon = false;
+                    updatedShifts.otEvening = false;
+                }
+            }
+
+            return { ...l, shifts: updatedShifts, shiftTimes: newShiftTimes, leave: leaveObj };
         }));
     };
 
-    const openTimePicker = (id: string, shift: 'normal' | 'otMorning' | 'otEvening', type: 'start' | 'end') => {
+    const openTimePicker = (id: string, shift: 'normal' | 'otMorning' | 'otEvening' | 'leave', type: 'start' | 'end') => {
         if (!isEditingExisting) return;
         const record = labor.find(l => l.id === id);
-        if (!record || !record.shiftTimes) return;
+        if (!record) return;
         let rangeStr = '';
-        if (shift === 'normal') rangeStr = record.shiftTimes.day || '08:00 - 17:00';
-        else rangeStr = record.shiftTimes[shift] || '';
+        if (shift === 'leave') {
+            rangeStr = record.leave?.time || '08:00 - 17:00';
+        } else if (record.shiftTimes) {
+            if (shift === 'normal') rangeStr = record.shiftTimes.day || '08:00 - 17:00';
+            else rangeStr = record.shiftTimes[shift] || '';
+        }
+        if (!rangeStr) rangeStr = '00:00 - 00:00';
         const [start, end] = rangeStr.split(' - ').map(s => s.trim());
         setTimePickerTarget({ id, shift, type, currentValue: (type === 'start' ? start : end) || '00:00' });
     };
@@ -855,17 +920,67 @@ const DailyReport = () => {
         const { id, type, shift } = timePickerTarget;
         setLabor(prev => prev.map(l => {
             if (l.id !== id) return l;
-            const times = { ...(l.shiftTimes || {}) };
-            let range = '';
-            if (shift === 'normal') range = times.day || '08:00 - 17:00';
-            else range = times[shift] || '00:00 - 00:00';
-            let [start, end] = range.split(' - ').map(s => s.trim());
-            if (type === 'start') start = val;
-            else end = val;
-            const newRange = `${start} - ${end} `;
-            if (shift === 'normal') times.day = newRange;
-            else times[shift] = newRange;
-            return { ...l, shiftTimes: times };
+
+            if (shift === 'leave') {
+                const leaveObj = l.leave || { active: true, time: '08:00 - 17:00' };
+                let range = leaveObj.time || '08:00 - 17:00';
+                let [start, end] = range.split(' - ').map(s => s.trim());
+                if (type === 'start') start = val;
+                else end = val;
+                const newRange = `${start} - ${end}`;
+
+                // Smart Overlap & Auto adjustment logic when leave time changes!
+                const updatedLeave = { ...leaveObj, time: newRange };
+                let updatedTimes = l.shiftTimes ? { ...l.shiftTimes } : { day: '08:00 - 17:00' };
+                let shiftsObj = l.shifts ? { ...l.shifts } : { normal: false, otMorning: false, otNoon: false, otEvening: false };
+
+                // Smart Adjustment for standard half-days
+                if (newRange === '08:00 - 12:00') {
+                    if (updatedTimes.day === '08:00 - 17:00' && shiftsObj.normal) {
+                        updatedTimes.day = '13:00 - 17:00';
+                    }
+                } else if (newRange === '13:00 - 17:00') {
+                    if (updatedTimes.day === '08:00 - 17:00' && shiftsObj.normal) {
+                        updatedTimes.day = '08:00 - 12:00';
+                    }
+                }
+
+                // If it overlaps, auto-deactivate normal work hours
+                const regTime = updatedTimes.day || '08:00 - 17:00';
+                if (shiftsObj.normal && isTimeOverlap(newRange, regTime)) {
+                    shiftsObj.normal = false;
+                    // Wipe OT shifts too
+                    shiftsObj.otMorning = false;
+                    shiftsObj.otNoon = false;
+                    shiftsObj.otEvening = false;
+                }
+
+                return { ...l, leave: updatedLeave, shiftTimes: updatedTimes, shifts: shiftsObj };
+            } else {
+                const times = { ...(l.shiftTimes || {}) };
+                let range = '';
+                if (shift === 'normal') range = times.day || '08:00 - 17:00';
+                else range = times[shift] || '00:00 - 00:00';
+                let [start, end] = range.split(' - ').map(s => s.trim());
+                if (type === 'start') start = val;
+                else end = val;
+                const newRange = `${start} - ${end}`;
+
+                let shiftsObj = l.shifts ? { ...l.shifts } : { normal: false, otMorning: false, otNoon: false, otEvening: false };
+                let leaveObj = l.leave ? { ...l.leave } : { active: false, time: '08:00 - 17:00' };
+
+                if (shift === 'normal') {
+                    times.day = newRange;
+                    // If regular time overlaps with leave time, auto-uncheck leave
+                    if (leaveObj.active && isTimeOverlap(newRange, leaveObj.time || '08:00 - 17:00')) {
+                        leaveObj.active = false;
+                    }
+                } else {
+                    times[shift] = newRange;
+                }
+
+                return { ...l, shiftTimes: times, shifts: shiftsObj, leave: leaveObj };
+            }
         }));
     };
 
@@ -935,8 +1050,9 @@ const DailyReport = () => {
 
     const handleUploadLeaveCert = async (laborId: string, file: File | null) => {
         if (!file || !selectedTaskInfo) return;
+        if (uploadingLeaveCertId === laborId) return; // prevent double-upload
 
-        setIsUploading(true);
+        setUploadingLeaveCertId(laborId);
         try {
             const fileExt = file.name.split('.').pop();
             const fileName = `leave_${laborId}_${Date.now()}.${fileExt}`;
@@ -968,7 +1084,7 @@ const DailyReport = () => {
             console.error('Leave cert upload failed:', error);
             alert('อัปโหลดใบรับรองแพทย์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
         } finally {
-            setIsUploading(false);
+            setUploadingLeaveCertId(null);
         }
     };
 
@@ -1233,27 +1349,42 @@ const DailyReport = () => {
                 }
             };
 
-            // Merge all labor photos for backward compatibility (legacy laborPhotos field)
-            const mergedLaborPhotos = [
-                ...laborRegularPhotos.filter(Boolean),
-                ...laborOtMorningPhotos.filter(Boolean),
-                ...laborOtNoonPhotos.filter(Boolean),
-                ...laborOtEveningPhotos.filter(Boolean),
-            ];
+            const foremanEmpId = user?.employeeId || user?.id || '101527';
+            let updatedEditHistory = (existingHistory as any)?.editHistory || [];
+            if (isEditingExisting && existingHistory) {
+                const prevSnapshot = {
+                    labor: (existingHistory as any).labor || [],
+                    leave: (existingHistory as any).leave || [],
+                    photos: (existingHistory as any).photos || null,
+                    note: (existingHistory as any).note || '',
+                    progress: (existingHistory as any).progress || 0,
+                    serverTimestamp: (existingHistory as any).serverTimestamp || (existingHistory as any).date || ''
+                };
+                const editRecord = {
+                    editedAt: new Date().toISOString(),
+                    editedBy: foremanEmpId,
+                    snapshot: prevSnapshot
+                };
+                updatedEditHistory = [...updatedEditHistory, editRecord];
+            }
 
             const isWoaWop = selectedTaskInfo.wo.id.toUpperCase().includes('WOA') || selectedTaskInfo.wo.id.toUpperCase().includes('WOP');
             const updateId = isWoaWop ? reportDate : ((isEditingExisting && existingHistory) ? existingHistory.id : `h-${Date.now()}`);
-            const newUpdate: TaskUpdate & { projectLocationId?: string } = {
+            const newUpdate: TaskUpdate & { projectLocationId?: string, editHistory?: any[], createdBy?: string, updatedBy?: string, createdAt?: string, updatedAt?: string } = {
                 id: updateId,
                 date: `${reportDate}T${new Date().toISOString().split('T')[1]}`,
                 note,
                 progress,
                 photos: photosPayload,
-                laborPhotos: mergedLaborPhotos,
                 labor: laborPayload as any,
                 leave: leavePayload,
                 type: reportType,
-                projectLocationId: selectedTaskInfo.wo.projectId || ''
+                projectLocationId: selectedTaskInfo.wo.projectId || '',
+                ...(updatedEditHistory.length > 0 ? { editHistory: updatedEditHistory } : {}),
+                createdBy: isEditingExisting && existingHistory ? ((existingHistory as any).createdBy || foremanEmpId) : foremanEmpId,
+                createdAt: isEditingExisting && existingHistory ? ((existingHistory as any).createdAt || new Date().toISOString()) : new Date().toISOString(),
+                updatedBy: foremanEmpId,
+                updatedAt: new Date().toISOString()
             };
 
             await addTaskUpdate(selectedTaskInfo.wo.id, selectedTaskInfo.categoryId, selectedTaskInfo.task.id, newUpdate as any);
@@ -1576,6 +1707,40 @@ const DailyReport = () => {
         );
     };
 
+    const renderLeaveTimeInput = (id: string, rangeStr: string) => {
+        const [start, end] = rangeStr.split(' - ').map(s => s.trim());
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', pointerEvents: isEditingExisting ? 'auto' : 'none' }}>
+                <div
+                    onClick={() => openTimePicker(id, 'leave', 'start')}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '8px',
+                        padding: '2px 6px', cursor: 'pointer',
+                        fontSize: '0.75rem', fontWeight: 700, color: '#e11d48',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                    }}
+                >
+                    <Clock size={12} color="#f43f5e" />
+                    {start}
+                </div>
+                <span style={{ color: '#fecdd3', fontWeight: 700 }}>-</span>
+                <div
+                    onClick={() => openTimePicker(id, 'leave', 'end')}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '8px',
+                        padding: '2px 6px', cursor: 'pointer',
+                        fontSize: '0.75rem', fontWeight: 700, color: '#e11d48',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                    }}
+                >
+                    {end}
+                </div>
+            </div>
+        );
+    };
+
     const availableStaff = dailyContractors
         .filter(c => (c.department || '').toLowerCase().endsWith('wh'))
         .filter(c => !labor.some(l => l.staffId === c.id));
@@ -1597,6 +1762,80 @@ const DailyReport = () => {
                 const internalCount = labor.filter(l => l.membership === 'Internal' && (l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)).reduce((acc, l) => acc + (Number(l.amount) || 1), 0);
                 const subcoCount = labor.filter(l => l.membership === 'Outsource' && (l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)).reduce((acc, l) => acc + (Number(l.amount) || 1), 0);
                 const leaveCount = labor.filter(l => l.leave?.active).length;
+
+                // ✅ Reconstruct original daily report labor for detailed change comparison (Retroactive highlights)
+                const originalReport = isEditingExisting && selectedTaskInfo?.task?.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+                const originalLaborMap = new Map<string, any>();
+                
+                if (originalReport) {
+                    if (originalReport.labor) {
+                        originalReport.labor.forEach((l: any) => {
+                            const wId = l.workerId || l.id || l.staffId || '';
+                            if (wId) {
+                                originalLaborMap.set(wId, {
+                                    staffId: wId,
+                                    employeeId: l.employeeId || '',
+                                    staffName: l.staffName || l.workerName || '',
+                                    membership: l.membership || (wId.startsWith('DC-') ? 'Internal' : 'Outsource'),
+                                    shifts: {
+                                        normal: l.shifts?.normal || false,
+                                        otMorning: l.shifts?.otMorning || false,
+                                        otNoon: l.shifts?.otNoon || false,
+                                        otEvening: l.shifts?.otEvening || false,
+                                    },
+                                    leave: {
+                                        active: false,
+                                        leaveType: ''
+                                    },
+                                    amount: Number(l.amount) || 1
+                                });
+                            }
+                        });
+                    }
+                    const exLeave = (originalReport as any).leave;
+                    if (exLeave) {
+                        exLeave.forEach((lv: any) => {
+                            const wId = lv.workerId || lv.id || lv.staffId || '';
+                            if (wId) {
+                                const existing = originalLaborMap.get(wId);
+                                if (existing) {
+                                    existing.leave = {
+                                        active: lv.leaveShifts?.custom || false,
+                                        leaveType: lv.leaveType || (lv.medCertFileUrl ? 'Paid' : 'Unpaid')
+                                    };
+                                } else {
+                                    originalLaborMap.set(wId, {
+                                        staffId: wId,
+                                        employeeId: lv.employeeId || '',
+                                        staffName: lv.staffName || lv.workerName || '',
+                                        membership: wId.startsWith('DC-') ? 'Internal' : 'Outsource',
+                                        shifts: { normal: false, otMorning: false, otNoon: false, otEvening: false },
+                                        leave: {
+                                            active: lv.leaveShifts?.custom || false,
+                                            leaveType: lv.leaveType || (lv.medCertFileUrl ? 'Paid' : 'Unpaid')
+                                        },
+                                        amount: Number(lv.amount) || 1
+                                    });
+                                }
+                            }
+                        });
+                    }
+                }
+
+                // Check if progress or notes have changed
+                const isProgressChanged = originalReport && originalReport.progress !== progress;
+                const isNoteChanged = originalReport && (originalReport.note || '') !== note;
+
+                // Find completely removed workers
+                const removedWorkers = [];
+                if (originalReport) {
+                    for (const [wId, orig] of originalLaborMap.entries()) {
+                        const isStillPresent = labor.some(l => (l.staffId || l.id) === wId);
+                        if (!isStillPresent) {
+                            removedWorkers.push(orig);
+                        }
+                    }
+                }
 
                 return (
                     <div style={{ 
@@ -1674,16 +1913,30 @@ const DailyReport = () => {
                             }}>
                                 {/* General Operations Info Card */}
                                 <div style={{ 
-                                    background: '#f8fafc', 
+                                    background: isProgressChanged ? '#fff7ed' : '#f8fafc', 
                                     borderRadius: '16px', 
-                                    border: '1px solid #e2e8f0', 
+                                    border: isProgressChanged ? '1.5px solid #ea580c' : '1px solid #e2e8f0', 
                                     padding: '1.25rem',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '10px'
                                 }}>
                                     <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <FileText size={14} color="#64748b" /> ข้อมูลการดำเนินงาน
+                                        <FileText size={14} color={isProgressChanged ? "#ea580c" : "#64748b"} /> 
+                                        ข้อมูลการดำเนินงาน
+                                        {isProgressChanged && (
+                                            <span style={{ 
+                                                fontSize: '0.65rem', 
+                                                fontWeight: 800, 
+                                                padding: '2px 6px', 
+                                                borderRadius: '6px', 
+                                                background: '#ea580c', 
+                                                color: '#ffffff',
+                                                marginLeft: '6px'
+                                            }}>
+                                                แก้ไขความคืบหน้า
+                                            </span>
+                                        )}
                                     </h4>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginTop: '4px' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1697,7 +1950,15 @@ const DailyReport = () => {
                                             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>ความคืบหน้างาน:</span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: 800, color: '#2563eb' }}>
                                                 <TrendingUp size={14} color="#2563eb" />
-                                                <span>{progress}%</span>
+                                                {isProgressChanged ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.85rem' }}>{originalReport.progress}%</span>
+                                                        <span style={{ color: '#ea580c', fontSize: '0.85rem' }}>→</span>
+                                                        <span style={{ color: '#2563eb', fontWeight: 900 }}>{progress}%</span>
+                                                    </div>
+                                                ) : (
+                                                    <span>{progress}%</span>
+                                                )}
                                                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>
                                                     ({progress === 100 ? 'ปิดงาน' : reportType === 'Problem' ? 'รายงานปัญหาหน้างาน' : 'อัปเดตความคืบหน้า'})
                                                 </span>
@@ -1745,7 +2006,7 @@ const DailyReport = () => {
 
                                     {/* Worker List inside modal */}
                                     <div style={{ 
-                                        maxHeight: '180px', 
+                                        maxHeight: '260px', 
                                         overflowY: 'auto', 
                                         display: 'flex', 
                                         flexDirection: 'column', 
@@ -1755,67 +2016,240 @@ const DailyReport = () => {
                                     }}>
                                         {labor.map((l) => {
                                             const activeShifts = [];
-                                            if (l.shifts?.normal) activeShifts.push('ปกติ');
-                                            if (l.shifts?.otMorning) activeShifts.push('OT เช้า');
-                                            if (l.shifts?.otNoon) activeShifts.push('OT เที่ยง');
-                                            if (l.shifts?.otEvening) activeShifts.push('OT เย็น');
-                                            if (l.leave?.active) activeShifts.push('ลางาน');
+                                            if (l.shifts?.normal) activeShifts.push({ name: 'ปกติ', key: 'normal' });
+                                            if (l.shifts?.otMorning) activeShifts.push({ name: 'OT เช้า', key: 'otMorning' });
+                                            if (l.shifts?.otNoon) activeShifts.push({ name: 'OT เที่ยง', key: 'otNoon' });
+                                            if (l.shifts?.otEvening) activeShifts.push({ name: 'OT เย็น', key: 'otEvening' });
+                                            if (l.leave?.active) activeShifts.push({ name: 'ลางาน', key: 'leave' });
+
+                                            const wId = l.staffId || l.id;
+                                            const orig = originalLaborMap.get(wId);
+                                            const isNewWorker = isEditingExisting && originalReport && !orig;
+                                            const isShiftChanged = isEditingExisting && originalReport && orig && (
+                                                (orig.shifts.normal !== l.shifts?.normal) ||
+                                                (orig.shifts.otMorning !== l.shifts?.otMorning) ||
+                                                (orig.shifts.otNoon !== l.shifts?.otNoon) ||
+                                                (orig.shifts.otEvening !== l.shifts?.otEvening) ||
+                                                (orig.leave.active !== l.leave?.active)
+                                            );
+
+                                            // Find removed shifts for this worker
+                                            const removedShifts = [];
+                                            if (orig) {
+                                                if (orig.shifts.normal && !l.shifts?.normal) removedShifts.push('ปกติ');
+                                                if (orig.shifts.otMorning && !l.shifts?.otMorning) removedShifts.push('OT เช้า');
+                                                if (orig.shifts.otNoon && !l.shifts?.otNoon) removedShifts.push('OT เที่ยง');
+                                                if (orig.shifts.otEvening && !l.shifts?.otEvening) removedShifts.push('OT เย็น');
+                                                if (orig.leave.active && !l.leave?.active) removedShifts.push('ลางาน');
+                                            }
 
                                             return (
                                                 <div key={l.id} style={{ 
                                                     display: 'flex', 
-                                                    justifyContent: 'space-between', 
-                                                    alignItems: 'center', 
+                                                    flexDirection: 'column',
                                                     padding: '8px 12px', 
-                                                    background: '#ffffff', 
+                                                    background: isNewWorker ? '#f0fdf4' : isShiftChanged ? '#fff7ed' : '#ffffff', 
                                                     borderRadius: '10px', 
-                                                    border: '1px solid #f1f5f9' 
+                                                    border: isNewWorker ? '1.5px solid #10b981' : isShiftChanged ? '1.5px solid #ea580c' : '1px solid #f1f5f9' 
                                                 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                        <div style={{ 
-                                                            width: 24, 
-                                                            height: 24, 
-                                                            borderRadius: 6, 
-                                                            background: l.membership === 'Internal' ? '#eff6ff' : '#f0fdf4', 
-                                                            display: 'flex', 
-                                                            alignItems: 'center', 
-                                                            justifyContent: 'center', 
-                                                            flexShrink: 0 
-                                                        }}>
-                                                            {l.membership === 'Internal' ? <User size={12} color="#2563eb" /> : <HardHat size={12} color="#059669" />}
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                            <div style={{ 
+                                                                width: 24, 
+                                                                height: 24, 
+                                                                borderRadius: 6, 
+                                                                background: l.membership === 'Internal' ? '#eff6ff' : '#f0fdf4', 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                justifyContent: 'center', 
+                                                                flexShrink: 0 
+                                                            }}>
+                                                                {l.membership === 'Internal' ? <User size={12} color="#2563eb" /> : <HardHat size={12} color="#059669" />}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center' }}>
+                                                                {l.employeeId ? `${l.employeeId} : ` : ''}{l.staffName || l.affiliation}
+                                                                {isNewWorker && (
+                                                                    <span style={{ 
+                                                                        fontSize: '0.6rem', 
+                                                                        fontWeight: 800, 
+                                                                        padding: '1px 5px', 
+                                                                        borderRadius: '4px', 
+                                                                        background: '#10b981', 
+                                                                        color: '#ffffff',
+                                                                        marginLeft: '6px'
+                                                                    }}>
+                                                                        เพิ่มใหม่
+                                                                    </span>
+                                                                )}
+                                                                {isShiftChanged && (
+                                                                    <span style={{ 
+                                                                        fontSize: '0.6rem', 
+                                                                        fontWeight: 800, 
+                                                                        padding: '1px 5px', 
+                                                                        borderRadius: '4px', 
+                                                                        background: '#ea580c', 
+                                                                        color: '#ffffff',
+                                                                        marginLeft: '6px'
+                                                                    }}>
+                                                                        แก้ไขเวลา
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                            {l.employeeId ? `${l.employeeId} : ` : ''}{l.staffName || l.affiliation}
+                                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                                            {activeShifts.map((sh, sIdx) => {
+                                                                let bg = '#dbeafe';
+                                                                let text = '#1e40af';
+                                                                if (sh.name.startsWith('OT')) { bg = '#fef3c7'; text = '#92400e'; }
+                                                                if (sh.name === 'ลางาน') { bg = '#fee2e2'; text = '#991b1b'; }
+
+                                                                // Check if this shift is newly added
+                                                                const isShiftAdded = isEditingExisting && originalReport && orig && (
+                                                                    (sh.key === 'normal' && !orig.shifts.normal) ||
+                                                                    (sh.key === 'otMorning' && !orig.shifts.otMorning) ||
+                                                                    (sh.key === 'otNoon' && !orig.shifts.otNoon) ||
+                                                                    (sh.key === 'otEvening' && !orig.shifts.otEvening) ||
+                                                                    (sh.key === 'leave' && !orig.leave.active)
+                                                                );
+
+                                                                return (
+                                                                    <span key={sIdx} style={{ 
+                                                                        fontSize: '0.65rem', 
+                                                                        fontWeight: 800, 
+                                                                        padding: '2px 6px', 
+                                                                        borderRadius: '6px', 
+                                                                        background: bg, 
+                                                                        color: text,
+                                                                        border: isShiftAdded ? '1.5px dashed #ea580c' : '1px solid transparent',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '2px'
+                                                                    }}>
+                                                                        {isShiftAdded && <span style={{ fontWeight: 900, color: '#ea580c' }}>+</span>}
+                                                                        {sh.name}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                            {Number(l.amount) > 1 && (
+                                                                <span style={{ fontSize: '0.65rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#e2e8f0', color: '#475569' }}>
+                                                                    จำนวน {l.amount} คน
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                                        {activeShifts.map((sh, sIdx) => {
-                                                            let bg = '#dbeafe';
-                                                            let text = '#1e40af';
-                                                            if (sh.startsWith('OT')) { bg = '#fef3c7'; text = '#92400e'; }
-                                                            if (sh === 'ลางาน') { bg = '#fee2e2'; text = '#991b1b'; }
-                                                            return (
-                                                                <span key={sIdx} style={{ 
-                                                                    fontSize: '0.65rem', 
-                                                                    fontWeight: 800, 
-                                                                    padding: '2px 6px', 
-                                                                    borderRadius: '6px', 
-                                                                    background: bg, 
-                                                                    color: text 
+
+                                                    {/* Removed Shifts Row */}
+                                                    {removedShifts.length > 0 && (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            gap: '4px', 
+                                                            alignItems: 'center', 
+                                                            fontSize: '0.65rem', 
+                                                            color: '#ef4444', 
+                                                            fontWeight: 700, 
+                                                            marginTop: '4px',
+                                                            paddingTop: '4px',
+                                                            borderTop: '1px dotted #fecaca'
+                                                        }}>
+                                                            <span style={{ color: '#94a3b8' }}>นำออก:</span>
+                                                            {removedShifts.map((sh, idx) => (
+                                                                <span key={idx} style={{ 
+                                                                    background: '#fee2e2', 
+                                                                    color: '#b91c1c', 
+                                                                    padding: '1px 5px', 
+                                                                    borderRadius: '4px',
+                                                                    textDecoration: 'line-through' 
                                                                 }}>
                                                                     {sh}
                                                                 </span>
-                                                            );
-                                                        })}
-                                                        {Number(l.amount) > 1 && (
-                                                            <span style={{ fontSize: '0.65rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#e2e8f0', color: '#475569' }}>
-                                                                จำนวน {l.amount} คน
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })}
+
+                                        {/* Removed Workers Section */}
+                                        {removedWorkers.length > 0 && (
+                                            <div style={{ 
+                                                marginTop: '10px', 
+                                                paddingTop: '10px', 
+                                                borderTop: '1px dashed #fca5a5' 
+                                            }}>
+                                                <h5 style={{ margin: '0 0 6px 0', fontSize: '0.75rem', fontWeight: 800, color: '#ef4444' }}>
+                                                    คนงานที่ถูกลบออก ({removedWorkers.length} คน)
+                                                </h5>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    {removedWorkers.map((rw) => {
+                                                        const origShifts = [];
+                                                        if (rw.shifts.normal) origShifts.push('ปกติ');
+                                                        if (rw.shifts.otMorning) origShifts.push('OT เช้า');
+                                                        if (rw.shifts.otNoon) origShifts.push('OT เที่ยง');
+                                                        if (rw.shifts.otEvening) origShifts.push('OT เย็น');
+                                                        if (rw.leave.active) origShifts.push('ลางาน');
+
+                                                        return (
+                                                            <div key={rw.staffId} style={{ 
+                                                                display: 'flex', 
+                                                                justifyContent: 'space-between', 
+                                                                alignItems: 'center', 
+                                                                padding: '8px 12px', 
+                                                                background: '#fef2f2', 
+                                                                borderRadius: '10px', 
+                                                                border: '1px solid #fca5a5',
+                                                                opacity: 0.8
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                                    <div style={{ 
+                                                                        width: 24, 
+                                                                        height: 24, 
+                                                                        borderRadius: 6, 
+                                                                        background: '#fee2e2', 
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center', 
+                                                                        justifyContent: 'center', 
+                                                                        flexShrink: 0 
+                                                                    }}>
+                                                                        <User size={12} color="#ef4444" />
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.8rem', 
+                                                                        fontWeight: 800, 
+                                                                        color: '#991b1b', 
+                                                                        textDecoration: 'line-through',
+                                                                        whiteSpace: 'nowrap', 
+                                                                        overflow: 'hidden', 
+                                                                        textOverflow: 'ellipsis' 
+                                                                    }}>
+                                                                        {rw.employeeId ? `${rw.employeeId} : ` : ''}{rw.staffName}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                                                    {origShifts.map((sh, sIdx) => (
+                                                                        <span key={sIdx} style={{ 
+                                                                            fontSize: '0.65rem', 
+                                                                            fontWeight: 800, 
+                                                                            padding: '2px 6px', 
+                                                                            borderRadius: '6px', 
+                                                                            background: '#fee2e2', 
+                                                                            color: '#991b1b',
+                                                                            textDecoration: 'line-through'
+                                                                        }}>
+                                                                            {sh}
+                                                                        </span>
+                                                                    ))}
+                                                                    {Number(rw.amount) > 1 && (
+                                                                        <span style={{ fontSize: '0.65rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#fee2e2', color: '#991b1b' }}>
+                                                                            จำนวน {rw.amount} คน
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1854,31 +2288,60 @@ const DailyReport = () => {
 
                                 {/* Site Notes (หมายเหตุ) Card */}
                                 <div style={{ 
-                                    background: '#f8fafc', 
+                                    background: isNoteChanged ? '#fff7ed' : '#f8fafc', 
                                     borderRadius: '16px', 
-                                    border: '1px solid #e2e8f0', 
+                                    border: isNoteChanged ? '1.5px solid #ea580c' : '1px solid #e2e8f0', 
                                     padding: '1.25rem',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '8px'
                                 }}>
                                     <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Info size={14} color="#64748b" /> หมายเหตุ (Site Notes)
+                                        <Info size={14} color={isNoteChanged ? "#ea580c" : "#64748b"} /> 
+                                        หมายเหตุ (Site Notes)
+                                        {isNoteChanged && (
+                                            <span style={{ 
+                                                fontSize: '0.65rem', 
+                                                fontWeight: 800, 
+                                                padding: '2px 6px', 
+                                                borderRadius: '6px', 
+                                                background: '#ea580c', 
+                                                color: '#ffffff',
+                                                marginLeft: '6px'
+                                            }}>
+                                                แก้ไขแล้ว
+                                            </span>
+                                        )}
                                     </h4>
-                                    <p style={{ 
-                                        margin: '4px 0 0 0', 
-                                        fontSize: '0.8rem', 
-                                        fontWeight: note ? 700 : 500, 
-                                        color: note ? '#334155' : '#94a3b8', 
-                                        background: '#ffffff',
-                                        padding: '10px 12px',
-                                        borderRadius: '10px',
-                                        border: '1px solid #f1f5f9',
-                                        whiteSpace: 'pre-wrap',
-                                        lineHeight: 1.4
-                                    }}>
-                                        {note || 'ไม่ได้ระบุหมายเหตุเพิ่มเติม'}
-                                    </p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {isNoteChanged && originalReport.note && (
+                                            <div style={{ 
+                                                fontSize: '0.75rem', 
+                                                color: '#94a3b8', 
+                                                textDecoration: 'line-through',
+                                                background: '#fee2e2',
+                                                padding: '6px 8px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #fecaca'
+                                            }}>
+                                                เดิม: {originalReport.note}
+                                            </div>
+                                        )}
+                                        <p style={{ 
+                                            margin: '4px 0 0 0', 
+                                            fontSize: '0.8rem', 
+                                            fontWeight: note ? 700 : 500, 
+                                            color: note ? '#334155' : '#94a3b8', 
+                                            background: '#ffffff',
+                                            padding: '10px 12px',
+                                            borderRadius: '10px',
+                                            border: '1px solid #f1f5f9',
+                                            whiteSpace: 'pre-wrap',
+                                            lineHeight: 1.4
+                                        }}>
+                                            {note || 'ไม่ได้ระบุหมายเหตุเพิ่มเติม'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 
@@ -2686,86 +3149,109 @@ const DailyReport = () => {
                                                         </td>
 
                                                         {/* OT Morning */}
-                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                                                <div 
-                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otMorning')} 
-                                                                    style={{ 
-                                                                        width: 18, height: 18, borderRadius: 4, 
-                                                                        border: '2px solid #f59e0b', 
-                                                                        background: l.shifts?.otMorning ? '#f59e0b' : '#fff', 
-                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
-                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
-                                                                    }}
-                                                                >
-                                                                    {l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}
-                                                                </div>
-                                                                {l.shifts?.otMorning ? (
-                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'otMorning', l.shiftTimes?.otMorning || '06:00 - 08:00') : (
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
-                                                                            <Clock size={12} /> 06:00 - 08:00
+                                                        {(() => {
+                                                            const otMorningTime = l.shiftTimes?.otMorning || '06:00 - 08:00';
+                                                            const isOtMorningBlockedByLeave = l.leave?.active ? isTimeOverlap(otMorningTime, l.leave.time || '08:00 - 17:00') : false;
+                                                            const canTickOtMorning = isEditingExisting && l.shifts?.normal && !isOtMorningBlockedByLeave;
+                                                            return (
+                                                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                        <div
+                                                                            onClick={() => canTickOtMorning && toggleShift(l.id, 'otMorning')}
+                                                                            title={isOtMorningBlockedByLeave ? 'โอทีเช้าทับกับเวลาลา' : undefined}
+                                                                            style={{
+                                                                                width: 18, height: 18, borderRadius: 4,
+                                                                                border: `2px solid ${isOtMorningBlockedByLeave ? '#fca5a5' : '#f59e0b'}`,
+                                                                                background: l.shifts?.otMorning ? '#f59e0b' : (isOtMorningBlockedByLeave ? '#fef2f2' : '#fff'),
+                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                cursor: canTickOtMorning ? 'pointer' : 'not-allowed',
+                                                                                opacity: canTickOtMorning || l.shifts?.otMorning ? 1 : 0.4
+                                                                            }}
+                                                                        >
+                                                                            {l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}
                                                                         </div>
-                                                                    )
-                                                                ) : (
-                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
-                                                                )}
-                                                            </div>
-                                                        </td>
+                                                                        {l.shifts?.otMorning ? (
+                                                                            l.membership === 'Internal' ? renderTimeInput(l.id, 'otMorning', otMorningTime) : (
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                                    <Clock size={12} /> 06:00 - 08:00
+                                                                                </div>
+                                                                            )
+                                                                        ) : (
+                                                                            <span style={{ color: isOtMorningBlockedByLeave ? '#fca5a5' : '#cbd5e1', fontWeight: 800, fontSize: '0.65rem' }}>{isOtMorningBlockedByLeave ? '🚫' : '-'}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        })()}
 
                                                         {/* OT Noon */}
-                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                                                <div 
-                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otNoon')} 
-                                                                    style={{ 
-                                                                        width: 18, height: 18, borderRadius: 4, 
-                                                                        border: '2px solid #f59e0b', 
-                                                                        background: l.shifts?.otNoon ? '#f59e0b' : '#fff', 
-                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
-                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
-                                                                    }}
-                                                                >
-                                                                    {l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}
-                                                                </div>
-                                                                {l.shifts?.otNoon ? (
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
-                                                                        <Clock size={12} /> 12:00 - 13:00
+                                                        {(() => {
+                                                            const isOtNoonBlockedByLeave = l.leave?.active ? isTimeOverlap('12:00 - 13:00', l.leave.time || '08:00 - 17:00') : false;
+                                                            const canTickOtNoon = isEditingExisting && l.shifts?.normal && !isOtNoonBlockedByLeave;
+                                                            return (
+                                                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                        <div
+                                                                            onClick={() => canTickOtNoon && toggleShift(l.id, 'otNoon')}
+                                                                            title={isOtNoonBlockedByLeave ? 'โอทีเที่ยงทับกับเวลาลา' : undefined}
+                                                                            style={{
+                                                                                width: 18, height: 18, borderRadius: 4,
+                                                                                border: `2px solid ${isOtNoonBlockedByLeave ? '#fca5a5' : '#f59e0b'}`,
+                                                                                background: l.shifts?.otNoon ? '#f59e0b' : (isOtNoonBlockedByLeave ? '#fef2f2' : '#fff'),
+                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                cursor: canTickOtNoon ? 'pointer' : 'not-allowed',
+                                                                                opacity: canTickOtNoon || l.shifts?.otNoon ? 1 : 0.4
+                                                                            }}
+                                                                        >
+                                                                            {l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}
+                                                                        </div>
+                                                                        {l.shifts?.otNoon ? (
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                                <Clock size={12} /> 12:00 - 13:00
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span style={{ color: isOtNoonBlockedByLeave ? '#fca5a5' : '#cbd5e1', fontWeight: 800, fontSize: '0.65rem' }}>{isOtNoonBlockedByLeave ? '🚫' : '-'}</span>
+                                                                        )}
                                                                     </div>
-                                                                ) : (
-                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
-                                                                )}
-                                                            </div>
-                                                        </td>
+                                                                </td>
+                                                            );
+                                                        })()}
 
                                                         {/* OT Evening */}
-                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                                                <div 
-                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otEvening')} 
-                                                                    style={{ 
-                                                                        width: 18, height: 18, borderRadius: 4, 
-                                                                        border: '2px solid #f59e0b', 
-                                                                        background: l.shifts?.otEvening ? '#f59e0b' : '#fff', 
-                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
-                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
-                                                                    }}
-                                                                >
-                                                                    {l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}
-                                                                </div>
-                                                                {l.shifts?.otEvening ? (
-                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'otEvening', l.shiftTimes?.otEvening || '18:00 - 21:00') : (
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
-                                                                            <Clock size={12} /> 18:00 - 21:00
+                                                        {(() => {
+                                                            const otEveningTime = l.shiftTimes?.otEvening || '18:00 - 21:00';
+                                                            const isOtEveningBlockedByLeave = l.leave?.active ? isTimeOverlap(otEveningTime, l.leave.time || '08:00 - 17:00') : false;
+                                                            const canTickOtEvening = isEditingExisting && l.shifts?.normal && !isOtEveningBlockedByLeave;
+                                                            return (
+                                                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                        <div
+                                                                            onClick={() => canTickOtEvening && toggleShift(l.id, 'otEvening')}
+                                                                            title={isOtEveningBlockedByLeave ? 'โอทีเย็นทับกับเวลาลา' : undefined}
+                                                                            style={{
+                                                                                width: 18, height: 18, borderRadius: 4,
+                                                                                border: `2px solid ${isOtEveningBlockedByLeave ? '#fca5a5' : '#f59e0b'}`,
+                                                                                background: l.shifts?.otEvening ? '#f59e0b' : (isOtEveningBlockedByLeave ? '#fef2f2' : '#fff'),
+                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                cursor: canTickOtEvening ? 'pointer' : 'not-allowed',
+                                                                                opacity: canTickOtEvening || l.shifts?.otEvening ? 1 : 0.4
+                                                                            }}
+                                                                        >
+                                                                            {l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}
                                                                         </div>
-                                                                    )
-                                                                ) : (
-                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
-                                                                )}
-                                                            </div>
-                                                        </td>
+                                                                        {l.shifts?.otEvening ? (
+                                                                            l.membership === 'Internal' ? renderTimeInput(l.id, 'otEvening', otEveningTime) : (
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                                    <Clock size={12} /> 18:00 - 21:00
+                                                                                </div>
+                                                                            )
+                                                                        ) : (
+                                                                            <span style={{ color: isOtEveningBlockedByLeave ? '#fca5a5' : '#cbd5e1', fontWeight: 800, fontSize: '0.65rem' }}>{isOtEveningBlockedByLeave ? '🚫' : '-'}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        })()}
 
                                                         {/* Leave : ลา */}
                                                         <td style={{ padding: '12px 16px' }}>
@@ -2776,11 +3262,31 @@ const DailyReport = () => {
                                                                         setLabor(prev => prev.map(item => {
                                                                             if (item.id === l.id) {
                                                                                 const leaveActive = !item.leave?.active;
+                                                                                let updatedTimes = item.shiftTimes ? { ...item.shiftTimes } : { day: '08:00 - 17:00' };
+                                                                                let shiftsObj = item.shifts ? { ...item.shifts } : { normal: false, otMorning: false, otNoon: false, otEvening: false };
+                                                                                const leaveTime = item.leave?.time || '08:00 - 17:00';
+                                                                                
+                                                                                if (leaveActive) {
+                                                                                    if (leaveTime === '08:00 - 12:00') {
+                                                                                        if (updatedTimes.day === '08:00 - 17:00' && shiftsObj.normal) updatedTimes.day = '13:00 - 17:00';
+                                                                                    } else if (leaveTime === '13:00 - 17:00') {
+                                                                                        if (updatedTimes.day === '08:00 - 17:00' && shiftsObj.normal) updatedTimes.day = '08:00 - 12:00';
+                                                                                    }
+                                                                                    const regTime = updatedTimes.day || '08:00 - 17:00';
+                                                                                    if (shiftsObj.normal && isTimeOverlap(leaveTime, regTime)) {
+                                                                                        shiftsObj.normal = false;
+                                                                                        shiftsObj.otMorning = false;
+                                                                                        shiftsObj.otNoon = false;
+                                                                                        shiftsObj.otEvening = false;
+                                                                                    }
+                                                                                }
                                                                                 return {
                                                                                     ...item,
+                                                                                    shifts: shiftsObj,
+                                                                                    shiftTimes: updatedTimes,
                                                                                     leave: {
                                                                                         active: leaveActive,
-                                                                                        time: item.leave?.time || '08:00 - 17:00',
+                                                                                        time: leaveTime,
                                                                                         medCertFileUrl: item.leave?.medCertFileUrl || ''
                                                                                     }
                                                                                 };
@@ -2802,9 +3308,7 @@ const DailyReport = () => {
                                                                 {l.leave?.active ? (
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                         {/* Leave Time */}
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff1f2', borderRadius: '8px', border: '1px solid #fecdd3', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#e11d48' }}>
-                                                                            <Clock size={12} /> 08:00 - 17:00
-                                                                        </div>
+                                                                        {renderLeaveTimeInput(l.id, l.leave?.time || '08:00 - 17:00')}
                                                                         
                                                                         {/* Attachment Upload & Action Icons */}
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2840,23 +3344,43 @@ const DailyReport = () => {
                                                                                 </>
                                                                             ) : (
                                                                                 isEditingExisting ? (
-                                                                                    <label 
-                                                                                        style={{ 
-                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                                                                            width: '24px', height: '24px', borderRadius: '6px', 
-                                                                                            background: '#f1f5f9', color: '#64748b', cursor: 'pointer',
-                                                                                            transition: 'all 0.2s'
-                                                                                        }}
-                                                                                        title="แนบใบรับรองแพทย์/หลักฐาน"
-                                                                                    >
-                                                                                        <Paperclip size={12} />
-                                                                                        <input
-                                                                                            type="file"
-                                                                                            accept="image/*"
-                                                                                            style={{ display: 'none' }}
-                                                                                            onChange={(e) => handleUploadLeaveCert(l.id, e.target.files?.[0] || null)}
-                                                                                        />
-                                                                                    </label>
+                                                                                    uploadingLeaveCertId === l.id ? (
+                                                                                        // Loading spinner while uploading
+                                                                                        <div
+                                                                                            style={{
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                                width: '24px', height: '24px', borderRadius: '6px',
+                                                                                                background: '#fef3c7'
+                                                                                            }}
+                                                                                            title="กำลังอัปโหลด..."
+                                                                                        >
+                                                                                            <svg
+                                                                                                width="12" height="12" viewBox="0 0 24 24"
+                                                                                                style={{ animation: 'spin 0.8s linear infinite' }}
+                                                                                            >
+                                                                                                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                                                                                                <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="3" fill="none" strokeDasharray="31.4" strokeDashoffset="10" />
+                                                                                            </svg>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <label
+                                                                                            style={{
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                                width: '24px', height: '24px', borderRadius: '6px',
+                                                                                                background: '#f1f5f9', color: '#64748b', cursor: 'pointer',
+                                                                                                transition: 'all 0.2s'
+                                                                                            }}
+                                                                                            title="แนบใบรับรองแพทย์/หลักฐาน"
+                                                                                        >
+                                                                                            <Paperclip size={12} />
+                                                                                            <input
+                                                                                                type="file"
+                                                                                                accept="image/*"
+                                                                                                style={{ display: 'none' }}
+                                                                                                onChange={(e) => handleUploadLeaveCert(l.id, e.target.files?.[0] || null)}
+                                                                                            />
+                                                                                        </label>
+                                                                                    )
                                                                                 ) : (
                                                                                     <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>ไม่มีหลักฐาน</span>
                                                                                 )

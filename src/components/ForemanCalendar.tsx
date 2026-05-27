@@ -16,6 +16,55 @@ interface ForemanCalendarProps {
     selectedMonth?: string; // Format: YYYY-MM
 }
 
+// Helper to get leave hours from time range string
+const getLeaveHours = (timeRange: string): number => {
+    if (!timeRange) return 8;
+    if (timeRange === '08:00 - 17:00') return 8;
+    if (timeRange === '08:00 - 12:00' || timeRange === '13:00 - 17:00') return 4;
+    
+    try {
+        const parts = timeRange.split(' - ');
+        if (parts.length !== 2) return 8;
+        const [startStr, endStr] = parts;
+        const [sh, smStr] = startStr.split(':');
+        const [eh, emStr] = endStr.split(':');
+        const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
+        const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
+        let diffMin = endMin - startMin;
+        
+        if (startMin <= 720 && endMin >= 780) {
+            diffMin -= 60;
+        }
+        const hrs = diffMin / 60;
+        return Math.max(0, hrs);
+    } catch (e) {
+        return 8;
+    }
+};
+
+// Helper to get shift hours from custom time range string
+const getShiftHours = (timeRange: string, defaultHours: number): number => {
+    if (!timeRange) return defaultHours;
+    try {
+        const parts = timeRange.split(' - ');
+        if (parts.length !== 2) return defaultHours;
+        const [startStr, endStr] = parts;
+        const [sh, smStr] = startStr.split(':');
+        const [eh, emStr] = endStr.split(':');
+        const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
+        const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
+        let diffMin = endMin - startMin;
+        
+        if (startMin <= 720 && endMin >= 780) {
+            diffMin -= 60;
+        }
+        const hrs = diffMin / 60;
+        return Math.max(0, hrs);
+    } catch (e) {
+        return defaultHours;
+    }
+};
+
 const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUserId, projects, highlightProjectId, highlightedWOId, selectedMonth }) => {
     const [currentDate] = useState(new Date());
     const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
@@ -59,34 +108,72 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                 const progressDelta = h.progress - prevProgress;
 
                                 if (!existing || currentHDate > existing.timestamp) {
-                                    let normalHours = 0; let otHours = 0; let manpower = 0;
-                                    h.labor?.forEach(l => {
-                                        manpower += (l.amount || 1);
-                                        if (l.shifts) {
-                                            if (l.shifts.normal) normalHours += ((l.amount || 1) * 8);
-                                            if (l.shifts.otMorning) otHours += ((l.amount || 1) * 1.5);
-                                            if (l.shifts.otNoon) otHours += ((l.amount || 1) * 1);
-                                            if (l.shifts.otEvening) otHours += ((l.amount || 1) * 1.5);
-                                        }
-                                    });
-                                    tempMap[ds][task.id] = {
-                                        timestamp: currentHDate,
-                                        taskId: task.id,
-                                        woId: wo.id,
-                                        projectId: wo.projectId,
-                                        projectName: project?.name || 'ไม่ระบุโครงการ',
-                                        taskName: task.name,
-                                        progress: h.progress,
-                                        progressDelta,
-                                        note: (h as any).notes || h.note || '',
-                                        photos: h.photos || [],
-                                        laborPhotos: h.laborPhotos || [],
-                                        photosPayload: (h as any).photosPayload || null,
-                                        labor: h.labor || [],
-                                        type: h.type || 'Normal',
-                                        normalHours, otHours, manpower,
-                                        time: new Date(h.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
-                                    };
+                                     let normalHours = 0; let otHours = 0; let manpower = 0;
+                                     
+                                     const leaveList = h.leave || [];
+                                     const leaveMap = new Map<string, any>();
+                                     leaveList.forEach((lv: any) => {
+                                         const wId = lv.workerId || lv.id || lv.staffId || '';
+                                         if (wId) {
+                                             leaveMap.set(wId, lv);
+                                         }
+                                     });
+
+                                     h.labor?.forEach(l => {
+                                         const wId = l.workerId || l.staffId || l.contractorId || l.id;
+                                         const hasLeave = leaveMap.has(wId);
+                                         const leaveRecord = leaveMap.get(wId);
+                                         const amount = l.amount || 1;
+                                         
+                                         let leaveHours = 0;
+                                         if (hasLeave && leaveRecord) {
+                                             const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
+                                             leaveHours = getLeaveHours(leaveTimeRange);
+                                         }
+
+                                         let normalHr = 0;
+                                         if (l.shifts?.normal) {
+                                             const regTime = l.shiftTimes?.day || '08:00 - 17:00';
+                                             const duration = getShiftHours(regTime, 8);
+                                             normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
+                                         }
+
+                                          const otMorningHr = l.shifts?.otMorning ? getShiftHours(l.shiftTimes?.otMorning || '', 1.5) : 0;
+                                          const otNoonHr = l.shifts?.otNoon ? getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1) : 0;
+                                          const otEveningHr = l.shifts?.otEvening ? getShiftHours(l.shiftTimes?.otEvening || '', 1.5) : 0;
+
+                                         let activeWorkerCount = amount;
+                                         if (hasLeave && leaveHours >= 8 && normalHr === 0 && !l.shifts?.otMorning && !l.shifts?.otNoon && !l.shifts?.otEvening) {
+                                             activeWorkerCount = 0;
+                                         } else if (hasLeave && leaveHours > 0) {
+                                             const workingRatio = normalHr / 8;
+                                             activeWorkerCount = amount * workingRatio;
+                                         }
+
+                                         manpower += activeWorkerCount;
+                                         normalHours += (amount * normalHr);
+                                         otHours += (amount * (otMorningHr + otNoonHr + otEveningHr));
+                                     });
+                                     
+                                     tempMap[ds][task.id] = {
+                                         timestamp: currentHDate,
+                                         taskId: task.id,
+                                         woId: wo.id,
+                                         projectId: wo.projectId,
+                                         projectName: project?.name || 'ไม่ระบุโครงการ',
+                                         taskName: task.name,
+                                         progress: h.progress,
+                                         progressDelta,
+                                         note: (h as any).notes || h.note || '',
+                                         photos: h.photos || [],
+                                         laborPhotos: h.laborPhotos || [],
+                                         photosPayload: (h as any).photosPayload || null,
+                                         labor: h.labor || [],
+                                         leave: h.leave || [],
+                                         type: h.type || 'Normal',
+                                         normalHours, otHours, manpower,
+                                         time: new Date(h.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+                                     };
                                 }
                             }
                         });
@@ -180,12 +267,44 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
 
         const totalDayHours = dayEvents.reduce((acc: number, ev: any) => {
             let hours = 0;
+            const leaveList = ev.leave || [];
+            const leaveMap = new Map<string, any>();
+            leaveList.forEach((lv: any) => {
+                const wId = lv.workerId || lv.id || lv.staffId || '';
+                if (wId) {
+                    leaveMap.set(wId, lv);
+                }
+            });
+
             ev.labor?.forEach((l: any) => {
+                const wId = l.workerId || l.staffId || l.contractorId || l.id;
+                const hasLeave = leaveMap.has(wId);
+                const leaveRecord = leaveMap.get(wId);
                 const count = l.amount || 1;
-                if (l.shifts?.normal) hours += (count * 8);
-                if (l.shifts?.otMorning) hours += (count * 2);
-                if (l.shifts?.otNoon) hours += (count * 1);
-                if (l.shifts?.otEvening) hours += (count * 3);
+                
+                let leaveHours = 0;
+                if (hasLeave && leaveRecord) {
+                    const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
+                    leaveHours = getLeaveHours(leaveTimeRange);
+                }
+
+                let normalHr = 0;
+                if (l.shifts?.normal) {
+                    const regTime = l.shiftTimes?.day || '08:00 - 17:00';
+                    const duration = getShiftHours(regTime, 8);
+                    normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
+                }
+
+                hours += (count * normalHr);
+                if (l.shifts?.otMorning) {
+                    hours += (count * getShiftHours(l.shiftTimes?.otMorning || '', 2));
+                }
+                if (l.shifts?.otNoon) {
+                    hours += (count * getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1));
+                }
+                if (l.shifts?.otEvening) {
+                    hours += (count * getShiftHours(l.shiftTimes?.otEvening || '', 3));
+                }
             });
             return acc + hours;
         }, 0);
@@ -549,19 +668,42 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                     let totalOutsource = 0;
 
                     events.forEach(ev => {
+                        const leaveList = ev.leave || [];
+                        const leaveMap = new Map<string, any>();
+                        leaveList.forEach((lv: any) => {
+                            const wId = lv.workerId || lv.id || lv.staffId || '';
+                            if (wId) {
+                                leaveMap.set(wId, lv);
+                            }
+                        });
+
                         ev.labor?.forEach((l: any) => {
+                            const wId = l.workerId || l.staffId || l.contractorId || l.id;
+                            const hasLeave = leaveMap.has(wId);
+                            const leaveRecord = leaveMap.get(wId);
                             const count = l.amount || 1;
                             const isOutsource = l.membership === 'Outsource';
                             
-                            if (l.shifts?.normal) {
-                                totalNormal += (count * 8);
-                                if (isOutsource) totalOutsource += (count * 8);
+                            let leaveHours = 0;
+                            if (hasLeave && leaveRecord) {
+                                const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
+                                leaveHours = getLeaveHours(leaveTimeRange);
                             }
+
+                            let normalHr = 0;
+                            if (l.shifts?.normal) {
+                                const regTime = l.shiftTimes?.day || '08:00 - 17:00';
+                                const duration = getShiftHours(regTime, 8);
+                                normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
+                            }
+
+                            totalNormal += (count * normalHr);
+                            if (isOutsource) totalOutsource += (count * normalHr);
                             
                             let ot = 0;
-                            if (l.shifts?.otMorning) ot += (count * 2);
-                            if (l.shifts?.otNoon) ot += (count * 1);
-                            if (l.shifts?.otEvening) ot += (count * 3);
+                            if (l.shifts?.otMorning) ot += (count * getShiftHours(l.shiftTimes?.otMorning || '', 2));
+                            if (l.shifts?.otNoon) ot += (count * getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1));
+                            if (l.shifts?.otEvening) ot += (count * getShiftHours(l.shiftTimes?.otEvening || '', 3));
                             
                             totalOT += ot;
                             if (isOutsource) totalOutsource += ot;

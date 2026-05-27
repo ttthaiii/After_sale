@@ -60,6 +60,7 @@ export interface LaborRecord {
         active: boolean;
         time?: string;
         medCertFileUrl?: string;
+        leaveType?: 'Paid' | 'Unpaid';
     }; // Add for daily report leave status tracking
 }
 
@@ -81,6 +82,7 @@ export interface TaskUpdate {
     labor: LaborRecord[];
     leave?: any[];
     type?: 'Update' | 'Problem' | 'Resolution';
+    updatedBy?: string;
 }
 
 export interface DailyReport {
@@ -103,6 +105,7 @@ export interface DailyReport {
     type?: string;         // ✅ Added for compatibility
     reportDate?: string;   // ✅ Added for compatibility
     photoUrl?: string; // ✅ New: Support for daily progress photo
+    updatedBy?: string;
     photos?: string[]; // ✅ Added for compatibility with TaskUpdate/TaskUpdateModal
     laborPhotos?: string[]; // ✅ New: Support for labor proof photos
     createdAt: string;
