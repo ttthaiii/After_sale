@@ -1,4 +1,4 @@
-import { FileText, User, Phone } from 'lucide-react';
+import { FileText, User, Phone, Clock, Star, Sparkles } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderCard from './WorkOrderCard';
 import { useWorkOrders } from '../context/WorkOrderContext';
@@ -166,6 +166,131 @@ const WorkOrderDetailModal = ({
 
                 {/* Content */}
                 <div style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+
+                    {/* Customer Inspection Metrics Drawer */}
+                    {(() => {
+                        const hasTimeline = wo.inspectionTimeline && Object.keys(wo.inspectionTimeline).length > 0;
+                        const hasSurvey = wo.satisfactionSurvey && Object.keys(wo.satisfactionSurvey).length > 0;
+
+                        const formatTime = (isoString?: string) => {
+                            if (!isoString) return 'ยังไม่เริ่ม';
+                            try {
+                                const date = new Date(isoString);
+                                return `${date.toLocaleDateString('th-TH')} ${date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`;
+                            } catch {
+                                return isoString;
+                            }
+                        };
+
+                        if (!hasTimeline && !hasSurvey) return null;
+
+                        return (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: hasTimeline && hasSurvey ? '1fr 1fr' : '1fr',
+                                gap: '1.5rem',
+                                marginBottom: '2rem',
+                                animation: 'fadeIn 0.3s ease-out'
+                            }}>
+                                {/* Left Side: Timeline */}
+                                {hasTimeline && (
+                                    <div style={{
+                                        background: '#ffffff',
+                                        borderRadius: '24px',
+                                        padding: '1.5rem',
+                                        border: '1px solid #e2e8f0',
+                                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem', color: '#4f46e5' }}>
+                                            <Clock size={18} />
+                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 950, color: '#1e293b' }}>
+                                                ประวัติการตรวจรับของลูกค้า (SLA Timeline)
+                                            </h3>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', paddingLeft: '0.5rem' }}>
+                                            <div style={{ position: 'absolute', left: '14px', top: '10px', bottom: '10px', width: '2px', background: '#e2e8f0' }} />
+                                            
+                                            {[
+                                                { label: 'งานในใบงานเสร็จครบ 100%', time: wo.inspectionTimeline?.allTasksCompletedAt, color: '#10b981' },
+                                                { label: 'สร้าง QR Code ส่งมอบงานสำเร็จ', time: wo.inspectionTimeline?.qrGeneratedAt, color: '#6366f1' },
+                                                { label: 'ลูกค้าสแกนเปิดลิงก์ตรวจรับครั้งแรก', time: wo.inspectionTimeline?.customerFirstScannedAt, color: '#f59e0b' },
+                                                { label: 'ลูกค้าเริ่มพิจารณาประเมินผลงาน', time: wo.inspectionTimeline?.inspectionStartedAt, color: '#ec4899' },
+                                                { label: 'ลูกค้ากดยืนยันผลตรวจรับเรียบร้อย', time: wo.inspectionTimeline?.inspectionSubmittedAt, color: '#22c55e' }
+                                            ].map((step, idx) => {
+                                                const isActive = !!step.time;
+                                                return (
+                                                    <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
+                                                        <div style={{
+                                                            width: '10px',
+                                                            height: '10px',
+                                                            borderRadius: '50%',
+                                                            background: isActive ? step.color : '#cbd5e1',
+                                                            border: `4px solid ${isActive ? '#f1f5f9' : '#fff'}`,
+                                                            boxShadow: isActive ? `0 0 8px ${step.color}` : 'none',
+                                                            marginTop: '4px',
+                                                            flexShrink: 0
+                                                        }} />
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: isActive ? '#334155' : '#94a3b8' }}>
+                                                                {step.label}
+                                                            </span>
+                                                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: isActive ? '#64748b' : '#cbd5e1' }}>
+                                                                {formatTime(step.time)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Right Side: CSAT Satisfaction Survey */}
+                                {hasSurvey && wo.satisfactionSurvey && (
+                                    <div style={{
+                                        background: '#ffffff',
+                                        borderRadius: '24px',
+                                        padding: '1.5rem',
+                                        border: '1px solid #86efac',
+                                        boxShadow: '0 4px 6px -1px rgba(34,197,94,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem', color: '#15803d' }}>
+                                            <Sparkles size={18} style={{ color: '#22c55e' }} />
+                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 950, color: '#1e293b' }}>
+                                                ผลประเมินความพึงพอใจลูกค้า (CSAT 5 มิติ)
+                                            </h3>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {[
+                                                { label: '1. คุณภาพงานซ่อมแซม (Work Quality)', score: wo.satisfactionSurvey.workQuality },
+                                                { label: '2. ความเรียบร้อยหน้างาน (Cleanliness)', score: wo.satisfactionSurvey.siteCleanliness },
+                                                { label: '3. ความเป็นมืออาชีพโฟร์แมน (Professionalism)', score: wo.satisfactionSurvey.foremanProfessionalism },
+                                                { label: '4. ความถูกต้องตามข้อกำหนดสเปก (Spec Accuracy)', score: wo.satisfactionSurvey.specAccuracy },
+                                                { label: '5. การดูแลระมัดระวังทรัพย์สิน (Handover Care)', score: wo.satisfactionSurvey.handoverCare }
+                                            ].map((surveyItem, idx) => (
+                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+                                                        {surveyItem.label}
+                                                    </span>
+                                                    <div style={{ display: 'flex', gap: '2px', color: '#eab308' }}>
+                                                        {[1, 2, 3, 4, 5].map(star => (
+                                                            <Star 
+                                                                key={star} 
+                                                                size={14} 
+                                                                fill={star <= surveyItem.score ? 'currentColor' : 'none'} 
+                                                                strokeWidth={2} 
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
                     <WorkOrderCard
                         wo={wo}
                         variant="default"
