@@ -116,7 +116,7 @@ export interface MasterTask {
     id: string; // master_task_id or taskId
     name: string;
     title?: string;
-    status: TaskStatus | 'upcoming' | 'in-progress' | 'for-checking' | 'completed';
+    status: TaskStatus | 'upcoming' | 'in-progress' | 'for-checking' | 'completed' | 'pending_inspection' | 'approved' | 'rejected';
     beforePhotoUrl?: string;
     afterPhotoUrl?: string;
     latestPhotoUrl?: string;
@@ -124,6 +124,7 @@ export interface MasterTask {
     dueDate?: string;
     assignee?: string; 
     assignees?: TaskAssignee[];
+    subtaskOperatorId?: string; // Specific Foreman employeeId assigned to this subtask execution
     
     // LB System Fields compatibility
     taskId?: string;
@@ -249,7 +250,7 @@ export interface WorkOrder {
     appointmentDate?: string;
     initialProblem?: string;
 
-    status: 'Draft' | 'Evaluating' | 'Pending' | 'Approved' | 'Partially Approved' | 'In Progress' | 'Completed' | 'Verified' | 'Rejected' | 'Cancelled';
+    status: 'Draft' | 'Evaluating' | 'Pending' | 'Approved' | 'Partially Approved' | 'In Progress' | 'Completed' | 'Verified' | 'Rejected' | 'Cancelled' | 'pending_delivery' | 'customer_reviewing';
     isNew?: boolean;
     isArchived?: boolean;
     submittedAt?: string | null;
@@ -260,6 +261,25 @@ export interface WorkOrder {
     totalTasks?: number;
     completedTasks?: number;
     overallProgress?: number;
+
+    // Reject & Revision Cloning Loop fields
+    woOwnerId?: string; // Foreman employeeId who owns the overall Work Order
+    deliveryQrToken?: string; // Secure token for Customer Inspection Link
+    inspectionTimeline?: {
+        allTasksCompletedAt?: string;
+        qrGeneratedAt?: string;
+        customerFirstScannedAt?: string;
+        inspectionStartedAt?: string;
+        inspectionSubmittedAt?: string;
+    };
+    satisfactionSurvey?: {
+        workQuality: number;
+        siteCleanliness: number;
+        foremanProfessionalism: number;
+        specAccuracy: number;
+        handoverCare: number;
+        submittedAt: string;
+    };
 }
 
 export interface ActivityLog {

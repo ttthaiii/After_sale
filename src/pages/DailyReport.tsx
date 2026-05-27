@@ -3,9 +3,10 @@ import { db, storage } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Project, Contractor } from '../types';
-import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock, TrendingUp, FileText, UserCheck } from 'lucide-react';
+import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock, TrendingUp, FileText, UserCheck, QrCode, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import TaskReviewModal from '../components/TaskReviewModal';
+import CustomerInspectionMockup from '../components/CustomerInspectionMockup';
 import { useNotifications } from '../context/NotificationContext';
 import { AnalogTimePicker } from '../components/AnalogTimePicker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -286,7 +287,15 @@ const BatchAddModal = ({
 
 
 const DailyReport = () => {
-    const { workOrders, addTaskUpdate, updateTask, updateWorkOrderStatus, requestRetroactiveUnlock } = useWorkOrders();
+    const { 
+        workOrders, 
+        addTaskUpdate, 
+        updateTask, 
+        updateWorkOrderStatus, 
+        requestRetroactiveUnlock,
+        generateDeliveryQrToken,
+        submitCustomerInspection
+    } = useWorkOrders();
     const { user } = useAuth(); // ✅ Use authenticated user
     const { sendNotification } = useNotifications();
     const navigate = useNavigate();
@@ -344,6 +353,10 @@ const DailyReport = () => {
     // Task Review Modal states
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [reviewTaskInfo, setReviewTaskInfo] = useState<{ task: MasterTask; wo: WorkOrder } | null>(null);
+
+    // Simulated Customer Inspection Portal States
+    const [isCustomerMockupOpen, setIsCustomerMockupOpen] = useState(false);
+    const [mockupWorkOrder, setMockupWorkOrder] = useState<WorkOrder | null>(null);
 
     useEffect(() => {
         const unsubContractors = onSnapshot(collection(db, 'contractors'), (snap) => {
@@ -489,66 +502,99 @@ const DailyReport = () => {
         }
     }, [user]);
 
-    const { newTasks, inProgressTasks, pendingInspectionTasks } = useMemo(() => {
+    const { newTasks, inProgressTasks, pendingInspectionTasks, pendingDeliveryWorkOrders } = useMemo(() => {
         const _newTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
         const _inProgressTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
         const _pendingInspectionTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
+        const _pendingDeliveryWOs: { wo: WorkOrder }[] = [];
 
         workOrders.forEach(wo => {
-            // Only show work orders that are active (Approved, Partially Approved, Pending, In Progress, Evaluating)
-            // Note: 'Pending' is used for jobs that skipped evaluation or legacy
-            // We allow 'Evaluating' so tasks assigned task-by-task can be reported immediately
+            // Only show active work orders
             if (['Draft', 'Completed', 'Rejected', 'Cancelled'].includes(wo.status)) return;
+
+            // Track grouping of tasks for this WO
+            let totalActiveTasks = 0;
+            let completedActiveTasks = 0;
+            const woTasksList: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
 
             wo.categories.forEach(cat => {
                 cat.tasks.forEach(task => {
-                    // Show tasks that are Approved (Ready), Assigned (Specific person) or In Progress
-                    // Skip 'Pending' (unevaluated/unassigned tasks) when work order is 'Evaluating'
-                    // 🛡️ RELAXED FILTER: If it's not Verified, show it! (Even if 100% so foreman can review/close)
                     if (task.status === 'Pending' || task.status === 'Verified') return;
 
-                    // Filter by assigned staff (or show all for Admins/Managers)
-                    // Also show to the reporter if the task is Approved (Ready to start)
+                    // Role Segregation & Access Control Logic
+                    // 1. Is WO Owner? (Can see all tasks in read-only except their own executable ones)
+                    const isWoOwner = wo.woOwnerId === user?.id || (user?.employeeId && wo.woOwnerId === user.employeeId);
+                    
+                    // 2. Is specific Subtask Operator?
+                    const isSubtaskOperator = task.subtaskOperatorId === user?.id || 
+                        (user?.employeeId && task.subtaskOperatorId === user.employeeId) ||
+                        task.responsibleStaffIds?.includes(foremanId);
+
                     const isAssigned = user?.role === 'Admin' ||
                         user?.role === 'Manager' ||
-                        task.responsibleStaffIds?.includes(foremanId) ||
+                        isWoOwner ||
+                        isSubtaskOperator ||
                         (wo.reporterId === user?.id && task.status === 'Approved' && (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0));
 
-                        if (isAssigned) {
-                            // ✅ Find the absolute maximum progress from history to ensure correct display
-                            const filteredHistory = task.revisionCreatedAt
-                                ? (task.history || []).filter(h => h.date && h.date > task.revisionCreatedAt)
-                                : (task.history || []);
-                            const historyMax = filteredHistory.reduce((max, h) => Math.max(max, h.progress), 0) || 0;
-                            const actualProgress = Math.max(task.dailyProgress || 0, historyMax);
-                            
-                            const item = { 
-                                task: { ...task, dailyProgress: actualProgress }, 
-                                wo, 
-                                categoryId: cat.id 
-                            };
-                            
-                            if (searchTerm) {
-                                const match = (task.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                             (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                             (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
-                                if (!match) return;
-                            }
+                    if (isAssigned) {
+                        const filteredHistory = task.revisionCreatedAt
+                            ? (task.history || []).filter(h => h.date && h.date > task.revisionCreatedAt)
+                            : (task.history || []);
+                        const historyMax = filteredHistory.reduce((max, h) => Math.max(max, h.progress), 0) || 0;
+                        const actualProgress = Math.max(task.dailyProgress || 0, historyMax);
+                        
+                        // Flag task if the current foreman is only allowed Read-Only (WO Owner but not subtask operator)
+                        const isReadOnly = !isSubtaskOperator && isWoOwner && user?.role !== 'Admin' && user?.role !== 'Manager';
 
-                            if (actualProgress === 100) {
-                                _pendingInspectionTasks.push(item);
-                            } else if (actualProgress > 0) {
-                                _inProgressTasks.push(item);
-                            } else {
-                                _newTasks.push(item);
-                            }
+                        const item = { 
+                            task: { ...task, dailyProgress: actualProgress, isReadOnly }, 
+                            wo, 
+                            categoryId: cat.id 
+                        };
+
+                        if (searchTerm) {
+                            const match = (task.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                         (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                         (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
+                            if (!match) return;
                         }
-                    });
+
+                        totalActiveTasks++;
+                        if (actualProgress === 100) {
+                            completedActiveTasks++;
+                        }
+                        woTasksList.push(item);
+                    }
                 });
             });
 
-            return { newTasks: _newTasks, inProgressTasks: _inProgressTasks, pendingInspectionTasks: _pendingInspectionTasks };
-        }, [workOrders, searchTerm, foremanId, user?.role]);
+            // WO Grouping Logic: If ALL tasks in the WO are at 100% progress and WO isn't already delivering
+            const isWoOwner = wo.woOwnerId === user?.id || (user?.employeeId && wo.woOwnerId === user.employeeId);
+            
+            if (totalActiveTasks > 0 && completedActiveTasks === totalActiveTasks && isWoOwner && wo.status !== 'pending_delivery') {
+                // Add to Pending Delivery list
+                _pendingDeliveryWOs.push({ wo });
+            } else {
+                // Distribute tasks normally
+                woTasksList.forEach(item => {
+                    if (item.task.dailyProgress === 100) {
+                        _pendingInspectionTasks.push(item);
+                    } else if (item.task.dailyProgress > 0) {
+                        _inProgressTasks.push(item);
+                    } else {
+                        _newTasks.push(item);
+                    }
+                });
+            }
+        });
+
+        return { 
+            newTasks: _newTasks, 
+            inProgressTasks: _inProgressTasks, 
+            pendingInspectionTasks: _pendingInspectionTasks,
+            pendingDeliveryWorkOrders: _pendingDeliveryWOs
+        };
+    }, [workOrders, searchTerm, foremanId, user?.role, user?.employeeId, user?.id]);
 
     // ✅ Deep Link: Open Work Order if ID is in URL with Completed/Inactive Verification (Case C)
     useEffect(() => {
@@ -1566,6 +1612,7 @@ const DailyReport = () => {
     };
 
     const renderTaskCard = (task: MasterTask, wo: WorkOrder, categoryId: string, isNew: boolean) => {
+        const isReadOnly = (task as any).isReadOnly;
         const isSelected = selectedTaskInfo?.task.id === task.id;
         const isHighlighted = highlightedId === wo.id;
         const project = realProjects.find(p => p.id === wo.projectId);
@@ -1577,16 +1624,23 @@ const DailyReport = () => {
         return (
             <div
                 key={task.id}
-                onClick={() => handleSelectTask(task, wo, categoryId)}
+                onClick={() => {
+                    if (isReadOnly) {
+                        alert('คุณเห็นงานนี้ในฐานะผู้ดูแลภาพรวมใบงาน (Owner) เท่านั้น ไม่สามารถแก้ไขหรือบันทึกรายงานได้ (เฉพาะช่างผู้มาช่วยเท่านั้นที่อัปเดตได้)');
+                        return;
+                    }
+                    handleSelectTask(task, wo, categoryId);
+                }}
                 style={{
                     padding: '12px 14px', borderRadius: '16px', marginBottom: '8px',
                     border: '1px solid', 
-                    borderColor: isSelected ? '#3b82f6' : isHighlighted ? '#3b82f6' : isCompleted100 ? '#a7f3d0' : isNew ? '#fcd34d' : '#f1f5f9',
-                    background: isSelected ? '#eff6ff' : isHighlighted ? '#eff6ff' : isCompleted100 ? '#f0fdf4' : isNew ? '#fffbeb' : '#fff',
-                    cursor: 'pointer', transition: 'all 0.2s',
+                    borderColor: isSelected ? '#3b82f6' : isHighlighted ? '#3b82f6' : isReadOnly ? '#cbd5e1' : isCompleted100 ? '#a7f3d0' : isNew ? '#fcd34d' : '#f1f5f9',
+                    background: isSelected ? '#eff6ff' : isHighlighted ? '#eff6ff' : isReadOnly ? '#f8fafc' : isCompleted100 ? '#f0fdf4' : isNew ? '#fffbeb' : '#fff',
+                    cursor: isReadOnly ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
                     boxShadow: isSelected || isHighlighted ? '0 8px 12px -3px rgba(59, 130, 246, 0.15)' : isCompleted100 ? '0 4px 6px -1px rgba(16, 185, 129, 0.08)' : '0 2px 4px -1px rgba(0,0,0,0.05)',
                     transform: isHighlighted && !isSelected ? 'scale(1.02)' : 'none',
                     position: 'relative',
+                    opacity: isReadOnly ? 0.75 : 1,
                     display: 'flex', alignItems: 'center', gap: '12px'
                 }}
             >
@@ -1612,6 +1666,7 @@ const DailyReport = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
                         <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', background: '#dbeafe', padding: '2px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>{wo.id}</div>
+                        {isReadOnly && <div style={{ background: '#cbd5e1', color: '#475569', fontSize: '0.58rem', fontWeight: 800, padding: '2px 5px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '2px' }}><Lock size={8} /> ดูได้อย่างเดียว</div>}
                         {isNew && <div style={{ background: '#ef4444', color: '#fff', fontSize: '0.58rem', fontWeight: 800, padding: '2px 5px', borderRadius: '6px' }}>ใหม่</div>}
                     </div>
                     <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
@@ -2589,8 +2644,104 @@ const DailyReport = () => {
                         </div>
                     </div>
                     <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-                        {newTasks.length === 0 && inProgressTasks.length === 0 && pendingInspectionTasks.length === 0 ? <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8' }}><div style={{ fontSize: '0.9rem', fontWeight: 700 }}>ไม่มีงานที่ต้องรายงานในขณะนี้</div></div> :
+                        {pendingDeliveryWorkOrders.length === 0 && newTasks.length === 0 && inProgressTasks.length === 0 && pendingInspectionTasks.length === 0 ? <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8' }}><div style={{ fontSize: '0.9rem', fontWeight: 700 }}>ไม่มีงานที่ต้องรายงานในขณะนี้</div></div> :
                             <>
+                                {pendingDeliveryWorkOrders.length > 0 && (
+                                    <div style={{ marginBottom: '1.5rem' }}>
+                                        <h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#6366f1', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Package size={12} style={{ color: '#6366f1' }} /> งานที่รอส่งมอบภาพรวม (Delivery)
+                                        </h3>
+                                        {pendingDeliveryWorkOrders.map(({ wo }: any) => (
+                                            <div 
+                                                key={wo.id}
+                                                style={{
+                                                    background: '#f8fafc',
+                                                    border: '2px solid #e0e7ff',
+                                                    borderRadius: '16px',
+                                                    padding: '14px',
+                                                    marginBottom: '10px',
+                                                    boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.05)',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '8px'
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 900, color: '#4f46e5', background: '#e0e7ff', padding: '2px 8px', borderRadius: '6px' }}>{wo.id}</span>
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>เสร็จครบ 100%</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#1e293b' }}>📍 {wo.locationName}</div>
+                                                <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (confirm('คุณต้องการสร้าง QR Code สำหรับส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?')) {
+                                                                try {
+                                                                    const token = await generateDeliveryQrToken(wo.id, user?.employeeId || user?.id || 'unknown');
+                                                                    alert(`สร้าง QR Code ตรวจรับงานเรียบร้อย!\nToken: ${token}`);
+                                                                } catch (err) {
+                                                                    console.error(err);
+                                                                    alert('เกิดข้อผิดพลาดในการสร้าง QR Code');
+                                                                }
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '8px',
+                                                            borderRadius: '10px',
+                                                            border: 'none',
+                                                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                                            color: '#fff',
+                                                            fontWeight: 800,
+                                                            fontSize: '0.75rem',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            gap: '4px',
+                                                            boxShadow: '0 4px 10px rgba(99, 102, 241, 0.15)'
+                                                        }}
+                                                    >
+                                                        <QrCode size={12} /> QR Code
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            // Auto-generate token if not exists, and launch simulator directly
+                                                            try {
+                                                                let token = wo.deliveryQrToken;
+                                                                if (!token) {
+                                                                    token = await generateDeliveryQrToken(wo.id, user?.employeeId || user?.id || 'unknown');
+                                                                }
+                                                                setMockupWorkOrder(wo);
+                                                                setIsCustomerMockupOpen(true);
+                                                            } catch (err) {
+                                                                console.error(err);
+                                                                alert('เกิดข้อผิดพลาดในการจำลองหน้าลูกค้า');
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            flex: 1.2,
+                                                            padding: '8px',
+                                                            borderRadius: '10px',
+                                                            border: '1.5px solid #22c55e',
+                                                            background: '#f0fdf4',
+                                                            color: '#166534',
+                                                            fontWeight: 800,
+                                                            fontSize: '0.75rem',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            gap: '4px',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <Sparkles size={12} style={{ color: '#22c55e' }} /> จำลองตรวจรับ
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 {newTasks.length > 0 && <div style={{ marginBottom: '1.5rem' }}><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#f59e0b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}><Bell size={12} fill="currentColor" /> งานใหม่ (New Assignments)</h3>{newTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, true))}</div>}
                                 {inProgressTasks.length > 0 && <div style={{ marginBottom: '1.5rem' }}><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase' }}>งานที่กำลังทำ (In Progress)</h3>{inProgressTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, false))}</div>}
                                 {pendingInspectionTasks.length > 0 && <div><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#10b981', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}><CheckCircle2 size={12} style={{ color: '#10b981' }} /> งานที่รอตรวจสอบ (Pending Inspection)</h3>{pendingInspectionTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, false))}</div>}
@@ -3964,6 +4115,20 @@ const DailyReport = () => {
                     workOrder={reviewTaskInfo.wo}
                     task={reviewTaskInfo.task}
                     onConfirm={handleConfirmReview}
+                />
+            )}
+
+            {isCustomerMockupOpen && mockupWorkOrder && (
+                <CustomerInspectionMockup
+                    isOpen={isCustomerMockupOpen}
+                    onClose={() => {
+                        setIsCustomerMockupOpen(false);
+                        setMockupWorkOrder(null);
+                    }}
+                    workOrder={mockupWorkOrder}
+                    onSubmitInspection={async (approvals, survey) => {
+                        await submitCustomerInspection(mockupWorkOrder.id, approvals, survey);
+                    }}
                 />
             )}
         </div>

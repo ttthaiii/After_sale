@@ -21,6 +21,18 @@ interface WorkOrderContextType {
     archiveWorkOrder: (id: string) => Promise<void>;
     markWorkOrderAsReviewed: (id: string) => Promise<void>;
     requestRetroactiveUnlock: (workOrderId: string, categoryId: string, taskId: string, date: string, reason: string) => Promise<void>;
+    generateDeliveryQrToken: (woId: string, ownerId: string) => Promise<string>;
+    submitCustomerInspection: (
+        woId: string, 
+        approvals: Record<string, { status: 'approved' | 'rejected'; reason?: string; defectCategories?: Record<string, boolean> }>,
+        survey?: {
+            workQuality: number;
+            siteCleanliness: number;
+            foremanProfessionalism: number;
+            specAccuracy: number;
+            handoverCare: number;
+        }
+    ) => Promise<void>;
 }
 
 const WorkOrderContext = createContext<WorkOrderContextType | undefined>(undefined);
@@ -226,6 +238,12 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     status = 'Completed';
                 } else if (status === 'completed') {
                     status = 'Verified';
+                } else if (status === 'pending_inspection') {
+                    status = 'Completed'; // Maps to Completed so UI shows under inspection list
+                } else if (status === 'approved') {
+                    status = 'Verified';
+                } else if (status === 'rejected') {
+                    status = 'Rejected';
                 }
 
                 tasks.push({ 
@@ -846,6 +864,151 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
+    const generateDeliveryQrToken = async (woId: string, ownerId: string) => {
+        // Generate secure random token
+        const array = new Uint32Array(4);
+        window.crypto.getRandomValues(array);
+        const token = Array.from(array, dec => dec.toString(16).padStart(8, '0')).join('');
+        
+        const now = new Date().toISOString();
+        await updateDoc(doc(db, 'workOrders', woId), {
+            status: 'pending_delivery',
+            woOwnerId: ownerId,
+            deliveryQrToken: token,
+            'inspectionTimeline.qrGeneratedAt': now,
+            lastUpdate: now
+        });
+        
+        return token;
+    };
+
+    const submitCustomerInspection = async (
+        woId: string, 
+        approvals: Record<string, { status: 'approved' | 'rejected'; reason?: string; defectCategories?: Record<string, boolean> }>,
+        survey?: {
+            workQuality: number;
+            siteCleanliness: number;
+            foremanProfessionalism: number;
+            specAccuracy: number;
+            handoverCare: number;
+        }
+    ) => {
+        const woRef = doc(db, 'workOrders', woId);
+        const woSnap = await getDoc(woRef);
+        if (!woSnap.exists()) throw new Error('Work Order not found');
+
+        const now = new Date().toISOString();
+        
+        let hasRejections = false;
+        
+        // Loop through categories and tasks to apply customer decision
+        const categoriesSnap = await getDocs(collection(db, 'workOrders', woId, 'categories'));
+        for (const catDoc of categoriesSnap.docs) {
+            const tasksSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks'));
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const taskId = taskDoc.id;
+                const decision = approvals[taskId];
+                
+                if (!decision) continue; // Skip if no decision for this task
+
+                const subtaskId = `${taskId}-0001`;
+                const subtaskRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId);
+                const currentRev = taskData.currentRevision || 'rev00';
+                
+                if (decision.status === 'approved') {
+                    // Update task to Verified / completed
+                    await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId), {
+                        status: 'completed', // LB completed = Verified
+                        evaluationStatus: 'Approved',
+                        updatedAt: now
+                    });
+                    await updateDoc(subtaskRef, {
+                        status: 'completed'
+                    });
+                    
+                    // Close the current active revision
+                    const revisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
+                    await updateDoc(revisionRef, {
+                        status: 'closed_approved',
+                        approvedAt: now
+                    });
+                } else if (decision.status === 'rejected') {
+                    hasRejections = true;
+                    
+                    // Close current revision as rejected
+                    const currentRevisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
+                    await updateDoc(currentRevisionRef, {
+                        status: 'closed_rejected',
+                        rejectReason: decision.reason || '',
+                        defectCategories: decision.defectCategories || {},
+                        rejectedAt: now
+                    });
+                    
+                    // Increment revision number
+                    const revNum = parseInt(currentRev.replace('rev', '')) || 0;
+                    const nextRev = `rev${String(revNum + 1).padStart(2, '0')}`;
+                    const revSuffix = `(REV. ${revNum + 1})`;
+                    
+                    // Modify task name to append (REV. X) suffix
+                    const originalBaseName = (taskData.taskName || taskData.name || '').replace(/\s*\(REV\.\s*\d+\)/gi, '');
+                    const newDisplayName = `${originalBaseName} ${revSuffix}`;
+                    
+                    // Spin off new revision with reset progress and wiped labor check-in
+                    await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId), {
+                        status: 'in-progress', // LB in-progress
+                        evaluationStatus: 'Rejected',
+                        dailyProgress: 0,
+                        currentRevision: nextRev,
+                        taskName: newDisplayName,
+                        name: newDisplayName,
+                        rejectReason: decision.reason || '',
+                        updatedAt: now
+                    });
+                    
+                    await updateDoc(subtaskRef, {
+                        status: 'in-progress',
+                        dailyProgress: 0,
+                        currentRevision: nextRev
+                    });
+                    
+                    // Create new revision doc
+                    const newRevisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', nextRev);
+                    await setDoc(newRevisionRef, {
+                        revisionId: nextRev,
+                        revisionName: `Revision ${revNum + 1}`,
+                        status: 'active',
+                        createdAt: now
+                    });
+                    
+                    // IMPORTANT: Do NOT clone labor records or daily reports into the new revision!
+                    // This satisfies the constraint to start the new revision from a clean slate.
+                }
+            }
+        }
+        
+        // Update root WO Document
+        const woUpdates: any = {
+            'inspectionTimeline.inspectionSubmittedAt': now,
+            lastUpdate: now
+        };
+        
+        if (hasRejections) {
+            woUpdates.status = 'Rejected';
+        } else {
+            woUpdates.status = 'Completed';
+            woUpdates.completedAt = now;
+            if (survey) {
+                woUpdates.satisfactionSurvey = {
+                    ...survey,
+                    submittedAt: now
+                };
+            }
+        }
+        
+        await updateDoc(woRef, woUpdates);
+    };
+
     const deleteWorkOrder = async (id: string) => {
         await updateDoc(doc(db, 'workOrders', id), { status: 'Cancelled', isArchived: true });
     };
@@ -882,7 +1045,9 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             deleteWorkOrder,
             archiveWorkOrder,
             markWorkOrderAsReviewed,
-            requestRetroactiveUnlock
+            requestRetroactiveUnlock,
+            generateDeliveryQrToken,
+            submitCustomerInspection
         }}>
             {children}
         </WorkOrderContext.Provider>
