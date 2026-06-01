@@ -478,7 +478,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const _pendingInspectionTasks: TaskListItem[] = [];
     const _pendingDeliveryWOs: PendingDeliveryItem[] = [];
     workOrders.forEach((wo) => {
-      if (["Draft", "Completed", "Rejected", "Cancelled"].includes(wo.status))
+      if (["Draft", "Completed", "Cancelled"].includes(wo.status))
         return;
       let totalActiveTasks = 0;
       let completedActiveTasks = 0;

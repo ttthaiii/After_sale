@@ -33,6 +33,7 @@ interface WorkOrderContextType {
             handoverCare: number;
         }
     ) => Promise<void>;
+    logCustomerQrView: (woId: string) => Promise<void>;
 }
 
 const WorkOrderContext = createContext<WorkOrderContextType | undefined>(undefined);
@@ -888,6 +889,26 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
+    const logCustomerQrView = async (woId: string) => {
+        try {
+            const woRef = doc(db, 'workOrders', woId);
+            const woSnap = await getDoc(woRef);
+            if (woSnap.exists()) {
+                const data = woSnap.data();
+                if (!data.inspectionTimeline || !data.inspectionTimeline.qrOpenedAt) {
+                    const now = new Date().toISOString();
+                    await updateDoc(woRef, {
+                        'inspectionTimeline.qrOpenedAt': now,
+                        lastUpdate: now
+                    });
+                    console.log('Customer scanned/opened QR link successfully logged:', now);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to log customer QR view:', err);
+        }
+    };
+
     const generateDeliveryQrToken = async (woId: string, ownerId: string) => {
         // Generate secure random token
         const array = new Uint32Array(4);
@@ -1071,7 +1092,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             markWorkOrderAsReviewed,
             requestRetroactiveUnlock,
             generateDeliveryQrToken,
-            submitCustomerInspection
+            submitCustomerInspection,
+            logCustomerQrView
         }}>
             {children}
         </WorkOrderContext.Provider>

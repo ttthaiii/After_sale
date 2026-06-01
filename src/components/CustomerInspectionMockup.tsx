@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useWorkOrders } from '../context/WorkOrderContext';
 import { WorkOrder } from '../types';
 import { Star, Sparkles, Building2, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -33,6 +34,13 @@ export default function CustomerInspectionMockup({
     
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+    const { logCustomerQrView } = useWorkOrders();
+
+    useEffect(() => {
+        if (isOpen && workOrder.id) {
+            logCustomerQrView(workOrder.id);
+        }
+    }, [isOpen, workOrder.id]);
 
     // Form inputs for Rejected items
     const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
