@@ -93,6 +93,39 @@ export const DailyReportDetailPane: React.FC = () => {
     setActiveModal,
   } = useDailyReport();
 
+  // Completion details extraction for completed tasks (100% progress)
+  const completionEntry = React.useMemo(() => {
+    if (!selectedTaskInfo) return null;
+    const history = selectedTaskInfo.task.history || [];
+    return (
+      history.find((h) => h.progress === 100) ||
+      history[history.length - 1] ||
+      null
+    );
+  }, [selectedTaskInfo]);
+
+  const displayLabor = labor;
+
+  const displaySitePhotos = React.useMemo(() => {
+    return sitePhotos.filter(Boolean);
+  }, [sitePhotos]);
+
+  const displayRegularPhotos = React.useMemo(() => {
+    return laborRegularPhotos.filter(Boolean);
+  }, [laborRegularPhotos]);
+
+  const displayOtMorningPhotos = React.useMemo(() => {
+    return laborOtMorningPhotos.filter(Boolean);
+  }, [laborOtMorningPhotos]);
+
+  const displayOtNoonPhotos = React.useMemo(() => {
+    return laborOtNoonPhotos.filter(Boolean);
+  }, [laborOtNoonPhotos]);
+
+  const displayOtEveningPhotos = React.useMemo(() => {
+    return laborOtEveningPhotos.filter(Boolean);
+  }, [laborOtEveningPhotos]);
+
   // Helper render functions with lexical scope access
   const renderTimeInput = (id: string, shift: string, rangeStr: string) => {
     const [start, end] = rangeStr.split(" - ").map((s) => s.trim());
@@ -1467,7 +1500,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     overflowX: "auto",
                   }}
                 >
-                  {labor.length === 0 ? (
+                  {displayLabor.length === 0 ? (
                      <div
                       style={{
                         padding: "3rem",
@@ -1487,9 +1520,16 @@ export const DailyReportDetailPane: React.FC = () => {
                         }}
                       />{" "}
                       
-                      <div>
-                        ยังไม่มีข้อมูลแรงงาน (กรุณากดปุ่มเพิ่มคนงานด้านบน)
-                      </div>
+                                            {isTaskFinished ? (
+                        <Fragment>
+                          <div style={{ color: "#0f172a", fontSize: "1rem", marginBottom: "4px" }}>ใบงานนี้ดำเนินการเสร็จสมบูรณ์ 100% แล้ว</div>
+                          <div style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>
+                            (ไม่มีการบันทึกรายงานข้อมูลแรงงานสำหรับวันที่เลือก)
+                          </div>
+                        </Fragment>
+                      ) : (
+                        <div>ยังไม่มีข้อมูลแรงงาน (กรุณากดปุ่มเพิ่มคนงานด้านบน)</div>
+                      )}
                     </div>
                   ) : (
                      <table
@@ -1618,7 +1658,7 @@ export const DailyReportDetailPane: React.FC = () => {
                       </thead>{" "}
                       
                       <tbody>
-                        {labor.map((l, idx) => (
+                        {displayLabor.map((l, idx) => (
                            <tr
                             style={{
                               borderBottom: "1px solid #e2e8f0",
@@ -2826,7 +2866,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         id: "site",
                         label: "รูปถ่ายหน้างาน",
                         required: 2,
-                        current: sitePhotos.filter(Boolean).length,
+                        current: displaySitePhotos.length,
                         isMinimum: true,
                         show: true,
                       },
@@ -2834,33 +2874,33 @@ export const DailyReportDetailPane: React.FC = () => {
                         id: "regular",
                         label: "กะปกติ",
                         required: 4,
-                        current: laborRegularPhotos.filter(Boolean).length,
+                        current: displayRegularPhotos.length,
                         isMinimum: false,
-                        show: labor.some((l) => l.shifts?.normal),
+                        show: displayLabor.some((l) => l.shifts?.normal),
                       },
                       {
                         id: "otMorning",
                         label: "OT เช้า",
                         required: 2,
-                        current: laborOtMorningPhotos.filter(Boolean).length,
+                        current: displayOtMorningPhotos.length,
                         isMinimum: false,
-                        show: labor.some((l) => l.shifts?.otMorning),
+                        show: displayLabor.some((l) => l.shifts?.otMorning),
                       },
                       {
                         id: "otNoon",
                         label: "OT เที่ยง",
                         required: 2,
-                        current: laborOtNoonPhotos.filter(Boolean).length,
+                        current: displayOtNoonPhotos.length,
                         isMinimum: false,
-                        show: labor.some((l) => l.shifts?.otNoon),
+                        show: displayLabor.some((l) => l.shifts?.otNoon),
                       },
                       {
                         id: "otEvening",
                         label: "OT เย็น",
                         required: 2,
-                        current: laborOtEveningPhotos.filter(Boolean).length,
+                        current: displayOtEveningPhotos.length,
                         isMinimum: false,
-                        show: labor.some((l) => l.shifts?.otEvening),
+                        show: displayLabor.some((l) => l.shifts?.otEvening),
                       },
                     ]
                       .filter((tab) => tab.show)
@@ -2985,7 +3025,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           alignItems: "flex-start",
                         }}
                       >
-                        {sitePhotos.filter(Boolean).map((p, i) => (
+                        {displaySitePhotos.map((p, i) => (
                            <div
                             style={{
                               position: "relative",
@@ -3091,7 +3131,7 @@ export const DailyReportDetailPane: React.FC = () => {
                             />
                           </label>
                         )}
-                        {sitePhotos.filter(Boolean).length === 0 && (
+                        {displaySitePhotos.length === 0 && (
                            <div
                             style={{
                               color: "#94a3b8",
@@ -3105,8 +3145,15 @@ export const DailyReportDetailPane: React.FC = () => {
                           >
                             {" "}
                             
-                            <AlertCircle size={14} color="#ef4444" />{" "}
-                            ยังไม่มีรูปภาพหน้างาน — กรุณาแนบอย่างน้อย 2 รูป
+                            <AlertCircle size={14} color={isTaskFinished ? "#10b981" : "#ef4444"} />{" "}
+                            {isTaskFinished ? (
+                              <Fragment>
+                                <span style={{ color: "#0f172a" }}>ใบงานนี้ดำเนินการเสร็จสมบูรณ์ 100% แล้ว</span>{" "}
+                                <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600 }}>(ไม่มีการแนบรูปภาพหน้างานสำหรับวันที่เลือก)</span>
+                              </Fragment>
+                            ) : (
+                              "ยังไม่มีรูปภาพหน้างาน — กรุณาแนบอย่างน้อย 2 รูป"
+                            )}
                           </div>
                         )}
                       </div>

@@ -69,12 +69,19 @@ export const WorkOrderGroupList: React.FC = () => {
           handleSelectTask(task, wo, categoryId);
         }}
         style={{
-          padding: "12px 14px",
+          padding: "12px 14px 12px 10px",
           borderRadius: "16px",
           marginBottom: "8px",
           border: "1px solid",
+          borderLeft: isSelected
+            ? (isCompleted100 ? "6px solid #10b981" : "6px solid #3b82f6")
+            : isCompleted100
+              ? "6px solid #34d399"
+              : isNew
+                ? "6px solid #fbbf24"
+                : "6px solid #e2e8f0",
           borderColor: isSelected
-            ? "#3b82f6"
+            ? (isCompleted100 ? "#10b981" : "#3b82f6")
             : isHighlighted
               ? "#3b82f6"
               : isReadOnly
@@ -85,7 +92,7 @@ export const WorkOrderGroupList: React.FC = () => {
                     ? "#fcd34d"
                     : "#f1f5f9",
           background: isSelected
-            ? "#eff6ff"
+            ? (isCompleted100 ? "#ecfdf5" : "#eff6ff")
             : isHighlighted
               ? "#eff6ff"
               : isReadOnly
@@ -97,8 +104,9 @@ export const WorkOrderGroupList: React.FC = () => {
                     : "#fff",
           cursor: isReadOnly ? "not-allowed" : "pointer",
           transition: "all 0.2s",
-          boxShadow:
-            isSelected || isHighlighted
+          boxShadow: isSelected && isCompleted100
+            ? "0 10px 15px -3px rgba(16, 185, 129, 0.2), 0 4px 6px -4px rgba(16, 185, 129, 0.2)"
+            : isSelected || isHighlighted
               ? "0 8px 12px -3px rgba(59, 130, 246, 0.15)"
               : isCompleted100
                 ? "0 4px 6px -1px rgba(16, 185, 129, 0.08)"
@@ -111,63 +119,94 @@ export const WorkOrderGroupList: React.FC = () => {
           gap: "12px",
         }}
       >
-        <div
-          style={{
-            position: "relative",
-            width: "64px",
-            height: "64px",
-            flexShrink: 0,
-          }}
-        >
-          <svg height="64" width="64" style={{ transform: "rotate(-90deg)" }}>
-            <circle
-              cx="32"
-              cy="32"
-              r="26"
-              stroke="#e2e8f0"
-              strokeWidth="6"
-              fill="none"
-            />
-            <circle
-              cx="32"
-              cy="32"
-              r="26"
-              stroke={progressColor}
-              strokeWidth="6"
-              fill="none"
-              strokeDasharray={2 * Math.PI * 26}
-              strokeDashoffset={
-                2 * Math.PI * 26 -
-                ((task.dailyProgress || 0) / 100) * (2 * Math.PI * 26)
-              }
-              strokeLinecap="round"
-              style={{ transition: "stroke-dashoffset 0.5s ease" }}
-            />
-          </svg>
+                {isCompleted100 ? (
           <div
             style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
+              width: "64px",
+              height: "64px",
+              borderRadius: "50%",
+              background: "#10b981",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
+              color: "#ffffff",
+              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.15)",
+              flexShrink: 0,
             }}
+            title="เสร็จสมบูรณ์ 100%"
           >
+            <CheckCircle2 size={22} color="#ffffff" strokeWidth={3} />
             <span
               style={{
-                fontSize: "0.95rem",
+                fontSize: "0.62rem",
                 fontWeight: 900,
-                color: "#334155",
-                letterSpacing: "-0.03em",
+                marginTop: "2px",
+                lineHeight: 1,
               }}
             >
-              {task.dailyProgress}%
+              100%
             </span>
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              position: "relative",
+              width: "64px",
+              height: "64px",
+              flexShrink: 0,
+            }}
+          >
+            <svg height="64" width="64" style={{ transform: "rotate(-90deg)" }}>
+              <circle
+                cx="32"
+                cy="32"
+                r="26"
+                stroke="#e2e8f0"
+                strokeWidth="6"
+                fill="none"
+              />
+              <circle
+                cx="32"
+                cy="32"
+                r="26"
+                stroke={progressColor}
+                strokeWidth="6"
+                fill="none"
+                strokeDasharray={2 * Math.PI * 26}
+                strokeDashoffset={
+                  2 * Math.PI * 26 -
+                  ((task.dailyProgress || 0) / 100) * (2 * Math.PI * 26)
+                }
+                strokeLinecap="round"
+                style={{ transition: "stroke-dashoffset 0.5s ease" }}
+              />
+            </svg>
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.95rem",
+                  fontWeight: 900,
+                  color: "#334155",
+                  letterSpacing: "-0.03em",
+                }}
+              >
+                {task.dailyProgress}%
+              </span>
+            </div>
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
@@ -310,7 +349,7 @@ export const WorkOrderGroupList: React.FC = () => {
                     }}
                   >
                     <CheckCircle2 size={10} style={{ color: "#10b981" }} />
-                    {isWoOwner ? "รอส่งมอบภาพรวม" : "เสร็จสมบูรณ์ 100%"}
+                    {isWoOwner ? "เสร็จสมบูรณ์ 100% (รอส่งมอบภาพรวม)" : "เสร็จสมบูรณ์ 100%"}
                   </span>
                 </div>
               );
