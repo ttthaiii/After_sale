@@ -74,6 +74,24 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         id: editWorkOrder?.id || `WO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}` // ✅ Stable ID for storage path
     });
 
+    // ✅ Unsaved changes protection
+    const isFormDirty = () => {
+        // If not editing, check if any field is filled. If editing, we can also prompt as safety.
+        const hasGeneralInfo = formState.projectId || formState.building || formState.floor || formState.room || formState.description || (formState.reporterPhone && formState.reporterPhone !== editWorkOrder?.reporterPhone);
+        const hasDefects = groups.some(g => g.items.some(i => i.position || i.detail || i.images.length > 0));
+        return !!(hasGeneralInfo || hasDefects);
+    };
+
+    const handleClose = () => {
+        if (isFormDirty()) {
+            if (window.confirm('คุณมีข้อมูลที่กรอกค้างไว้อยู่ หากปิดหน้าต่างนี้ข้อมูลทั้งหมดจะสูญหาย\n\nต้องการทิ้งข้อมูลและปิดหน้าต่างใช่หรือไม่? (Unsaved changes will be lost)')) {
+                onClose();
+            }
+        } else {
+            onClose();
+        }
+    };
+
     const [step, setStep] = useState<'form' | 'preview' | 'success'>('form'); // ✅ New multi-step state
     const [isPreviewDraft, setIsPreviewDraft] = useState(false); // ✅ Distinguish between Draft and Submit
     const [isUploading, setIsUploading] = useState(false);
@@ -365,6 +383,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             projectId: formState.projectId,
             reporterName: formState.reporterName,
             reporterId: editWorkOrder?.reporterId || user?.id || 'unknown',
+            woOwnerId: editWorkOrder?.woOwnerId || user?.employeeId || user?.id || 'unknown',
             reporterPhone: formState.reporterPhone,
             reportDate: formState.reportDate,
             locationName: `${formState.building} ${formState.floor} ${formState.room}`.trim() || formState.location,
@@ -470,7 +489,6 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
     return (
         <div
-            onClick={onClose}
             style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 background: 'rgba(0,0,0,0.5)', // Lighter overlay
@@ -643,7 +661,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                 </div>
                             </div>
                             <button
-                                onClick={onClose}
+                                onClick={handleClose}
                                 style={{
                                     background: '#f8fafc',
                                     border: '1px solid #cbd5e1',
@@ -1034,7 +1052,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         {/* Footer */}
                         <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
                             <button
-                                onClick={onClose}
+                                onClick={handleClose}
                                 style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, transition: 'all 0.2s' }}
                                 onMouseOver={(e) => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.borderColor = '#9ca3af'; }}
                                 onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#d1d5db'; }}

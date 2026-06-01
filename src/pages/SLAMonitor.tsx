@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, X, ChevronLeft, ChevronRight, Image as ImageIcon, Info, FileText } from 'lucide-react';
-import { WorkOrder, MasterTask } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import { logService } from '../services/logService';
@@ -17,7 +16,6 @@ const SLAMonitor = () => {
     const { workOrders, updateWorkOrderStatus, updateTask, projects, staff, contractors, saveEvaluation } = useWorkOrders();
     const [searchParams] = useSearchParams();
 
-    // ✅ Track Page View
     useEffect(() => {
         if (user) {
             logService.trackPageView(user, 'SLA_MONITOR', 'SLA Monitor');
@@ -27,23 +25,17 @@ const SLAMonitor = () => {
     const currentRole = user?.role || 'Approver';
     const currentUserId = user?.id || '';
 
-    // UI States
     const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
     const [zoomImage, setZoomImage] = useState<string | null>(null);
-    const [closingWorkOrder, setClosingWorkOrder] = useState<WorkOrder | null>(null);
+    const [closingWorkOrder, setClosingWorkOrder] = useState<any | null>(null);
     const [verifyingTaskId, setVerifyingTaskId] = useState<string | null>(null);
-    const [assigningTask, setAssigningTask] = useState<{ task: MasterTask, woId: string } | null>(null);
-
-    // ✅ Premium Daily Report History Modal States
+    const [assigningTask, setAssigningTask] = useState<{ task: any; woId: string } | null>(null);
     const [historyTask, setHistoryTask] = useState<any | null>(null);
-
-    // Task Review Modal states
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-    const [reviewTaskInfo, setReviewTaskInfo] = useState<{ task: MasterTask; wo: WorkOrder } | null>(null);
+    const [reviewTaskInfo, setReviewTaskInfo] = useState<{ task: any; wo: any } | null>(null);
     const [selectedHistoryDate, setSelectedHistoryDate] = useState<string>('');
     const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
 
-    // Auto-update calendar month when task is opened or date selected
     useEffect(() => {
         if (historyTask) {
             const reports = historyTask.dailyreports || historyTask.history || [];
@@ -59,7 +51,7 @@ const SLAMonitor = () => {
         }
     }, [historyTask]);
 
-    const getThaiStatusBadge = (t: MasterTask) => {
+    const getThaiStatusBadge = (t: any) => {
         const progress = t.dailyProgress || 0;
         let status: any = t.status;
         if (progress >= 100 && status !== 'Completed') {
@@ -91,25 +83,21 @@ const SLAMonitor = () => {
         return <span style={{ color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>{status}</span>;
     };
 
-    // ✅ Evaluation States
-    const [selectedEvalWO, setSelectedEvalWO] = useState<WorkOrder | null>(null);
-    const [currentEvalTask, setCurrentEvalTask] = useState<MasterTask | null>(null);
+    const [selectedEvalWO, setSelectedEvalWO] = useState<any | null>(null);
+    const [currentEvalTask, setCurrentEvalTask] = useState<any | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
     const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Approved' | 'Assigned' | 'Rejected'>>({});
 
-    // ✅ Real-time Sync selectedEvalWO & taskDecisions with Firestore Context
     useEffect(() => {
         if (selectedEvalWO) {
-            const updatedWo = workOrders.find(w => w.id === selectedEvalWO.id);
+            const updatedWo = workOrders.find((w) => w.id === selectedEvalWO.id);
             if (updatedWo) {
                 setSelectedEvalWO(updatedWo);
-                
-                // Sync taskDecisions with current Firestore statuses
                 const decisions: Record<string, 'Approved' | 'Assigned' | 'Rejected'> = {};
-                updatedWo.categories.flatMap(c => c.tasks).forEach(t => {
+                updatedWo.categories.flatMap((c: any) => c.tasks).forEach((t: any) => {
                     if (t.status === 'Approved' || t.status === 'Assigned' || t.status === 'Rejected') {
-                        decisions[t.id] = t.status as any;
+                        decisions[t.id] = t.status;
                     }
                 });
                 setTaskDecisions(decisions);
@@ -117,7 +105,6 @@ const SLAMonitor = () => {
         }
     }, [workOrders, selectedEvalWO?.id]);
 
-    // Filter States
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProjectId, setSelectedProjectId] = useState('');
     const [selectedStaffId, setSelectedStaffId] = useState(currentRole === 'Foreman' ? currentUserId : '');
@@ -129,23 +116,19 @@ const SLAMonitor = () => {
     const [sortBy, setSortBy] = useState<'urgency' | 'createdAt'>('createdAt');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-    // Auto-expand and search from URL
     useEffect(() => {
         const taskIdFromUrl = searchParams.get('taskId');
         const woIdFromUrl = searchParams.get('woId');
-        
+
         if (taskIdFromUrl) {
             setExpandedTaskIds(new Set([taskIdFromUrl]));
         }
 
         if (woIdFromUrl) {
             setSearchTerm(woIdFromUrl);
-            // Optionally clear the URL to prevent re-filtering on back navigation
-            // navigate({ search: '' }, { replace: true });
         }
     }, [searchParams]);
 
-    // Helper Functions
     const toggleTaskExpansion = (taskId: string) => {
         const newSet = new Set(expandedTaskIds);
         if (newSet.has(taskId)) newSet.delete(taskId);
@@ -153,37 +136,32 @@ const SLAMonitor = () => {
         setExpandedTaskIds(newSet);
     };
 
-    // ✅ Evaluation Handlers
-    const handleTaskReviewClick = (task: MasterTask) => {
+    const handleTaskReviewClick = (task: any) => {
         setCurrentEvalTask(task);
         setIsEvalModalOpen(true);
     };
 
-    const handleModalConfirm = async (updates: Partial<MasterTask>) => {
+    const handleModalConfirm = async (updates: Partial<any>) => {
         if (!currentEvalTask || !selectedEvalWO) return;
 
         const status = updates.status as 'Approved' | 'Assigned' | 'Rejected';
-        setTaskDecisions(prev => ({ ...prev, [currentEvalTask.id]: status }));
+        setTaskDecisions((prev) => ({ ...prev, [currentEvalTask.id]: status }));
 
-        // ✅ 1. Compute the updated categories array for the work order
-        const updatedCategories = selectedEvalWO.categories.map(cat => ({
+        const updatedCategories = selectedEvalWO.categories.map((cat: any) => ({
             ...cat,
-            tasks: cat.tasks.map(t => t.id === currentEvalTask.id ? { ...t, ...updates } : t)
+            tasks: cat.tasks.map((t: any) => t.id === currentEvalTask.id ? { ...t, ...updates } : t)
         }));
 
-        // ✅ 2. Compute final Work Order status
-        const allTasks = updatedCategories.flatMap(c => c.tasks);
-        const pendingCount = allTasks.filter(t => t.status === 'Pending').length;
-        const approvedCount = allTasks.filter(t => t.status === 'Approved' || t.status === 'Assigned').length;
+        const allTasks = updatedCategories.flatMap((c: any) => c.tasks);
+        const pendingCount = allTasks.filter((t: any) => t.status === 'Pending').length;
+        const approvedCount = allTasks.filter((t: any) => t.status === 'Approved' || t.status === 'Assigned').length;
         const totalCount = allTasks.length;
 
         let finalWoStatus: 'Evaluating' | 'Approved' | 'Partially Approved' | 'Rejected' = 'Evaluating';
 
         if (pendingCount > 0) {
-            // There are still undecided tasks! Keep it in 'Evaluating' so it stays in the queue
             finalWoStatus = 'Evaluating';
         } else {
-            // All tasks have been evaluated!
             if (approvedCount === 0) {
                 finalWoStatus = 'Rejected';
             } else if (approvedCount < totalCount) {
@@ -193,31 +171,27 @@ const SLAMonitor = () => {
             }
         }
 
-        // ✅ 3. Save directly to Firestore
         try {
             await saveEvaluation(selectedEvalWO.id, finalWoStatus, updatedCategories);
-            
-            // If all tasks are decided, close the detail modal automatically
+
             if (pendingCount === 0) {
                 setIsDetailModalOpen(false);
                 setSelectedEvalWO(null);
                 setTaskDecisions({});
             }
         } catch (err) {
-            console.error("Failed to save task evaluation:", err);
-            alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
+            console.error('Failed to save task evaluation:', err);
+            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         }
 
         setIsEvalModalOpen(false);
     };
 
     const getSLARemaining = (task: any, woCreatedAt: string) => {
-        // ✅ 1. If task is completed (dailyProgress 100%), stop SLA
         if (task.dailyProgress === 100) {
             return { text: 'เสร็จสิ้นแล้ว', isCritical: false, isWarning: false, isDone: true, diffMs: 0 };
         }
 
-        // ✅ 2. If task is rejected, show specific status
         if (task.status === 'Rejected') {
             return { text: 'ถูกปฏิเสธ', isCritical: false, isWarning: false, isRejected: true, diffMs: 0 };
         }
@@ -247,11 +221,10 @@ const SLAMonitor = () => {
         return { text, isCritical: false, isWarning: hours < 24, diffMs };
     };
 
-
     const handleInitiateClose = (taskId: string, woId: string) => {
-        const wo = workOrders.find(w => w.id === woId);
+        const wo = workOrders.find((w) => w.id === woId);
         if (wo) {
-            const task = wo.categories.flatMap(c => c.tasks).find(t => t.id === taskId);
+            const task = wo.categories.flatMap((c: any) => c.tasks).find((t: any) => t.id === taskId);
             if (task) {
                 setReviewTaskInfo({ task, wo });
                 setIsReviewModalOpen(true);
@@ -260,10 +233,10 @@ const SLAMonitor = () => {
     };
 
     const handleConfirmReview = async (
-        woId: string, 
-        categoryId: string, 
-        taskId: string, 
-        status: 'Verified' | 'Rejected', 
+        woId: string,
+        categoryId: string,
+        taskId: string,
+        status: 'Verified' | 'Rejected',
         updates: {
             ownerName?: string;
             rejectReason?: string;
@@ -273,7 +246,7 @@ const SLAMonitor = () => {
     ) => {
         try {
             const now = new Date().toISOString();
-            
+
             if (status === 'Verified') {
                 await updateTask(woId, categoryId, taskId, {
                     status: 'Verified',
@@ -281,7 +254,7 @@ const SLAMonitor = () => {
                     notes: updates.notes || '',
                     updatedAt: now
                 });
-                
+
                 alert('ตรวจรับงานสำเร็จเรียบร้อยแล้ว');
             } else if (status === 'Rejected') {
                 await updateTask(woId, categoryId, taskId, {
@@ -296,22 +269,22 @@ const SLAMonitor = () => {
                 alert(`ส่งกลับแก้ไขสำเร็จ (ตีกลับเป็น ${updates.currentRevision || 'REV. 01'})`);
             }
         } catch (error) {
-            console.error("Error confirming review in SLAMonitor:", error);
+            console.error('Error confirming review in SLAMonitor:', error);
             alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         }
     };
 
     const handleInitiateAssign = (taskId: string, woId: string) => {
-        const wo = workOrders.find(w => w.id === woId);
+        const wo = workOrders.find((w) => w.id === woId);
         if (wo) {
-            const task = wo.categories.flatMap(c => c.tasks).find(t => t.id === taskId);
+            const task = wo.categories.flatMap((c: any) => c.tasks).find((t: any) => t.id === taskId);
             if (task) setAssigningTask({ task, woId });
         }
     };
 
-    const handleAssignTask = async (woId: string, taskId: string, updates: Partial<MasterTask>) => {
-        const wo = workOrders.find(w => w.id === woId);
-        const category = wo?.categories?.find(c => c.tasks.some(t => t.id === taskId));
+    const handleAssignTask = async (woId: string, taskId: string, updates: Partial<any>) => {
+        const wo = workOrders.find((w) => w.id === woId);
+        const category = wo?.categories?.find((c: any) => c.tasks.some((t: any) => t.id === taskId));
         if (category) {
             await updateTask(woId, category.id, taskId, updates);
         }
@@ -319,8 +292,8 @@ const SLAMonitor = () => {
 
     const handleConfirmClose = async (id: string) => {
         if (verifyingTaskId) {
-            const wo = workOrders.find(w => w.id === id);
-            const category = wo?.categories?.find(c => c.tasks.some(t => t.id === verifyingTaskId));
+            const wo = workOrders.find((w) => w.id === id);
+            const category = wo?.categories?.find((c: any) => c.tasks.some((t: any) => t.id === verifyingTaskId));
             if (category) {
                 await updateTask(id, category.id, verifyingTaskId, { status: 'Verified' });
             }
@@ -342,40 +315,35 @@ const SLAMonitor = () => {
         setSortOrder('desc');
     };
 
-    // Flattening & Filtering Logic
     const flattenedTasks = useMemo(() => {
-        // 1. Filter out Drafts, Completed, and Archived jobs
-        let filteredWOs = workOrders.filter(wo => wo.status !== 'Draft' && wo.status !== 'Completed' && !wo.isArchived);
+        let filteredWOs = workOrders.filter((wo) => wo.status !== 'Draft' && wo.status !== 'Completed' && !wo.isArchived);
 
-        // Filter out non-WOA/WOP jobs for Admin users
         if (currentRole === 'Admin') {
-            filteredWOs = filteredWOs.filter(wo => {
+            filteredWOs = filteredWOs.filter((wo) => {
                 const idUpper = (wo.id || '').toUpperCase();
                 return idUpper.includes('WOA') || idUpper.includes('WOP');
             });
         }
 
-        // 2. Role Logic for Foreman
         if (currentRole === 'Foreman') {
-            filteredWOs = filteredWOs.filter(wo => {
+            filteredWOs = filteredWOs.filter((wo) => {
                 const matchesUser = (id: string) => id === currentUserId || (user?.employeeId && id === user.employeeId);
                 const isReporter = matchesUser(wo.reporterId || '');
-                const isResponsible = wo.categories.some(c => c.tasks.some(t => t.responsibleStaffIds?.some(id => matchesUser(id))));
+                const isResponsible = wo.categories.some((c: any) => c.tasks.some((t: any) => t.responsibleStaffIds?.some((id: string) => matchesUser(id))));
                 return isReporter || isResponsible;
             });
         }
 
-        // 3. Map to tasks with priority scores
-        const allTasks = filteredWOs.flatMap(wo => {
-            return (wo.categories || []).flatMap(cat =>
-                (cat.tasks || []).map(t => {
+        const allTasks = filteredWOs.flatMap((wo) => {
+            return (wo.categories || []).flatMap((cat: any) =>
+                (cat.tasks || []).map((t: any) => {
                     const sla = getSLARemaining(t, wo.createdAt);
-                    let score = 2; // Normal (Blue)
+                    let score = 2;
                     let slaType: 'overdue' | 'warning' | 'normal' | 'completed' = 'normal';
 
-                    if (t.dailyProgress === 100) { score = 1; slaType = 'completed'; } // Green
-                    else if (sla.isCritical) { score = 4; slaType = 'overdue'; } // Red
-                    else if (sla.isWarning) { score = 3; slaType = 'warning'; } // Yellow
+                    if (t.dailyProgress === 100) { score = 1; slaType = 'completed'; }
+                    else if (sla.isCritical) { score = 4; slaType = 'overdue'; }
+                    else if (sla.isWarning) { score = 3; slaType = 'warning'; }
 
                     const taskCode = t.taskCode || t.id;
 
@@ -397,9 +365,7 @@ const SLAMonitor = () => {
             );
         });
 
-        // 4. Filtering
-        const filtered = allTasks.filter(task => {
-            // Exclude rejected tasks — they are no longer tracked on the board
+        const filtered = allTasks.filter((task) => {
             if (task.status === 'Rejected') return false;
 
             const matchesSearch = (task.taskCode || task.woId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -421,13 +387,11 @@ const SLAMonitor = () => {
             return matchesSearch && matchesProject && matchesStaff && matchesSla && matchesStart && matchesEnd;
         });
 
-        // 5. Sorting
         return filtered.sort((a, b) => {
             if (sortBy === 'urgency') {
                 if (a.slaScore !== b.slaScore) {
                     return sortOrder === 'asc' ? a.slaScore - b.slaScore : b.slaScore - a.slaScore;
                 }
-                // Secondary sort: most urgent (lowest diffMs) first regardless of order if sorting urgency
                 return a.diffMs - b.diffMs;
             } else {
                 const valA = new Date(a.woCreatedAt).getTime();
@@ -437,10 +401,9 @@ const SLAMonitor = () => {
         });
     }, [workOrders, searchTerm, selectedProjectId, selectedStaffId, activeSlaFilter, startDate, endDate, currentRole, currentUserId, sortBy, sortOrder]);
 
-    // Derived active staff list
     const activeStaffIds = useMemo(() => {
         const ids = new Set<string>();
-        flattenedTasks.forEach(task => {
+        flattenedTasks.forEach((task) => {
             if (task.responsibleStaffIds) {
                 task.responsibleStaffIds.forEach((id: string) => ids.add(id));
             }
@@ -448,13 +411,11 @@ const SLAMonitor = () => {
         return ids;
     }, [flattenedTasks]);
 
-    // 6. Projects with real work orders (No Drafts)
     const activeProjects = useMemo(() => {
-        const projectIdsWithWOs = new Set(workOrders.filter(wo => wo.status !== 'Draft').map(wo => wo.projectId));
-        return projects.filter(p => projectIdsWithWOs.has(p.id));
+        const projectIdsWithWOs = new Set(workOrders.filter((wo) => wo.status !== 'Draft').map((wo) => wo.projectId));
+        return projects.filter((p) => projectIdsWithWOs.has(p.id));
     }, [projects, workOrders]);
 
-    // Styles
     const commonInputStyle = {
         background: '#fff',
         border: '1px solid #e2e8f0',
@@ -468,7 +429,6 @@ const SLAMonitor = () => {
 
     return (
         <div style={{ padding: '0 1rem' }}>
-            {/* Image Zoom Overlay */}
             {zoomImage && (
                 <div
                     onClick={() => setZoomImage(null)}
@@ -490,21 +450,20 @@ const SLAMonitor = () => {
                 </div>
             </div>
 
-            {/* Filter Bar */}
             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', marginBottom: '1.25rem', border: '1px solid #f1f5f9' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.2fr) 0.8fr 1fr 1fr 1fr 1fr auto', gap: '0.8rem', alignItems: 'center' }}>
                     <div style={{ position: 'relative' }}>
                         <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} size={18} />
-                        <input type="text" placeholder="ค้นหาเลขที่งาน หรือ บ้านเลขที่..." style={{ ...commonInputStyle, paddingLeft: '44px', width: '100%', boxSizing: 'border-box' }} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <input type="text" placeholder="ค้นหาเลขที่งาน หรือ บ้านเลขที่..." style={{ ...commonInputStyle, paddingLeft: '44px', width: '100%', boxSizing: 'border-box' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
-                    <select style={commonInputStyle} value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}>
+                    <select style={commonInputStyle} value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)}>
                         <option value="">ทุกโครงการ</option>
-                        {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
 
                     <DateRangePicker startDate={startDate || ''} endDate={endDate || ''} onChange={(s, e) => { setStartDate(s); setEndDate(e); }} />
 
-                    <select style={commonInputStyle} value={activeSlaFilter || ''} onChange={e => setActiveSlaFilter(e.target.value as any || null)}>
+                    <select style={commonInputStyle} value={activeSlaFilter || ''} onChange={(e) => setActiveSlaFilter(e.target.value as any || null)}>
                         <option value="">สถานะ SLA ทั้งหมด</option>
                         <option value="overdue">🔴 เกินกำหนด</option>
                         <option value="warning">🟡 วิกฤต (&lt;24ชม.)</option>
@@ -513,9 +472,9 @@ const SLAMonitor = () => {
                     </select>
 
                     {currentRole !== 'Foreman' ? (
-                        <select style={commonInputStyle} value={selectedStaffId} onChange={e => setSelectedStaffId(e.target.value)}>
+                        <select style={commonInputStyle} value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)}>
                             <option value="">เจ้าหน้าที่ทั้งหมด</option>
-                            {staff.filter(s => activeStaffIds.has(s.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            {staff.filter((s) => activeStaffIds.has(s.id)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     ) : <div />}
 
@@ -584,7 +543,6 @@ const SLAMonitor = () => {
                 </div>
             </div>
 
-            {/* Kanban Board Area */}
             <div style={{ display: 'flex', gap: '24px', overflowX: 'auto', paddingBottom: '16px' }}>
                 {[
                     { id: 'pending-eval', label: 'งานรอประเมิน', color: '#ef4444' },
@@ -592,12 +550,11 @@ const SLAMonitor = () => {
                     { id: 'in-progress', label: 'กำลังทำ', color: '#7c3aed' },
                     { id: 'for-checking', label: 'รอตรวจสอบ', color: '#d97706' },
                     { id: 'completed', label: 'สำเร็จ', color: '#059669' },
-                ].map(column => {
-                    const columnTasks = flattenedTasks.filter(t => {
+                ].map((column) => {
+                    const columnTasks = flattenedTasks.filter((t) => {
                         let effectiveStatus: string = t.status;
                         const progress = t.dailyProgress || 0;
-                        
-                        // Force Column Sync Logic
+
                         if (progress >= 100 && effectiveStatus !== 'Completed' && effectiveStatus !== 'Verified') {
                             effectiveStatus = 'Completed';
                         } else if (progress > 0 && progress < 100 && (effectiveStatus === 'Pending' || effectiveStatus === 'Assigned' || effectiveStatus === 'upcoming')) {
@@ -609,7 +566,7 @@ const SLAMonitor = () => {
                         if (column.id === 'in-progress') return effectiveStatus === 'In Progress' || effectiveStatus === 'in-progress';
                         if (column.id === 'for-checking') return effectiveStatus === 'Completed' || effectiveStatus === 'for-checking';
                         if (column.id === 'completed') return effectiveStatus === 'Verified';
-                        
+
                         return false;
                     });
 
@@ -624,50 +581,49 @@ const SLAMonitor = () => {
                                 {columnTasks.length === 0 ? (
                                     <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700, padding: '32px 0', border: '2px dashed #e2e8f0', borderRadius: '16px' }}>No Tasks</div>
                                 ) : (
-                                    columnTasks.map(task => {
-                                        const project = projects.find(p => p.id === task.woProjectId);
+                                    columnTasks.map((task) => {
+                                        const project = projects.find((p) => p.id === task.woProjectId);
                                         const sla = getSLARemaining(task, task.woCreatedAt);
                                         const isExpanded = expandedTaskIds.has(task.id);
-                                        
-                                        const assignedStaff = staff.find(s => task.responsibleStaffIds?.includes(s.id));
-                                        const assignedContractor = contractors.find(c => task.responsibleStaffIds?.includes(c.id));
+
+                                        const assignedStaff = staff.find((s) => task.responsibleStaffIds?.includes(s.id));
+                                        const assignedContractor = contractors.find((c) => task.responsibleStaffIds?.includes(c.id));
                                         const assignedName = assignedStaff?.name || assignedContractor?.name || 'ยังไม่มอบหมาย';
                                         const assignedPhone = assignedStaff?.phone || assignedContractor?.phone || '-';
                                         const assignedRole = assignedStaff ? 'Staff' : (assignedContractor ? 'Contractor' : '-');
 
-                                        // Calculate sister tasks under the parent work order
-                                        const parentWO = workOrders.find(w => w.id === task.woId);
-                                        const allTasksInWO = parentWO ? parentWO.categories.flatMap(c => c.tasks) : [];
+                                        const parentWO = workOrders.find((w) => w.id === task.woId);
+                                        const allTasksInWO = parentWO ? parentWO.categories.flatMap((c: any) => c.tasks) : [];
                                         const totalSisterTasksCount = allTasksInWO.length;
-                                        const pendingSisterCount = allTasksInWO.filter(t => t.status === 'Pending').length;
-                                        const evaluatedSisterCount = allTasksInWO.filter(t => t.status !== 'Pending' && t.status !== 'Rejected').length;
-                                         const rejectedSisterCount = allTasksInWO.filter(t => t.status === 'Rejected').length;
+                                        const pendingSisterCount = allTasksInWO.filter((t: any) => t.status === 'Pending').length;
+                                        const evaluatedSisterCount = allTasksInWO.filter((t: any) => t.status !== 'Pending' && t.status !== 'Rejected').length;
+                                        const rejectedSisterCount = allTasksInWO.filter((t: any) => t.status === 'Rejected').length;
 
                                         return (
-                                            <div 
-                                                key={task.id} 
-                                                style={{ 
-                                                    background: '#fff', 
-                                                    borderRadius: '16px', 
-                                                    padding: '16px', 
-                                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', 
-                                                    cursor: 'pointer', 
-                                                    border: isExpanded ? '2px solid #4f46e5' : '1px solid #f1f5f9', 
+                                            <div
+                                                key={task.id}
+                                                style={{
+                                                    background: '#fff',
+                                                    borderRadius: '16px',
+                                                    padding: '16px',
+                                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                                                    cursor: 'pointer',
+                                                    border: isExpanded ? '2px solid #4f46e5' : '1px solid #f1f5f9',
                                                     transition: 'all 0.2s',
                                                     textAlign: 'left'
-                                                }} 
+                                                }}
                                                 onClick={() => toggleTaskExpansion(task.id)}
                                             >
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                                     <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '8px' }}>{task.taskCode || task.woId}</div>
                                                     {task.currentRevision && task.currentRevision !== 'rev00' && (
-                                                        <div 
-                                                            style={{ 
-                                                                fontSize: '0.7rem', 
-                                                                fontWeight: 900, 
-                                                                color: '#e11d48', 
-                                                                background: '#fff1f2', 
-                                                                padding: '2px 8px', 
+                                                        <div
+                                                            style={{
+                                                                fontSize: '0.7rem',
+                                                                fontWeight: 900,
+                                                                color: '#e11d48',
+                                                                background: '#fff1f2',
+                                                                padding: '2px 8px',
                                                                 borderRadius: '8px',
                                                                 border: '1px solid #fecdd3',
                                                                 display: 'flex',
@@ -688,11 +644,11 @@ const SLAMonitor = () => {
                                                     <Building2 size={12} /> {project?.name} - {task.woLocation}
                                                 </div>
                                                 {task.currentRevision && task.currentRevision !== 'rev00' && task.status === 'Rejected' && (
-                                                    <div style={{ 
-                                                        background: '#fff1f2', 
-                                                        border: '1px solid #ffe4e6', 
-                                                        borderRadius: '12px', 
-                                                        padding: '10px 12px', 
+                                                    <div style={{
+                                                        background: '#fff1f2',
+                                                        border: '1px solid #ffe4e6',
+                                                        borderRadius: '12px',
+                                                        padding: '10px 12px',
                                                         marginBottom: '12px',
                                                         fontSize: '0.78rem',
                                                         color: '#be123c',
@@ -709,19 +665,19 @@ const SLAMonitor = () => {
                                                         </div>
                                                     </div>
                                                 )}
-                                                
+
                                                 {totalSisterTasksCount > 1 && (
-                                                    <div style={{ 
-                                                        display: 'flex', 
+                                                    <div style={{
+                                                        display: 'flex',
                                                         flexWrap: 'wrap',
-                                                        alignItems: 'center', 
-                                                        gap: '6px', 
-                                                        fontSize: '0.72rem', 
-                                                        fontWeight: 800, 
-                                                        color: '#4f46e5', 
-                                                        background: '#4f46e50c', 
-                                                        padding: '4px 10px', 
-                                                        borderRadius: '8px', 
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 800,
+                                                        color: '#4f46e5',
+                                                        background: '#4f46e50c',
+                                                        padding: '4px 10px',
+                                                        borderRadius: '8px',
                                                         marginBottom: '12px',
                                                         border: '1px solid #4f46e51c',
                                                         width: 'fit-content'
@@ -734,20 +690,19 @@ const SLAMonitor = () => {
                                                         {rejectedSisterCount > 0 && <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '2px' }}>⚫ ปฏิเสธ {rejectedSisterCount}</span>}
                                                     </div>
                                                 )}
-                                                
+
                                                 {task.beforePhotoUrl && (
                                                     <div style={{ width: '100%', height: '140px', borderRadius: '12px', overflow: 'hidden', marginBottom: '12px', border: '1px solid #f1f5f9' }}>
                                                         <img src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                     </div>
                                                 )}
 
-                                                {/* Expanded Details */}
                                                 {isExpanded && (
-                                                    <div 
-                                                        onClick={(e) => e.stopPropagation()} 
-                                                        style={{ 
-                                                            marginTop: '12px', 
-                                                            paddingTop: '12px', 
+                                                    <div
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        style={{
+                                                            marginTop: '12px',
+                                                            paddingTop: '12px',
                                                             borderTop: '1px dashed #e2e8f0',
                                                             display: 'flex',
                                                             flexDirection: 'column',
@@ -765,8 +720,7 @@ const SLAMonitor = () => {
                                                         <div>
                                                             <span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{task.startDate ? new Date(task.startDate).toLocaleDateString('th-TH') : '-'}</span>
                                                         </div>
-                                                        
-                                                        {/* Sibling Tasks Table (ใบงานเดียวกัน) */}
+
                                                         {totalSisterTasksCount > 0 && (
                                                             <div style={{ marginTop: '4px', background: 'rgba(248, 250, 252, 0.8)', backdropFilter: 'blur(8px)', borderRadius: '14px', border: '1px solid rgba(226, 232, 240, 0.8)', overflow: 'hidden', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.02)' }}>
                                                                 <div style={{ padding: '8px 12px', background: 'linear-gradient(90deg, rgba(241, 245, 249, 0.8) 0%, rgba(226, 232, 240, 0.5) 100%)', borderBottom: '1px solid #e2e8f0', fontWeight: 900, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
@@ -787,9 +741,9 @@ const SLAMonitor = () => {
                                                                             {allTasksInWO.map((t: any) => {
                                                                                 const isCurrent = t.id === task.id;
                                                                                 return (
-                                                                                    <tr 
-                                                                                        key={t.id} 
-                                                                                        style={{ 
+                                                                                    <tr
+                                                                                        key={t.id}
+                                                                                        style={{
                                                                                             borderBottom: '1px solid #f1f5f9',
                                                                                             background: isCurrent ? 'rgba(79, 70, 229, 0.08)' : 'transparent',
                                                                                             fontWeight: isCurrent ? 900 : 500
@@ -818,21 +772,20 @@ const SLAMonitor = () => {
                                                             </div>
                                                         )}
 
-                                                        {/* Premium History Button */}
-                                                        <button 
-                                                            onClick={() => setHistoryTask(task)} 
-                                                            style={{ 
+                                                        <button
+                                                            onClick={() => setHistoryTask(task)}
+                                                            style={{
                                                                 width: '100%',
-                                                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', 
-                                                                color: '#fff', 
-                                                                border: 'none', 
-                                                                padding: '10px 14px', 
-                                                                borderRadius: '12px', 
-                                                                fontWeight: 900, 
-                                                                cursor: 'pointer', 
+                                                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                padding: '10px 14px',
+                                                                borderRadius: '12px',
+                                                                fontWeight: 900,
+                                                                cursor: 'pointer',
                                                                 fontSize: '0.8rem',
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
+                                                                display: 'flex',
+                                                                alignItems: 'center',
                                                                 justifyContent: 'center',
                                                                 gap: '8px',
                                                                 boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
@@ -844,49 +797,46 @@ const SLAMonitor = () => {
                                                             ดูประวัติและรายงานประจำวัน (LB Style)
                                                         </button>
 
-                                                        {/* Actions Area inside Card */}
                                                         <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                                            {/* Assign Button */}
                                                             {(currentRole === 'Admin' || currentRole === 'Manager' || currentRole === 'Approver') && (
-                                                                <button 
-                                                                    onClick={() => handleInitiateAssign(task.id, task.woId)} 
-                                                                    style={{ 
+                                                                <button
+                                                                    onClick={() => handleInitiateAssign(task.id, task.woId)}
+                                                                    style={{
                                                                         flex: 1,
-                                                                        background: '#fff', 
-                                                                        color: '#4f46e5', 
-                                                                        border: '1.5px solid #4f46e5', 
-                                                                        padding: '6px 12px', 
-                                                                        borderRadius: '8px', 
-                                                                        fontWeight: 800, 
-                                                                        cursor: 'pointer', 
-                                                                        fontSize: '0.75rem', 
-                                                                        display: 'flex', 
-                                                                        alignItems: 'center', 
+                                                                        background: '#fff',
+                                                                        color: '#4f46e5',
+                                                                        border: '1.5px solid #4f46e5',
+                                                                        padding: '6px 12px',
+                                                                        borderRadius: '8px',
+                                                                        fontWeight: 800,
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.75rem',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
                                                                         justifyContent: 'center',
-                                                                        gap: '4px' 
+                                                                        gap: '4px'
                                                                     }}
                                                                 >
                                                                     <RotateCw size={12} />
                                                                     {task.responsibleStaffIds && task.responsibleStaffIds.length > 0 ? 'เปลี่ยนผู้รับผิดชอบ' : 'มอบหมาย'}
                                                                 </button>
                                                             )}
-                                                            
-                                                            {/* Review/Evaluate Button */}
+
                                                             {column.id === 'for-checking' && (
-                                                                <button 
-                                                                    onClick={() => handleInitiateClose(task.id, task.woId)} 
-                                                                    style={{ 
+                                                                <button
+                                                                    onClick={() => handleInitiateClose(task.id, task.woId)}
+                                                                    style={{
                                                                         flex: 1,
-                                                                        background: '#10b981', 
-                                                                        color: '#fff', 
-                                                                        border: 'none', 
-                                                                        padding: '6px 12px', 
-                                                                        borderRadius: '8px', 
-                                                                        fontWeight: 800, 
-                                                                        cursor: 'pointer', 
+                                                                        background: '#10b981',
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        padding: '6px 12px',
+                                                                        borderRadius: '8px',
+                                                                        fontWeight: 800,
+                                                                        cursor: 'pointer',
                                                                         fontSize: '0.75rem',
-                                                                        display: 'flex', 
-                                                                        alignItems: 'center', 
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
                                                                         justifyContent: 'center'
                                                                     }}
                                                                 >
@@ -915,7 +865,6 @@ const SLAMonitor = () => {
                 })}
             </div>
 
-            {/* Modals */}
             {closingWorkOrder && <CloseJobModal isOpen={!!closingWorkOrder} workOrder={closingWorkOrder} targetTaskId={verifyingTaskId || undefined} onClose={() => { setClosingWorkOrder(null); setVerifyingTaskId(null); }} onConfirm={handleConfirmClose} />}
             {assigningTask && <AdminAssignModal isOpen={!!assigningTask} onClose={() => setAssigningTask(null)} task={assigningTask.task} workOrderId={assigningTask.woId} staffList={staff} contractors={contractors} onAssign={handleAssignTask} />}
 
@@ -932,7 +881,6 @@ const SLAMonitor = () => {
                 />
             )}
 
-            {/* Evaluation Modals */}
             {selectedEvalWO && (
                 <WorkOrderDetailModal
                     isOpen={isDetailModalOpen}
@@ -953,9 +901,8 @@ const SLAMonitor = () => {
                 />
             )}
 
-            {/* Zoom Image Overlay */}
             {zoomImage && (
-                <div 
+                <div
                     onClick={() => setZoomImage(null)}
                     style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}
                 >
@@ -963,17 +910,15 @@ const SLAMonitor = () => {
                 </div>
             )}
 
-            {/* Premium LB-Style Daily Report History Modal */}
             {historyTask && (() => {
                 const historyTaskAny: any = historyTask;
                 const reports = historyTaskAny.dailyreports || historyTaskAny.history || [];
-                
-                // Get current visible month days
+
                 const year = calendarMonth.getFullYear();
                 const month = calendarMonth.getMonth();
                 const daysInMonth = new Date(year, month + 1, 0).getDate();
-                const firstDayIndex = new Date(year, month, 1).getDay(); // 0 is Sunday, 6 is Saturday
-                
+                const firstDayIndex = new Date(year, month, 1).getDay();
+
                 const daysArray: (number | null)[] = [];
                 for (let i = 0; i < firstDayIndex; i++) {
                     daysArray.push(null);
@@ -982,7 +927,6 @@ const SLAMonitor = () => {
                     daysArray.push(i);
                 }
 
-                // Month navigation
                 const handlePrevMonth = () => {
                     setCalendarMonth(new Date(year, month - 1, 1));
                 };
@@ -997,15 +941,13 @@ const SLAMonitor = () => {
 
                 const currentMonthName = THAI_MONTHS[month];
 
-                // Get selected date report info
                 const selectedReport: any = reports.find((r: any) => r.date === selectedHistoryDate);
 
-                // Helper to get leave hours from time range string
                 const getLeaveHours = (timeRange: string): number => {
-                    if (!timeRange) return 8; // Default to full day if not specified
+                    if (!timeRange) return 8;
                     if (timeRange === '08:00 - 17:00') return 8;
                     if (timeRange === '08:00 - 12:00' || timeRange === '13:00 - 17:00') return 4;
-                    
+
                     try {
                         const parts = timeRange.split(' - ');
                         if (parts.length !== 2) return 8;
@@ -1015,8 +957,7 @@ const SLAMonitor = () => {
                         const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
                         const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
                         let diffMin = endMin - startMin;
-                        
-                        // Subtract lunch break (12:00 - 13:00 / 720 to 780 minutes) if it is fully inside
+
                         if (startMin <= 720 && endMin >= 780) {
                             diffMin -= 60;
                         }
@@ -1027,7 +968,6 @@ const SLAMonitor = () => {
                     }
                 };
 
-                // Math calculation for DC workers & hours
                 let siteWorkers = 0;
                 let supportWorkers = 0;
                 let siteHours = 0;
@@ -1051,18 +991,16 @@ const SLAMonitor = () => {
                         const isSite = l.membership === 'Internal';
                         const amount = l.amount || 0;
                         const wId = l.workerId || l.staffId || l.contractorId || l.id;
-                        
-                        // Check if this worker has an active leave on this day
+
                         const hasLeave = leaveMap.has(wId);
                         const leaveRecord = leaveMap.get(wId);
-                        
+
                         let leaveHours = 0;
                         if (hasLeave && leaveRecord) {
                             const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
                             leaveHours = getLeaveHours(leaveTimeRange);
                         }
 
-                        // Helper to get shift hours from custom time range string
                         const getShiftHours = (timeRange: string, defaultHours: number): number => {
                             if (!timeRange) return defaultHours;
                             try {
@@ -1074,8 +1012,7 @@ const SLAMonitor = () => {
                                 const startMin = parseInt(sh, 10) * 60 + parseInt(smStr || '0', 10);
                                 const endMin = parseInt(eh, 10) * 60 + parseInt(emStr || '0', 10);
                                 let diffMin = endMin - startMin;
-                                
-                                // Subtract lunch break if it spans across it (12:00 - 13:00)
+
                                 if (startMin <= 720 && endMin >= 780) {
                                     diffMin -= 60;
                                 }
@@ -1086,12 +1023,10 @@ const SLAMonitor = () => {
                             }
                         };
 
-                        // Calculate actual normal work hours
                         let normalHr = 0;
                         if (l.shifts?.normal) {
                             const regTime = l.shiftTimes?.day || '08:00 - 17:00';
                             const duration = getShiftHours(regTime, 8);
-                            // Only subtract leaveHours if the shift time has not already been adjusted
                             normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
                         }
 
@@ -1101,13 +1036,10 @@ const SLAMonitor = () => {
 
                         const totalHr = amount * (normalHr + otMorningHr + otNoonHr + otEveningHr);
 
-                        // How many workers (headcount) are active?
-                        // If they took a full-day leave (normalHr = 0 and no OT shifts are active), they worked 0 headcount.
                         let activeWorkerCount = amount;
                         if (hasLeave && leaveHours >= 8 && normalHr === 0 && !l.shifts?.otMorning && !l.shifts?.otNoon && !l.shifts?.otEvening) {
-                            activeWorkerCount = 0; // Full day leave, no OT → not on site
+                            activeWorkerCount = 0;
                         } else if (hasLeave && leaveHours > 0) {
-                            // If they have leave, adjust active headcount proportional to their working time on normal shift
                             const workingRatio = normalHr / 8;
                             activeWorkerCount = amount * workingRatio;
                         }
@@ -1130,25 +1062,24 @@ const SLAMonitor = () => {
                     });
                 }
 
-                // Helper to get color status
                 const getDayStatus = (dateStr: string) => {
                     const hasReport = reports.some((r: any) => r.date === dateStr);
-                    if (hasReport) return 'has-data'; // 🟢
-                    
+                    if (hasReport) return 'has-data';
+
                     const todayStr = new Date().toISOString().split('T')[0];
-                    if (dateStr > todayStr) return 'no-data'; // 🔴 (Not reached yet)
-                    
+                    if (dateStr > todayStr) return 'no-data';
+
                     if (historyTask.startDate && dateStr >= historyTask.startDate) {
-                        return 'pending'; // 🟡 (Assigned but no report)
+                        return 'pending';
                     }
-                    return 'no-data'; // 🔴
+                    return 'no-data';
                 };
 
                 const getDotColor = (dateStr: string) => {
                     const status = getDayStatus(dateStr);
-                    if (status === 'has-data') return '#10b981'; // Emerald 🟢
-                    if (status === 'pending') return '#f59e0b'; // Amber 🟡
-                    return '#ef4444'; // Red 🔴
+                    if (status === 'has-data') return '#10b981';
+                    if (status === 'pending') return '#f59e0b';
+                    return '#ef4444';
                 };
 
                 const getThaiDateFormatted = (dateStr: string) => {
@@ -1158,11 +1089,10 @@ const SLAMonitor = () => {
                     return `${parts[2]}/${parts[1]}/${parts[0]}`;
                 };
 
-                // Get photos from report
                 const getPhotos = () => {
                     if (!selectedReport) return [];
                     let photoArray: string[] = [];
-                    
+
                     if (selectedReport.photos) {
                         if (Array.isArray(selectedReport.photos)) {
                             photoArray = [...selectedReport.photos];
@@ -1175,7 +1105,7 @@ const SLAMonitor = () => {
                                 if (lbs.regular && Array.isArray(lbs.regular)) {
                                     photoArray = [...photoArray, ...lbs.regular.filter(Boolean)];
                                 }
-                                ['otMorning', 'otNoon', 'otEvening'].forEach(otKey => {
+                                ['otMorning', 'otNoon', 'otEvening'].forEach((otKey) => {
                                     if (lbs[otKey]) {
                                         if (lbs[otKey].in) photoArray.push(lbs[otKey].in);
                                         if (lbs[otKey].out) photoArray.push(lbs[otKey].out);
@@ -1195,20 +1125,19 @@ const SLAMonitor = () => {
 
                 const reportPhotos = getPhotos();
 
-                // Get Responsible staff badge
-                const proj = projects.find(p => p.id === historyTask.woProjectId);
+                const proj = projects.find((p) => p.id === historyTask.woProjectId);
                 const categoryName = historyTask.categoryName || 'หมวดงาน';
-                
+
                 const getStaffBadge = () => {
                     if (!historyTask.responsibleStaffIds || historyTask.responsibleStaffIds.length === 0) {
                         return { name: 'ยังไม่มอบหมาย', initials: '??' };
                     }
                     const staffId = historyTask.responsibleStaffIds[0];
-                    const s = staff.find(st => st.id === staffId);
+                    const s = staff.find((st) => st.id === staffId);
                     if (s) {
                         return { name: s.name, initials: s.name ? s.name.substring(0, 2) : 'ST' };
                     }
-                    const c = contractors.find(co => co.id === staffId);
+                    const c = contractors.find((co) => co.id === staffId);
                     if (c) {
                         return { name: c.name, initials: c.name ? c.name.substring(0, 2) : 'SU' };
                     }
@@ -1220,8 +1149,7 @@ const SLAMonitor = () => {
                 return (
                     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
                         <div style={{ background: '#fff', border: '1px solid rgba(255, 255, 255, 0.8)', borderRadius: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)', padding: '24px 32px', width: '92%', maxWidth: '1150px', maxHeight: '92vh', overflowY: 'auto', position: 'relative', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            
-                            {/* Modal Header */}
+
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
                                 <div>
                                     <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1240,7 +1168,7 @@ const SLAMonitor = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => setHistoryTask(null)}
                                     style={{ background: '#f1f5f9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.15s' }}
                                     onMouseEnter={(e) => e.currentTarget.style.background = '#e2e8f0'}
@@ -1250,10 +1178,8 @@ const SLAMonitor = () => {
                                 </button>
                             </div>
 
-                            {/* 2-Column Grid */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '28px', alignItems: 'start' }}>
-                                
-                                {/* Left Column: Calendar Daily Report Log */}
+
                                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                         <span style={{ fontSize: '1rem', fontWeight: 900, color: '#1e293b' }}>Daily Report Log</span>
@@ -1270,18 +1196,16 @@ const SLAMonitor = () => {
                                         </div>
                                     </div>
 
-                                    {/* Days Label Header */}
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', textAlign: 'center', marginBottom: '8px' }}>
                                         {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, index) => (
                                             <span key={index} style={{ fontSize: '0.75rem', fontWeight: 800, color: index === 0 || index === 6 ? '#ef4444' : '#64748b' }}>{d}</span>
                                         ))}
                                     </div>
 
-                                    {/* Days Grid */}
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px 6px', textAlign: 'center' }}>
                                         {daysArray.map((dayNum, index) => {
                                             if (dayNum === null) return <div key={`empty-${index}`} />;
-                                            
+
                                             const paddedDay = String(dayNum).padStart(2, '0');
                                             const paddedMonth = String(month + 1).padStart(2, '0');
                                             const dateStr = `${year}-${paddedMonth}-${paddedDay}`;
@@ -1290,12 +1214,12 @@ const SLAMonitor = () => {
                                             const hasDot = getDayStatus(dateStr) !== 'no-data' || (historyTask.startDate && dateStr >= historyTask.startDate && dateStr <= new Date().toISOString().split('T')[0]);
 
                                             return (
-                                                <div 
+                                                <div
                                                     key={dayNum}
                                                     onClick={() => setSelectedHistoryDate(dateStr)}
-                                                    style={{ 
-                                                        padding: '6px 0', 
-                                                        borderRadius: '50%', 
+                                                    style={{
+                                                        padding: '6px 0',
+                                                        borderRadius: '50%',
                                                         background: isSelected ? '#1e293b' : 'transparent',
                                                         color: isSelected ? '#fff' : '#334155',
                                                         fontWeight: isSelected ? 900 : 700,
@@ -1314,13 +1238,13 @@ const SLAMonitor = () => {
                                                 >
                                                     <span>{dayNum}</span>
                                                     {hasDot && (
-                                                        <div style={{ 
-                                                            width: '5px', 
-                                                            height: '5px', 
-                                                            borderRadius: '50%', 
-                                                            background: dotColor, 
-                                                            position: 'absolute', 
-                                                            bottom: '4px' 
+                                                        <div style={{
+                                                            width: '5px',
+                                                            height: '5px',
+                                                            borderRadius: '50%',
+                                                            background: dotColor,
+                                                            position: 'absolute',
+                                                            bottom: '4px'
                                                         }} />
                                                     )}
                                                 </div>
@@ -1328,7 +1252,6 @@ const SLAMonitor = () => {
                                         })}
                                     </div>
 
-                                    {/* Legends */}
                                     <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>
                                             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
@@ -1345,7 +1268,6 @@ const SLAMonitor = () => {
                                     </div>
                                 </div>
 
-                                {/* Right Column: Selected Date Report Summary */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                     <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#1e293b' }}>
                                         สรุปข้อมูลวันที่ {getThaiDateFormatted(selectedHistoryDate)}
@@ -1359,11 +1281,9 @@ const SLAMonitor = () => {
                                         </div>
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                            
-                                            {/* Grid Box Layout */}
+
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                                
-                                                {/* Card 1: แรงงาน (DC) */}
+
                                                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6' }}>
                                                         <Users size={16} />
@@ -1381,7 +1301,6 @@ const SLAMonitor = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* Card 2: ชั่วโมงการทำงานทั้งหมด */}
                                                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6' }}>
                                                         <Clock size={16} />
@@ -1399,7 +1318,6 @@ const SLAMonitor = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* Card 3: รายละเอียดชั่วโมงการทำงาน (ตารางเปรียบเทียบ) */}
                                                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: 'span 1' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6', marginBottom: '4px' }}>
                                                         <Clock size={16} />
@@ -1438,13 +1356,12 @@ const SLAMonitor = () => {
                                                     </table>
                                                 </div>
 
-                                                {/* Card 4: รูปภาพทั้งหมด */}
                                                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: 'span 1' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6', marginBottom: '4px' }}>
                                                         <Camera size={16} />
                                                         <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#475569' }}>รูปภาพทั้งหมด {reportPhotos.length > 0 ? `(รูปที่ 1/${reportPhotos.length})` : ''}</span>
                                                     </div>
-                                                    
+
                                                     {reportPhotos.length === 0 ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100px', border: '2px dashed #e2e8f0', borderRadius: '12px', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800 }}>
                                                             <ImageIcon size={20} style={{ opacity: 0.5, marginBottom: '4px' }} />
@@ -1464,7 +1381,6 @@ const SLAMonitor = () => {
 
                                             </div>
 
-                                            {/* Progress Box (Emerald Green Bar) */}
                                             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#475569' }}>ความคืบหน้าของวัน</span>
@@ -1478,7 +1394,6 @@ const SLAMonitor = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Custom Extras: Site Notes & Recorder */}
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(241, 245, 249, 0.4)', border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: '20px', padding: '16px' }}>
                                                 <div>
                                                     <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1498,6 +1413,7 @@ const SLAMonitor = () => {
                                         </div>
                                     )}
                                 </div>
+
                             </div>
                         </div>
                     </div>

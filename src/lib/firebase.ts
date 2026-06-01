@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
@@ -14,11 +14,15 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+console.log("[Firebase Config debug]:", firebaseConfig);
+
 // เริ่มต้นใช้งาน Firebase
 const app = initializeApp(firebaseConfig);
 
 // ส่งออก (Export) บริการต่างๆ เพื่อนำไปใช้ในไฟล์อื่น
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 

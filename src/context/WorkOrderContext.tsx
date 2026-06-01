@@ -82,6 +82,9 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
     // Parse WO ID — e.g. ART-2026-WOA-0002
     const parts = woId.split('-');
     const jobCode     = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA'; // "WOA"
+    const woSeq       = parts.length >= 1 ? parts[parts.length - 1] : '0001';
+
+    let taskCounter = 0;
 
     return categories.map((cat, catIndex) => {
         const catName = (cat.name || '').trim().toLowerCase();
@@ -94,11 +97,12 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
         // e.g. WOA-0004 or DBD-0001
         const computedCatId = `${jobCode}-${String(position).padStart(4, '0')}`;
 
-        // Task ID: [categoryId]-[taskSeq3digits]
-        // e.g. WOA-0002-001 (matches LB style)
-        const tasks = cat.tasks ? cat.tasks.map((task: any, taskIndex: number) => {
-            const taskSeq = String(taskIndex + 1).padStart(3, '0');
-            const computedTaskId = `${computedCatId}-${taskSeq}`;
+        // Task ID: [JobCode]-[WOSeq]-[taskSeq3digits] (matches parent WO sequence "0001" instead of category type position "0002")
+        // e.g. WOA-0001-001 (matches LB style)
+        const tasks = cat.tasks ? cat.tasks.map((task: any) => {
+            taskCounter++;
+            const taskSeq = String(taskCounter).padStart(3, '0');
+            const computedTaskId = `${jobCode}-${woSeq}-${taskSeq}`;
             return {
                 ...task,
                 id: computedTaskId,
@@ -186,8 +190,24 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 if (!subtasksSnap.empty) {
                     for (const subtaskDoc of subtasksSnap.docs) {
                         const revisionsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions'));
-                        for (const revDoc of revisionsSnap.docs) {
-                            const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
+                        
+                        if (!revisionsSnap.empty) {
+                            // Normal case: revision documents exist
+                            for (const revDoc of revisionsSnap.docs) {
+                                const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
+                                for (const reportDoc of reportsSnap.docs) {
+                                    dailyreports.push({
+                                        ...reportDoc.data(),
+                                        id: reportDoc.id
+                                    } as unknown as DailyReport);
+                                }
+                            }
+                        } else {
+                            // ✅ Fallback: phantom rev00 — revision document was never explicitly created
+                            // but dailyReports subcollection may still exist under rev00
+                            const subtaskData = subtaskDoc.data();
+                            const phantomRevId = subtaskData.currentRevision || 'rev00';
+                            const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', phantomRevId, 'dailyReports'));
                             for (const reportDoc of reportsSnap.docs) {
                                 dailyreports.push({
                                     ...reportDoc.data(),
@@ -706,6 +726,10 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const subtaskId = `${taskId}-0001`;
 
         if (isWoaWop) {
+            // ✅ Ensure revision document exists (prevents phantom doc bug where getDocs returns empty)
+            const revDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
+            await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+
             // Save daily report with date YYYY-MM-DD as document ID for LB compatibility
             const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev, 'dailyReports', reportDate);
             await setDoc(reportRef, finalReport);

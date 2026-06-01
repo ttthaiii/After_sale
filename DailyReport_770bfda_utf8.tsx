@@ -1,0 +1,2684 @@
+﻿import { useState, useMemo, useEffect } from 'react';
+import { db, storage } from '../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { useWorkOrders } from '../context/WorkOrderContext';
+import { MasterTask, WorkOrder, LaborRecord, TaskUpdate, Project, Contractor } from '../types';
+import { Search, Building2, HardHat, Camera, CheckCircle2, User, Users, Plus, Info, AlertCircle, AlertTriangle, XCircle, LayoutDashboard, Clock, MapPin, Package, Bell, CheckSquare, Square, Loader2, Activity, Edit2, Trash2, Paperclip, Eye, ChevronLeft, ChevronRight, Calendar, Lock } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import { AnalogTimePicker } from '../components/AnalogTimePicker';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { compressImage } from '../utils/imageCompression';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { logService } from '../services/logService';
+
+// Helper for SLA Countdown component
+const SLACountdown = ({ startTime, durationHours = 24 }: { startTime: string, durationHours?: number }) => {
+    const [timeLeft, setTimeLeft] = useState<{ days: number, hours: number, minutes: number, isOverdue: boolean } | null>(null);
+
+    useEffect(() => {
+        const calculateTimeLeft = () => {
+            const start = new Date(startTime).getTime();
+            const end = start + (durationHours * 60 * 60 * 1000);
+            const now = new Date().getTime();
+            const diff = end - now;
+
+            if (diff < 0) {
+                const overdueDiff = Math.abs(diff);
+                const days = Math.floor(overdueDiff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((overdueDiff % (1000 * 60 * 60)) / (1000 * 60));
+                setTimeLeft({ days, hours, minutes, isOverdue: true });
+            } else {
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                setTimeLeft({ days, hours, minutes, isOverdue: false });
+            }
+        };
+
+        calculateTimeLeft();
+        const timer = setInterval(calculateTimeLeft, 60000); // Update every minute
+        return () => clearInterval(timer);
+    }, [startTime, durationHours]);
+
+    if (!timeLeft) return <div>...</div>;
+
+    return (
+        <div style={{ background: '#fff', padding: '12px 20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', minWidth: '180px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>เน€เธเนเธฒเธซเธกเธฒเธข (SLA)</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 900, color: '#334155' }}>{durationHours} เธเธก.</span>
+            </div>
+            <div style={{ width: '100%', height: '1px', background: 'linear-gradient(90deg, #e2e8f0 0%, #cbd5e1 50%, #e2e8f0 100%)', marginBottom: '8px', opacity: 0.6 }}></div>
+            <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: timeLeft.isOverdue ? '#ef4444' : '#f59e0b', marginBottom: '2px', textTransform: 'uppercase' }}>
+                    {timeLeft.isOverdue ? 'เน€เธเธดเธเธเธณเธซเธเธ”' : 'เน€เธซเธฅเธทเธญเน€เธงเธฅเธฒ'}
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: timeLeft.isOverdue ? '#ef4444' : '#f97316', lineHeight: 1 }}>
+                    <span>{timeLeft.days}<span style={{ fontSize: '0.8rem', fontWeight: 700 }}>เธงเธฑเธ</span> </span>
+                    {timeLeft.hours.toString().padStart(2, '0')}<span style={{ fontSize: '0.8rem', fontWeight: 700 }}>:</span>{timeLeft.minutes.toString().padStart(2, '0')}
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, marginLeft: '2px' }}>เธเธก.</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Batch Config Modal
+const BatchAddModal = ({
+    type,
+    availableItems,
+    onClose,
+    onAdd
+}: {
+    type: 'Internal' | 'Outsource';
+    availableItems: any[];
+    onClose: () => void;
+    onAdd: (selectedIds: string[], config: any) => void;
+}) => {
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredItems = useMemo(() => {
+        if (!searchQuery) return availableItems;
+        const query = searchQuery.toLowerCase();
+        return availableItems.filter(item => 
+            (item.name || '').toLowerCase().includes(query) || 
+            (item.employeeId || '').toLowerCase().includes(query)
+        );
+    }, [availableItems, searchQuery]);
+
+    const [config, setConfig] = useState<any>({
+        day: true,
+        otMorning: false,
+        otNoon: false,
+        otEvening: false,
+        timeDay: '08:00 - 17:00',
+        timeOtMorning: '06:00 - 08:00',
+        timeOtEvening: '18:00 - 21:00'
+    });
+
+    // Internal state for TimePicker inside BatchModal
+    const [modalTimeTarget, setModalTimeTarget] = useState<{ field: string, type: 'start' | 'end', currentValue: string } | null>(null);
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const handleConfirm = () => {
+        if (selectedIds.length === 0) return alert('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธเธเธเธฒเธเธญเธขเนเธฒเธเธเนเธญเธข 1 เธเธ');
+        onAdd(selectedIds, config);
+    };
+
+    const openModalTimePicker = (field: string, type: 'start' | 'end', value: string) => {
+        setModalTimeTarget({ field, type, currentValue: value });
+    };
+
+    const handleModalTimeChange = (newTime: string) => {
+        if (!modalTimeTarget) return;
+        const { field, type } = modalTimeTarget;
+        const currentRange = config[field] || '00:00 - 00:00';
+        let [start, end] = currentRange.split(' - ').map((s: string) => s.trim());
+
+        if (type === 'start') start = newTime;
+        else end = newTime;
+
+        setConfig({ ...config, [field]: `${start} - ${end} ` });
+        setModalTimeTarget(null); // Close picker
+    };
+
+    const BatchTimeInput = ({ label, field, timeField }: { label: string, field: string, timeField?: string }) => {
+        const isActive = config[field];
+        // Parse current value to show start/end 
+        const [startTime, endTime] = (config[timeField || ''] || '00:00 - 00:00').split(' - ');
+
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '8px', border: isActive ? '1px solid #3b82f6' : '1px solid #f1f5f9', borderRadius: '10px', background: isActive ? '#eff6ff' : '#f8fafc' }}>
+                <div onClick={() => setConfig({ ...config, [field]: !isActive })} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 4, border: isActive ? '2px solid #2563eb' : '2px solid #cbd5e1', background: isActive ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {isActive && <CheckCircle2 size={12} color="#fff" />}
+                    </div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isActive ? '#1e40af' : '#64748b' }}>{label}</span>
+                </div>
+                {isActive && timeField && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '24px' }}>
+                        <div
+                            onClick={() => openModalTimePicker(timeField, 'start', startTime)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px',
+                                padding: '4px 8px', cursor: 'pointer',
+                                fontSize: '0.8rem', fontWeight: 700, color: '#334155'
+                            }}
+                        >
+                            <Clock size={12} color="#94a3b8" />
+                            {startTime}
+                        </div>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.8rem' }}>-</span>
+                        <div
+                            onClick={() => openModalTimePicker(timeField, 'end', endTime)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px',
+                                padding: '4px 8px', cursor: 'pointer',
+                                fontSize: '0.8rem', fontWeight: 700, color: '#334155'
+                            }}
+                        >
+                            {endTime}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <>
+            {modalTimeTarget && (
+                <div style={{ zIndex: 3000, position: 'relative' }}>
+                    <AnalogTimePicker
+                        value={modalTimeTarget.currentValue}
+                        onChange={handleModalTimeChange}
+                        onClose={() => setModalTimeTarget(null)}
+                    />
+                </div>
+            )}
+
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '24px', width: '500px', maxWidth: '90%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: '12px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>เน€เธฅเธทเธญเธ{type === 'Internal' ? 'เธเธเธเธฒเธเธเธฃเธดเธฉเธฑเธ—' : 'เธเธนเนเธฃเธฑเธเน€เธซเธกเธฒ'}</h3>
+                        <input
+                            type="text"
+                            placeholder="เธเนเธเธซเธฒเธเธเธเธฒเธ..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            style={{
+                                padding: '6px 12px',
+                                borderRadius: '10px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '0.8rem',
+                                outline: 'none',
+                                width: '180px',
+                                fontWeight: 700,
+                                transition: 'border-color 0.2s'
+                            }}
+                        />
+                    </div>
+
+                    <div style={{ flex: 1, overflowY: 'auto', marginBottom: '1.5rem', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.5rem', minHeight: '300px' }}>
+                        {filteredItems.length === 0 ? (
+                            <div style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>เนเธกเนเธเธเธฃเธฒเธขเธเธฒเธฃ</div>
+                        ) : (
+                            filteredItems.map(item => {
+                                const isSelected = selectedIds.includes(item.id);
+                                return (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => toggleSelect(item.id)}
+                                        style={{
+                                            padding: '10px', borderRadius: '8px', marginBottom: '4px', cursor: 'pointer',
+                                            background: isSelected ? '#eff6ff' : '#fff',
+                                            border: '1px solid', borderColor: isSelected ? '#3b82f6' : 'transparent',
+                                            display: 'flex', alignItems: 'center', gap: '10px'
+                                        }}
+                                    >
+                                        {isSelected ? <CheckSquare size={20} color="#3b82f6" /> : <Square size={20} color="#cbd5e1" />}
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>
+                                            {item.employeeId ? `[${item.employeeId}] ` : ''}{item.name}
+                                        </span>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', marginBottom: '1.5rem', border: '1px solid #f1f5f9' }}>
+                        <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569' }}>เธเธณเธซเธเธ”เน€เธงเธฅเธฒเธเธฒเธ (Batch Setting)</h4>
+                        <p style={{ margin: '-4px 0 12px 0', fontSize: '0.75rem', color: '#94a3b8' }}>*เน€เธงเธฅเธฒเธ—เธตเนเธฃเธฐเธเธธเธเธฐเธ–เธนเธเธเธณเนเธเนเธเนเธเธฑเธเธ—เธธเธเธเธเธ—เธตเนเน€เธฅเธทเธญเธ</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <BatchTimeInput label="Day (เธเธเธ•เธด)" field="day" timeField={type === 'Internal' ? "timeDay" : undefined} />
+                            {type === 'Internal' && (
+                                <>
+                                    <BatchTimeInput label="OT เน€เธเนเธฒ" field="otMorning" timeField="timeOtMorning" />
+                                    <BatchTimeInput label="OT เน€เธ—เธตเนเธขเธ" field="otNoon" />
+                                    <BatchTimeInput label="OT เน€เธขเนเธ" field="otEvening" timeField="timeOtEvening" />
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>เธขเธเน€เธฅเธดเธ</button>
+                        <button onClick={handleConfirm} style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>เน€เธเธดเนเธก {selectedIds.length} เธฃเธฒเธขเธเธฒเธฃ</button>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};
+
+
+const DailyReport = () => {
+    const { workOrders, addTaskUpdate, updateTask, updateWorkOrderStatus, requestRetroactiveUnlock } = useWorkOrders();
+    const { user } = useAuth(); // โ… Use authenticated user
+    const { sendNotification } = useNotifications();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const foremanId = user?.id || 'admin-initial';
+    const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+    const [selectedTaskInfo, setSelectedTaskInfo] = useState<{ task: MasterTask; wo: WorkOrder; categoryId: string } | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const [progress, setProgress] = useState(0);
+    const [note, setNote] = useState('');
+    const [labor, setLabor] = useState<LaborRecord[]>([]);
+    
+    // Categorized Photo States
+    const [sitePhotos, setSitePhotos] = useState<string[]>([]);
+    const [laborRegularPhotos, setLaborRegularPhotos] = useState<string[]>([]);
+    const [laborOtMorningPhotos, setLaborOtMorningPhotos] = useState<string[]>([]);
+    const [laborOtNoonPhotos, setLaborOtNoonPhotos] = useState<string[]>([]);
+    const [laborOtEveningPhotos, setLaborOtEveningPhotos] = useState<string[]>([]);
+    const [activePhotoTab, setActivePhotoTab] = useState<'site' | 'regular' | 'otMorning' | 'otNoon' | 'otEvening'>('site');
+    const [zoomImage, setZoomImage] = useState<string | null>(null);
+
+    // UI and Custom Calendar states
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [showCalendarDropdown, setShowCalendarDropdown] = useState(false);
+    const [showUnlockModal, setShowUnlockModal] = useState(false);
+    const [pendingUnlockDate, setPendingUnlockDate] = useState('');
+    const [unlockReason, setUnlockReason] = useState('');
+    const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+    const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+
+    const [isEditingExisting, setIsEditingExisting] = useState(false); // โ… New state for Edit Mode
+    const [isUploading, setIsUploading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [activeModal, setActiveModal] = useState<'Internal' | 'Outsource' | null>(null);
+    const [timePickerTarget, setTimePickerTarget] = useState<{ id: string, type: 'start' | 'end', shift: 'normal' | 'otMorning' | 'otEvening', currentValue: string } | null>(null);
+    const [reportType, setReportType] = useState<TaskUpdate['type']>('Update');
+    const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // โ… Real-time Sync Data from Firestore
+    const [realContractors, setRealContractors] = useState<Contractor[]>([]);
+    const [realProjects, setRealProjects] = useState<Project[]>([]);
+    const [dailyContractors, setDailyContractors] = useState<any[]>([]);
+
+    useEffect(() => {
+        const unsubContractors = onSnapshot(collection(db, 'contractors'), (snap) => {
+            setRealContractors(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Contractor));
+        });
+        const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
+            setRealProjects(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Project));
+        });
+        const unsubDailyContractors = onSnapshot(collection(db, 'dailyContractors'), (snap) => {
+            setDailyContractors(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        });
+        return () => {
+            unsubContractors();
+            unsubProjects();
+            unsubDailyContractors();
+        };
+    }, []);
+
+    // โ… Sync Form Data when Date or Task Changes
+    useEffect(() => {
+        if (!selectedTaskInfo) return;
+
+        // Search for an existing report for this exact date
+        const existingReport = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+
+        if (existingReport) {
+            // Fill form with existing data
+            setProgress(existingReport.progress);
+            setNote(existingReport.note || '');
+            
+            // Reconstruct/merge split labor and leave arrays back into unified labor state
+            const mergedLabor: LaborRecord[] = [];
+            const laborMap = new Map<string, any>();
+            const leaveMap = new Map<string, any>();
+
+            if (existingReport.labor) {
+                existingReport.labor.forEach((l: any) => laborMap.set(l.workerId || l.id, l));
+            }
+            const exLeave = (existingReport as any).leave;
+            if (exLeave) {
+                exLeave.forEach((l: any) => leaveMap.set(l.workerId || l.id, l));
+            }
+
+            const allWorkerIds = Array.from(new Set([...laborMap.keys(), ...leaveMap.keys()]));
+            allWorkerIds.forEach((wId) => {
+                const l = laborMap.get(wId);
+                const lv = leaveMap.get(wId);
+                const isInternal = wId.startsWith('DC-') || (l && !l.contractorId) || (lv && !lv.contractorId);
+                
+                mergedLabor.push({
+                    id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    membership: isInternal ? 'Internal' : 'Outsource',
+                    staffId: wId,
+                    staffName: l?.workerName || lv?.workerName || '',
+                    employeeId: l?.employeeId || lv?.employeeId || '',
+                    affiliation: l?.workerName ? (isInternal ? (l.shiftTimes?.day ? 'WH' : 'General') : l.workerName) : (lv?.workerName || 'General'),
+                    amount: 1,
+                    timeType: 'Normal',
+                    shifts: {
+                        normal: l?.shifts?.normal || false,
+                        otMorning: l?.shifts?.otMorning || false,
+                        otNoon: l?.shifts?.otNoon || false,
+                        otEvening: l?.shifts?.otEvening || false
+                    },
+                    shiftTimes: {
+                        day: l?.shiftTimes?.day || '08:00 - 17:00',
+                        otMorning: l?.shiftTimes?.otMorning || '06:00 - 08:00',
+                        otNoon: '12:00 - 13:00',
+                        otEvening: l?.shiftTimes?.otEvening || '18:00 - 21:00'
+                    },
+                    leave: {
+                        active: lv?.leaveShifts?.custom || false,
+                        time: lv?.leaveTimes?.custom || '08:00 - 17:00',
+                        medCertFileUrl: lv?.medCertFileUrl || ''
+                    }
+                });
+            });
+
+            setLabor(mergedLabor);
+
+            // Decode legacy vs structured photos (backward-compatible with LB structure)
+            const mapRegularFromDb = (dbShift: any): string[] => {
+                if (!dbShift) return [];
+                if (Array.isArray(dbShift)) return [dbShift[0] || '', dbShift[1] || '', dbShift[2] || '', dbShift[3] || ''];
+                return [dbShift.in || '', dbShift.lunch || '', dbShift.afternoon || '', dbShift.out || ''];
+            };
+            const mapOtShiftFromDb = (dbShift: any): string[] => {
+                if (!dbShift) return [];
+                if (Array.isArray(dbShift)) return [dbShift[0] || '', dbShift[1] || ''];
+                return [dbShift.in || '', dbShift.out || ''];
+            };
+            if (existingReport.photos && !Array.isArray(existingReport.photos)) {
+                // Structured object format (new / LB-compatible)
+                const pObj = existingReport.photos as any;
+                setSitePhotos(pObj.site || []);
+                setLaborRegularPhotos(mapRegularFromDb(pObj.laborByShift?.regular));
+                setLaborOtMorningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otMorning));
+                setLaborOtNoonPhotos(mapOtShiftFromDb(pObj.laborByShift?.otNoon));
+                setLaborOtEveningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otEvening));
+            } else {
+                // Legacy array format
+                const pArr = (existingReport.photos || []) as string[];
+                setSitePhotos(pArr);
+                setLaborRegularPhotos(existingReport.laborPhotos || []);
+                setLaborOtMorningPhotos([]);
+                setLaborOtNoonPhotos([]);
+                setLaborOtEveningPhotos([]);
+            }
+            setActivePhotoTab('site');
+            setIsEditingExisting(false); // โ… Reset to locked mode when switching dates
+        } else {
+            // Reset form for a new entry on this date, defaulting to the latest valid progress
+            const history = selectedTaskInfo.task.history || [];
+            let min = 0;
+            history.forEach(h => {
+                const hDate = h.date?.split('T')[0] || '';
+                if (hDate && hDate < reportDate && h.progress > min) {
+                    min = h.progress;
+                }
+            });
+            setProgress(min); 
+            setNote('');
+            setLabor([]);
+            setSitePhotos([]);
+            setLaborRegularPhotos([]);
+            setLaborOtMorningPhotos([]);
+            setLaborOtNoonPhotos([]);
+            setLaborOtEveningPhotos([]);
+            setActivePhotoTab('site');
+            setIsEditingExisting(true); // โ… New days are always open for editing
+        }
+    }, [reportDate, selectedTaskInfo?.task.id]);
+
+    // โ… Track Page View
+    useEffect(() => {
+        if (user) {
+            logService.trackPageView(user, 'REPORTING', 'เธซเธเนเธฒเธชเนเธเธเธฒเธเธฃเธฒเธขเธงเธฑเธ (Daily Report)');
+        }
+    }, [user]);
+
+    const { newTasks, inProgressTasks } = useMemo(() => {
+        const _newTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
+        const _inProgressTasks: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
+
+        workOrders.forEach(wo => {
+            // Only show work orders that are active (Approved, Partially Approved, Pending, In Progress)
+            // Note: 'Pending' is used for jobs that skipped evaluation or legacy
+            if (['Draft', 'Evaluating', 'Completed', 'Rejected', 'Cancelled'].includes(wo.status)) return;
+
+            wo.categories.forEach(cat => {
+                cat.tasks.forEach(task => {
+                    // Show tasks that are Approved (Ready), Assigned (Specific person) or In Progress
+                    // ๐ก๏ธ RELAXED FILTER: If it's not 100% and not rejected/cancelled, show it!
+                    if (task.status === 'Completed' || (task.dailyProgress || 0) >= 100 || task.status === 'Rejected') return;
+
+                    // Filter by assigned staff (or show all for Admins/Managers)
+                    // Also show to the reporter if the task is Approved (Ready to start)
+                    const isAssigned = user?.role === 'Admin' ||
+                        user?.role === 'Manager' ||
+                        task.responsibleStaffIds?.includes(foremanId) ||
+                        (wo.reporterId === user?.id && task.status === 'Approved' && (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0));
+
+                        if (isAssigned && (task.dailyProgress || 0) < 100) {
+                            // โ… Find the absolute maximum progress from history to ensure correct display
+                            const historyMax = task.history?.reduce((max, h) => Math.max(max, h.progress), 0) || 0;
+                            const actualProgress = Math.max(task.dailyProgress || 0, historyMax);
+                            
+                            const item = { 
+                                task: { ...task, dailyProgress: actualProgress }, 
+                                wo, 
+                                categoryId: cat.id 
+                            };
+                            const hasProgress = actualProgress > 0;
+                            
+                            if (searchTerm) {
+                                const match = (task.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                             (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                             (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
+                                if (!match) return;
+                            }
+
+                            if (hasProgress) _inProgressTasks.push(item);
+                            else _newTasks.push(item);
+                        }
+                    });
+                });
+            });
+
+            return { newTasks: _newTasks, inProgressTasks: _inProgressTasks };
+        }, [workOrders, searchTerm, foremanId, user?.role]);
+
+    // โ… Deep Link: Open Work Order if ID is in URL
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const workOrderId = params.get('id');
+
+        if (workOrderId && (newTasks.length > 0 || inProgressTasks.length > 0)) {
+            // Find task in either newTasks or inProgressTasks
+            const item = newTasks.find(n => n.wo.id === workOrderId) || inProgressTasks.find(i => i.wo.id === workOrderId);
+            
+            if (item) {
+                setHighlightedId(workOrderId);
+                // Call handleSelectTask with the found info
+                handleSelectTask(item.task, item.wo, item.categoryId);
+                
+                // Clear URL parameters
+                const newParams = new URLSearchParams(location.search);
+                newParams.delete('id');
+                const newSearch = newParams.toString();
+                navigate(location.pathname + (newSearch ? `?${newSearch}` : ''), { replace: true });
+            }
+        }
+    }, [location.search, newTasks, inProgressTasks]);
+
+    const handleSelectTask = (task: MasterTask, wo: WorkOrder, categoryId: string) => {
+        // โ… 1. Find the history-based minimum progress for the current date
+        const history = task.history || [];
+        const todayStr = new Date().toISOString().split('T')[0];
+        const historyBeforeToday = history
+            .filter(h => (h.date?.split('T')[0] || '') < todayStr)
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        
+        const minP = historyBeforeToday.length > 0 ? historyBeforeToday[0].progress : 0;
+        const currentP = task.dailyProgress || 0;
+
+        setSelectedTaskInfo({ task, wo, categoryId });
+        // โ… 2. Force initial progress to be at least minP
+        setProgress(currentP < minP ? minP : currentP);
+        setNote('');
+        setLabor([]);
+        setSitePhotos([]);
+        setLaborRegularPhotos([]);
+        setLaborOtMorningPhotos([]);
+        setLaborOtNoonPhotos([]);
+        setLaborOtEveningPhotos([]);
+        setReportType('Update');
+        setReportDate(new Date().toISOString().split('T')[0]);
+    };
+
+    const getDateStatus = (dateStr: string, task: MasterTask, wo: WorkOrder) => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        
+        if (dateStr > todayStr) {
+            return 'disabled';
+        }
+        
+        const openingDate = wo.startDate || wo.createdAt || '';
+        const openingDateStr = openingDate ? new Date(openingDate).toISOString().split('T')[0] : '';
+        if (openingDateStr && dateStr < openingDateStr) {
+            return 'disabled';
+        }
+        
+        const reported = task.history?.some(h => (h.date?.split('T')[0]) === dateStr);
+        if (reported) {
+            return 'reported';
+        }
+        
+        const todayVal = new Date(todayStr).getTime();
+        const dateVal = new Date(dateStr).getTime();
+        const diffTime = todayVal - dateVal;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        const unlocked = task.unlockedDates?.[dateStr] && 
+            new Date(task.unlockedDates[dateStr].unlockedUntil).getTime() > Date.now();
+            
+        if (diffDays <= 3 || unlocked) {
+            return 'unlocked';
+        }
+        
+        return 'locked';
+    };
+
+    const progressBounds = useMemo(() => {
+        if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
+        const history = selectedTaskInfo.task.history || [];
+        const targetDate = reportDate; // YYYY-MM-DD
+        
+        let min = 0;
+        let max = 100;
+        
+        history.forEach(h => {
+            const hDate = h.date?.split('T')[0] || '';
+            if (!hDate) return;
+
+            if (hDate < targetDate) {
+                if (h.progress > min) min = h.progress;
+            } else if (hDate > targetDate) {
+                if (h.progress < max) max = h.progress;
+            }
+        });
+        
+        const isToday = reportDate === new Date().toISOString().split('T')[0];
+        const effectiveMax = isToday ? 100 : Math.min(max, 99);
+        
+        return { min, max: effectiveMax, isToday };
+    }, [selectedTaskInfo, reportDate]);
+
+    const isReportDatePast3Days = useMemo(() => {
+        if (!selectedTaskInfo) return false;
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayVal = new Date(todayStr).getTime();
+        const dateVal = new Date(reportDate).getTime();
+        const diffTime = todayVal - dateVal;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const unlocked = selectedTaskInfo.task.unlockedDates?.[reportDate] && 
+            new Date(selectedTaskInfo.task.unlockedDates[reportDate].unlockedUntil).getTime() > Date.now();
+        return diffDays > 3 && !unlocked;
+    }, [reportDate, selectedTaskInfo?.task.unlockedDates]);
+
+    const isProgressNotePhotosEditable = isEditingExisting && !isReportDatePast3Days;
+
+    // Redundant force-sync removed, handled by onChange constraints and initialization
+
+    const getTaskImage = (task: MasterTask) => {
+        // Check all possible image fields in order of priority
+        const img =
+            task.beforePhotoUrl ||
+            task.latestPhotoUrl ||
+            task.afterPhotoUrl ||
+            ((task as any).images && (task as any).images.length > 0 ? (task as any).images[0] : null) ||
+            (task.attachments && task.attachments.length > 0 ? task.attachments[0].url : null);
+
+        if (img && typeof img === 'string' && (img.startsWith('http') || img.startsWith('https') || img.startsWith('blob:'))) {
+            return img;
+        }
+        return null;
+    };
+
+    const handleBatchAdd = (selectedIds: string[], config: any) => {
+        const newRecords: LaborRecord[] = [];
+
+        if (activeModal === 'Internal') {
+            selectedIds.forEach(id => {
+                const contractor = dailyContractors.find(c => c.id === id);
+                if (contractor) {
+                    newRecords.push({
+                        id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        membership: 'Internal',
+                        staffId: contractor.id,
+                        staffName: contractor.name,
+                        employeeId: contractor.employeeId || contractor.id.replace('DC-', ''),
+                        affiliation: contractor.skillId || 'General',
+                        amount: 1,
+                        timeType: 'Normal',
+                        shifts: {
+                            normal: config.day,
+                            otMorning: config.otMorning,
+                            otNoon: config.otNoon,
+                            otEvening: config.otEvening
+                        },
+                        shiftTimes: {
+                            day: config.timeDay,
+                            otMorning: config.timeOtMorning,
+                            otNoon: '12:00 - 13:00',
+                            otEvening: config.timeOtEvening
+                        },
+                        leave: {
+                            active: false,
+                            time: '08:00 - 17:00',
+                            medCertFileUrl: ''
+                        }
+                    });
+                }
+            });
+        } else if (activeModal === 'Outsource') {
+            selectedIds.forEach(id => {
+                const contractor = realContractors.find(c => c.id === id);
+                if (contractor) {
+                    newRecords.push({
+                        id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        membership: 'Outsource',
+                        affiliation: contractor.name,
+                        contractorId: contractor.id,
+                        employeeId: '',
+                        amount: 1,
+                        timeType: 'Normal',
+                        shifts: {
+                            normal: config.day,
+                            otMorning: false,
+                            otNoon: false,
+                            otEvening: false
+                        },
+                        shiftTimes: { day: '' },
+                        leave: {
+                            active: false,
+                            time: '08:00 - 17:00',
+                            medCertFileUrl: ''
+                        }
+                    });
+                }
+            });
+        }
+
+        setLabor([...labor, ...newRecords]);
+        setActiveModal(null);
+    };
+
+    const toggleShift = (id: string, shiftKey: 'normal' | 'otMorning' | 'otNoon' | 'otEvening') => {
+        if (!isEditingExisting) return;
+        setLabor(prev => prev.map(l => {
+            if (l.id !== id) return l;
+            const currentShifts = l.shifts || { normal: false, otMorning: false, otNoon: false, otEvening: false };
+            const isActive = !currentShifts[shiftKey];
+            let newShiftTimes = { ...(l.shiftTimes || {}) };
+            if (isActive && l.membership === 'Internal') {
+                if (shiftKey === 'otMorning' && !newShiftTimes.otMorning) newShiftTimes.otMorning = '06:00 - 08:00';
+                if (shiftKey === 'otNoon' && !newShiftTimes.otNoon) newShiftTimes.otNoon = '12:00 - 13:00';
+                if (shiftKey === 'otEvening' && !newShiftTimes.otEvening) newShiftTimes.otEvening = '18:00 - 21:00';
+            }
+            return { ...l, shifts: { ...currentShifts, [shiftKey]: isActive }, shiftTimes: newShiftTimes };
+        }));
+    };
+
+    const openTimePicker = (id: string, shift: 'normal' | 'otMorning' | 'otEvening', type: 'start' | 'end') => {
+        if (!isEditingExisting) return;
+        const record = labor.find(l => l.id === id);
+        if (!record || !record.shiftTimes) return;
+        let rangeStr = '';
+        if (shift === 'normal') rangeStr = record.shiftTimes.day || '08:00 - 17:00';
+        else rangeStr = record.shiftTimes[shift] || '';
+        const [start, end] = rangeStr.split(' - ').map(s => s.trim());
+        setTimePickerTarget({ id, shift, type, currentValue: (type === 'start' ? start : end) || '00:00' });
+    };
+
+    const handleTimeChange = (val: string) => {
+        if (!timePickerTarget) return;
+        const { id, type, shift } = timePickerTarget;
+        setLabor(prev => prev.map(l => {
+            if (l.id !== id) return l;
+            const times = { ...(l.shiftTimes || {}) };
+            let range = '';
+            if (shift === 'normal') range = times.day || '08:00 - 17:00';
+            else range = times[shift] || '00:00 - 00:00';
+            let [start, end] = range.split(' - ').map(s => s.trim());
+            if (type === 'start') start = val;
+            else end = val;
+            const newRange = `${start} - ${end} `;
+            if (shift === 'normal') times.day = newRange;
+            else times[shift] = newRange;
+            return { ...l, shiftTimes: times };
+        }));
+    };
+
+    // Active photo tab cleanup effect when worker shifts change
+    useEffect(() => {
+        const isRegularActive = labor.some(l => l.shifts?.normal);
+        const isOtMorningActive = labor.some(l => l.shifts?.otMorning);
+        const isOtNoonActive = labor.some(l => l.shifts?.otNoon);
+        const isOtEveningActive = labor.some(l => l.shifts?.otEvening);
+
+        if (activePhotoTab === 'regular' && !isRegularActive) setActivePhotoTab('site');
+        if (activePhotoTab === 'otMorning' && !isOtMorningActive) setActivePhotoTab('site');
+        if (activePhotoTab === 'otNoon' && !isOtNoonActive) setActivePhotoTab('site');
+        if (activePhotoTab === 'otEvening' && !isOtEveningActive) setActivePhotoTab('site');
+    }, [labor, activePhotoTab]);
+
+    // Slot-based photo remove: for shift photos, clear the slot (keep array length); for site, filter out.
+    const handleRemoveSlotPhoto = (tab: 'site' | 'regular' | 'otMorning' | 'otNoon' | 'otEvening', index: number) => {
+        if (tab === 'site') {
+            setSitePhotos(prev => prev.filter((_, i) => i !== index));
+        } else {
+            const clearSlot = (prev: string[]) => { const u = [...prev]; u[index] = ''; return u; };
+            if (tab === 'regular') setLaborRegularPhotos(clearSlot);
+            else if (tab === 'otMorning') setLaborOtMorningPhotos(clearSlot);
+            else if (tab === 'otNoon') setLaborOtNoonPhotos(clearSlot);
+            else if (tab === 'otEvening') setLaborOtEveningPhotos(clearSlot);
+        }
+    };
+
+    // Slot-based photo upload: site appends freely, shift photos go to a specific slot index.
+    const handleSlotPhotoUpload = async (
+        tab: 'site' | 'regular' | 'otMorning' | 'otNoon' | 'otEvening',
+        slotIndex: number,
+        e: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        const file = e.target.files?.[0];
+        if (!file || !selectedTaskInfo) return;
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `progress_${tab}_slot${slotIndex}_${Date.now()}.${fileExt}`;
+            const storagePath = `work_orders/${selectedTaskInfo.wo.id}/progress/${fileName}`;
+            const storageRef = ref(storage, storagePath);
+            const compressedFile = await compressImage(file, 1280, 0.7);
+            const snapshot = await uploadBytes(storageRef, compressedFile, {
+                cacheControl: 'public, max-age=31536000',
+                contentType: compressedFile.type || 'image/jpeg',
+            });
+            const downloadURL = await getDownloadURL(snapshot.ref);
+            if (tab === 'site') {
+                setSitePhotos(prev => [...prev, downloadURL]);
+            } else {
+                const putSlot = (prev: string[]) => { const u = [...prev]; u[slotIndex] = downloadURL; return u; };
+                if (tab === 'regular') setLaborRegularPhotos(putSlot);
+                else if (tab === 'otMorning') setLaborOtMorningPhotos(putSlot);
+                else if (tab === 'otNoon') setLaborOtNoonPhotos(putSlot);
+                else if (tab === 'otEvening') setLaborOtEveningPhotos(putSlot);
+            }
+        } catch (error) {
+            console.error('Upload failed:', error);
+            alert('เธญเธฑเธเนเธซเธฅเธ”เธฃเธนเธเธ เธฒเธเนเธกเนเธชเธณเน€เธฃเนเธ เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเนเธญเธตเธเธเธฃเธฑเนเธ');
+        } finally {
+            setIsUploading(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleUploadLeaveCert = async (laborId: string, file: File | null) => {
+        if (!file || !selectedTaskInfo) return;
+
+        setIsUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `leave_${laborId}_${Date.now()}.${fileExt}`;
+            const storagePath = `work_orders/${selectedTaskInfo.wo.id}/leave_certs/${fileName}`;
+            const storageRef = ref(storage, storagePath);
+
+            const compressedFile = await compressImage(file, 1280, 0.7);
+            const metadata = {
+                cacheControl: 'public, max-age=31536000',
+                contentType: compressedFile.type || 'image/jpeg',
+            };
+
+            const snapshot = await uploadBytes(storageRef, compressedFile, metadata);
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            setLabor(prev => prev.map(l => {
+                if (l.id === laborId) {
+                    return {
+                        ...l,
+                        leave: {
+                            ...(l.leave || { active: true, time: '08:00 - 17:00' }),
+                            medCertFileUrl: downloadURL
+                        }
+                    };
+                }
+                return l;
+            }));
+        } catch (error) {
+            console.error('Leave cert upload failed:', error);
+            alert('เธญเธฑเธเนเธซเธฅเธ”เนเธเธฃเธฑเธเธฃเธญเธเนเธเธ—เธขเนเนเธกเนเธชเธณเน€เธฃเนเธ เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเนเธญเธตเธเธเธฃเธฑเนเธ');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleRemoveLeaveCert = (laborId: string) => {
+        setLabor(prev => prev.map(l => {
+            if (l.id === laborId) {
+                return {
+                    ...l,
+                    leave: {
+                        ...(l.leave || { active: true, time: '08:00 - 17:00' }),
+                        medCertFileUrl: ''
+                    }
+                };
+            }
+            return l;
+        }));
+    };
+
+    const handleBounceBackSLA = async (workOrderId: string, categoryId: string, taskId: string) => {
+        if (!window.confirm('เธเธธเธ“เธ•เนเธญเธเธเธฒเธฃเธ•เธตเธเธฅเธฑเธเนเธเธเธฒเธเธเธตเนเน€เธเธทเนเธญเนเธซเนเนเธญเธ”เธกเธดเธเธเธฃเธฐเน€เธกเธดเธ SLA เนเธซเธกเนเนเธเนเธซเธฃเธทเธญเนเธกเน?\n(เธเธฒเธเธเธฐเธ–เธนเธเธ–เธญเธ”เธญเธญเธเธเธฒเธเธเธฒเธฃเธกเธญเธเธซเธกเธฒเธขเนเธฅเธฐเธชเนเธเธเธฅเธฑเธเนเธเธ—เธตเนเนเธญเธ”เธกเธดเธ)')) return;
+        
+        setIsSubmitting(true);
+        try {
+            // 1. Reset task status to Pending and clear assignment/SLA
+            await updateTask(workOrderId, categoryId, taskId, {
+                status: 'Pending',
+                slaCategory: null,
+                responsibleStaffIds: []
+            });
+
+            // 1.5 Update Work Order status back to Evaluating so Admin can see it
+            await updateWorkOrderStatus(workOrderId, 'Evaluating');
+
+            // 2. Send Notification to Admin
+            await sendNotification({
+                recipientRole: 'Admin',
+                senderId: user?.id || 'foreman',
+                senderName: user?.name || 'Foreman',
+                title: 'เนเธเธเธฒเธเธ–เธนเธเธ•เธตเธเธฅเธฑเธ (SLA Mismatch)',
+                message: `เธเธฒเธ "${selectedTaskInfo?.task.name}" เธ–เธนเธเธ•เธตเธเธฅเธฑเธเนเธ”เธขเนเธเธฃเนเนเธกเธเน€เธเธทเนเธญเธเธญเธเธฃเธฐเน€เธกเธดเธ SLA เนเธซเธกเน`,
+                type: 'warning',
+                targetPath: `/evaluation?id=${workOrderId}`
+            });
+
+            // 3. Activity Log
+            logService.trackAction({
+                userId: user?.id || 'unknown',
+                userName: user?.name || 'Unknown',
+                role: user?.role || 'Foreman',
+                action: 'UPDATE', // Match existing ActivityLog['action'] type
+                module: 'REPORTING',
+                details: `Foreman rejected SLA (${selectedTaskInfo?.task.slaCategory}) and requested re-evaluation. Expected: ${selectedTaskInfo?.task.estimatedSla}`,
+                targetId: taskId
+            });
+
+            alert('เธ•เธตเธเธฅเธฑเธเนเธเธเธฒเธเน€เธฃเธตเธขเธเธฃเนเธญเธขเนเธฅเนเธง');
+            setSelectedTaskInfo(null);
+        } catch (err) {
+            console.error("Bounce back error:", err);
+            alert('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”เนเธเธเธฒเธฃเธ•เธตเธเธฅเธฑเธเนเธเธเธฒเธ');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!selectedTaskInfo) return;
+        if (labor.length === 0) return alert('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธเนเธญเธกเธนเธฅเนเธฃเธเธเธฒเธเธ—เธตเนเน€เธเนเธฒเธ”เธณเน€เธเธดเธเธเธฒเธฃ');
+
+        // --- Photo validation (เธ•เธฒเธก LB: siteโฅ2, regular=4, OT=2) ---
+        if (sitePhotos.filter(Boolean).length < 2) return alert('เธเธฃเธธเธ“เธฒเนเธเธเธฃเธนเธเธ–เนเธฒเธขเธซเธเนเธฒเธเธฒเธเธญเธขเนเธฒเธเธเนเธญเธข 2 เธฃเธนเธ');
+        const isRegularActive = labor.some(l => l.shifts?.normal);
+        if (isRegularActive && laborRegularPhotos.filter(Boolean).length < 4) {
+            return alert('เธเธฃเธธเธ“เธฒเนเธเธเธฃเธนเธเธ–เนเธฒเธขเนเธฃเธเธเธฒเธเธเธฐเธเธเธ•เธดเนเธซเนเธเธฃเธ 4 เธฃเธนเธ (เน€เธเนเธฒ / เธเธฑเธเน€เธ—เธตเนเธขเธ / เน€เธเนเธฒเธเนเธฒเธข / เธญเธญเธ)');
+        }
+        const isOtMorningActive = labor.some(l => l.shifts?.otMorning);
+        if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
+            return alert('เธเธฃเธธเธ“เธฒเนเธเธเธฃเธนเธเธ–เนเธฒเธขเนเธฃเธเธเธฒเธ OT เน€เธเนเธฒเนเธซเนเธเธฃเธ 2 เธฃเธนเธ (เน€เธเนเธฒ / เธญเธญเธ)');
+        }
+        const isOtNoonActive = labor.some(l => l.shifts?.otNoon);
+        if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
+            return alert('เธเธฃเธธเธ“เธฒเนเธเธเธฃเธนเธเธ–เนเธฒเธขเนเธฃเธเธเธฒเธ OT เน€เธ—เธตเนเธขเธเนเธซเนเธเธฃเธ 2 เธฃเธนเธ (เน€เธเนเธฒ / เธญเธญเธ)');
+        }
+        const isOtEveningActive = labor.some(l => l.shifts?.otEvening);
+        if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
+            return alert('เธเธฃเธธเธ“เธฒเนเธเธเธฃเธนเธเธ–เนเธฒเธขเนเธฃเธเธเธฒเธ OT เน€เธขเนเธเนเธซเนเธเธฃเธ 2 เธฃเธนเธ (เน€เธเนเธฒ / เธญเธญเธ)');
+        }
+
+        // โ… 1. Timeline-consistent Progress Validation
+        if (progress <= progressBounds.min) {
+            alert(`เธเธงเธฒเธกเธเธทเธเธซเธเนเธฒเธชเธณเธซเธฃเธฑเธเธงเธฑเธเธ—เธตเนเน€เธฅเธทเธญเธเธ•เนเธญเธเธกเธฒเธเธเธงเนเธฒ ${progressBounds.min}% (เธ•เธฒเธกเธเธฃเธฐเธงเธฑเธ•เธดเธเนเธญเธเธซเธเนเธฒ)`);
+            return;
+        }
+        if (progress > progressBounds.max) {
+            alert(`เธเธงเธฒเธกเธเธทเธเธซเธเนเธฒเธชเธณเธซเธฃเธฑเธเธงเธฑเธเธ—เธตเนเน€เธฅเธทเธญเธเธ•เนเธญเธเนเธกเนเน€เธเธดเธ ${progressBounds.max}% ${!progressBounds.isToday && progress === 100 ? '(เธซเนเธฒเธกเธฅเธเธเธดเธ”เธเธฒเธ 100% เธขเนเธญเธเธซเธฅเธฑเธ)' : '(เน€เธเธทเนเธญเธเธเธฒเธเธกเธตเธเนเธญเธกเธนเธฅเธงเธฑเธเธ—เธตเนเธซเธฅเธฑเธเธเธฒเธเธเธตเนเธฅเธเนเธเนเธฅเนเธง)'}`);
+            return;
+        }
+
+        // โ… 2. Prevent Duplicate Date Entry
+        const existingHistory = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+        if (existingHistory && !isEditingExisting) {
+            alert(`เธเธธเธ“เน€เธเธขเธชเนเธเธฃเธฒเธขเธเธฒเธเธเธญเธเธงเธฑเธเธ—เธตเน ${new Date(reportDate).toLocaleDateString('th-TH')} เนเธเนเธฅเนเธงเนเธเนเธเธเธฒเธเธเธตเน เธซเธฒเธเธ•เนเธญเธเธเธฒเธฃเนเธเนเนเธเธเธฃเธธเธ“เธฒเธเธ”เธเธธเนเธกเนเธเนเนเธเธเนเธญเธกเธนเธฅ`);
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const laborPayload = labor
+                .filter((l) => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
+                .map((l) => ({
+                    workerId: l.staffId || l.id,
+                    workerName: l.staffName || '',
+                    employeeId: l.employeeId || '',
+                    shiftTimes: {
+                        day: l.shifts?.normal ? l.shiftTimes?.day || '08:00 - 17:00' : null,
+                        otEvening: l.shifts?.otEvening ? l.shiftTimes?.otEvening || '18:00 - 21:00' : null,
+                        otMorning: l.shifts?.otMorning ? l.shiftTimes?.otMorning || '06:00 - 08:00' : null,
+                        otNoon: l.shifts?.otNoon ? '12:00 - 13:00' : null,
+                    },
+                    shifts: {
+                        normal: l.shifts?.normal || false,
+                        otEvening: l.shifts?.otEvening || false,
+                        otMorning: l.shifts?.otMorning || false,
+                        otNoon: l.shifts?.otNoon || false,
+                    }
+                }));
+
+            const leavePayload = labor
+                .filter((l) => l.leave?.active)
+                .map((l) => ({
+                    workerId: l.staffId || l.id,
+                    workerName: l.staffName || '',
+                    employeeId: l.employeeId || '',
+                    leaveTimes: {
+                        custom: l.leave?.time || '08:00 - 17:00'
+                    },
+                    leaveShifts: {
+                        custom: true
+                    },
+                    medCertFileUrl: l.leave?.medCertFileUrl || '',
+                    leaveType: l.leave?.medCertFileUrl ? 'Paid' : 'Unpaid'
+                }));
+
+            // Structure photos payload โ€” LB-compatible Firestore format
+            // regular: string[] (4 slots), OT: { in, out } | null
+            const photosPayload = {
+                site: sitePhotos.filter(Boolean),
+                laborByShift: {
+                    regular: laborRegularPhotos.some(Boolean) ? laborRegularPhotos.slice(0, 4) : null,
+                    otMorning: (laborOtMorningPhotos[0] || laborOtMorningPhotos[1])
+                        ? { in: laborOtMorningPhotos[0] || '', out: laborOtMorningPhotos[1] || '' } : null,
+                    otNoon: (laborOtNoonPhotos[0] || laborOtNoonPhotos[1])
+                        ? { in: laborOtNoonPhotos[0] || '', out: laborOtNoonPhotos[1] || '' } : null,
+                    otEvening: (laborOtEveningPhotos[0] || laborOtEveningPhotos[1])
+                        ? { in: laborOtEveningPhotos[0] || '', out: laborOtEveningPhotos[1] || '' } : null,
+                }
+            };
+
+            // Merge all labor photos for backward compatibility (legacy laborPhotos field)
+            const mergedLaborPhotos = [
+                ...laborRegularPhotos.filter(Boolean),
+                ...laborOtMorningPhotos.filter(Boolean),
+                ...laborOtNoonPhotos.filter(Boolean),
+                ...laborOtEveningPhotos.filter(Boolean),
+            ];
+
+            const updateId = (isEditingExisting && existingHistory) ? existingHistory.id : `h-${Date.now()}`;
+            const newUpdate: TaskUpdate = {
+                id: updateId,
+                date: `${reportDate}T${new Date().toISOString().split('T')[1]}`,
+                note,
+                progress,
+                photos: photosPayload,
+                laborPhotos: mergedLaborPhotos,
+                labor: laborPayload as any,
+                leave: leavePayload,
+                type: reportType
+            };
+
+            await addTaskUpdate(selectedTaskInfo.wo.id, selectedTaskInfo.categoryId, selectedTaskInfo.task.id, newUpdate as any);
+            alert('เธเธฑเธเธ—เธถเธเธฃเธฒเธขเธเธฒเธเน€เธฃเธตเธขเธเธฃเนเธญเธขเนเธฅเนเธง');
+            setSelectedTaskInfo(null);
+            setProgress(0);
+            setNote('');
+            setLabor([]);
+            setSitePhotos([]);
+            setLaborRegularPhotos([]);
+            setLaborOtMorningPhotos([]);
+            setLaborOtNoonPhotos([]);
+            setLaborOtEveningPhotos([]);
+            setReportType('Update');
+            setReportDate(new Date().toISOString().split('T')[0]);
+        } catch (error) {
+            console.error('Submit failed:', error);
+            alert('เธเธฑเธเธ—เธถเธเธฃเธฒเธขเธเธฒเธเนเธกเนเธชเธณเน€เธฃเนเธ เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเนเธญเธตเธเธเธฃเธฑเนเธ');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleCancelEdit = () => {
+        if (!selectedTaskInfo) return;
+        
+        const confirmCancel = window.confirm('เธเธธเธ“เธ•เนเธญเธเธเธฒเธฃเธขเธเน€เธฅเธดเธเธเธฒเธฃเนเธเนเนเธเนเธเนเธซเธฃเธทเธญเนเธกเน? เธเธฒเธฃเน€เธเธฅเธตเนเธขเธเนเธเธฅเธเธ—เธฑเนเธเธซเธกเธ”เธ—เธตเนเธขเธฑเธเนเธกเนเนเธ”เนเธเธฑเธเธ—เธถเธเธเธฐเธชเธนเธเธซเธฒเธข');
+        if (!confirmCancel) return;
+
+        // Search for the existing report for this exact date to revert the state
+        const existingReport = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+
+        if (existingReport) {
+            // Revert progress and note
+            setProgress(existingReport.progress);
+            setNote(existingReport.note || '');
+            
+            // Reconstruct/merge split labor and leave arrays back into unified labor state
+            const mergedLabor: LaborRecord[] = [];
+            const laborMap = new Map<string, any>();
+            const leaveMap = new Map<string, any>();
+
+            if (existingReport.labor) {
+                existingReport.labor.forEach((l: any) => laborMap.set(l.workerId || l.id, l));
+            }
+            const exLeave = (existingReport as any).leave;
+            if (exLeave) {
+                exLeave.forEach((l: any) => leaveMap.set(l.workerId || l.id, l));
+            }
+
+            const allWorkerIds = Array.from(new Set([...laborMap.keys(), ...leaveMap.keys()]));
+            allWorkerIds.forEach((wId) => {
+                const l = laborMap.get(wId);
+                const lv = leaveMap.get(wId);
+                const isInternal = wId.startsWith('DC-') || (l && !l.contractorId) || (lv && !lv.contractorId);
+                
+                mergedLabor.push({
+                    id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    membership: isInternal ? 'Internal' : 'Outsource',
+                    staffId: wId,
+                    staffName: l?.workerName || lv?.workerName || '',
+                    employeeId: l?.employeeId || lv?.employeeId || '',
+                    affiliation: l?.workerName ? (isInternal ? (l.shiftTimes?.day ? 'WH' : 'General') : l.workerName) : (lv?.workerName || 'General'),
+                    amount: 1,
+                    timeType: 'Normal',
+                    shifts: {
+                        normal: l?.shifts?.normal || false,
+                        otMorning: l?.shifts?.otMorning || false,
+                        otNoon: l?.shifts?.otNoon || false,
+                        otEvening: l?.shifts?.otEvening || false
+                    },
+                    shiftTimes: {
+                        day: l?.shiftTimes?.day || '08:00 - 17:00',
+                        otMorning: l?.shiftTimes?.otMorning || '06:00 - 08:00',
+                        otNoon: '12:00 - 13:00',
+                        otEvening: l?.shiftTimes?.otEvening || '18:00 - 21:00'
+                    },
+                    leave: {
+                        active: lv?.leaveShifts?.custom || false,
+                        time: lv?.leaveTimes?.custom || '08:00 - 17:00',
+                        medCertFileUrl: lv?.medCertFileUrl || ''
+                    }
+                });
+            });
+
+            setLabor(mergedLabor);
+
+            // Decode photos
+            const mapRegularFromDb = (dbShift: any): string[] => {
+                if (!dbShift) return [];
+                if (Array.isArray(dbShift)) return [dbShift[0] || '', dbShift[1] || '', dbShift[2] || '', dbShift[3] || ''];
+                return [dbShift.in || '', dbShift.lunch || '', dbShift.afternoon || '', dbShift.out || ''];
+            };
+            const mapOtShiftFromDb = (dbShift: any): string[] => {
+                if (!dbShift) return [];
+                if (Array.isArray(dbShift)) return [dbShift[0] || '', dbShift[1] || ''];
+                return [dbShift.in || '', dbShift.out || ''];
+            };
+            if (existingReport.photos && !Array.isArray(existingReport.photos)) {
+                const pObj = existingReport.photos as any;
+                setSitePhotos(pObj.site || []);
+                setLaborRegularPhotos(mapRegularFromDb(pObj.laborByShift?.regular));
+                setLaborOtMorningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otMorning));
+                setLaborOtNoonPhotos(mapOtShiftFromDb(pObj.laborByShift?.otNoon));
+                setLaborOtEveningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otEvening));
+            } else {
+                const pArr = (existingReport.photos || []) as string[];
+                setSitePhotos(pArr);
+                setLaborRegularPhotos(existingReport.laborPhotos || []);
+                setLaborOtMorningPhotos([]);
+                setLaborOtNoonPhotos([]);
+                setLaborOtEveningPhotos([]);
+            }
+            setActivePhotoTab('site');
+        }
+
+        setIsEditingExisting(false);
+    };
+
+    const hasUnsavedChanges = () => {
+        if (!selectedTaskInfo) return false;
+        
+        const existingReport = selectedTaskInfo.task.history?.find(h => (h.date?.split('T')[0]) === reportDate);
+        
+        if (existingReport) {
+            // If they are in edit mode, they have active unsaved editing
+            return isEditingExisting;
+        } else {
+            // For new reports, we check if they filled out any form data
+            const isLaborDirty = labor.length > 0;
+            const isPhotosDirty = sitePhotos.some(Boolean) || 
+                                  laborRegularPhotos.some(Boolean) || 
+                                  laborOtMorningPhotos.some(Boolean) || 
+                                  laborOtNoonPhotos.some(Boolean) || 
+                                  laborOtEveningPhotos.some(Boolean);
+            const isNoteDirty = note.trim() !== '';
+            
+            // Re-evaluating default progress bounds
+            const history = selectedTaskInfo.task.history || [];
+            let minProgress = 0;
+            history.forEach(h => {
+                const hDate = h.date?.split('T')[0] || '';
+                if (hDate && hDate < reportDate && h.progress > minProgress) {
+                    minProgress = h.progress;
+                }
+            });
+            const isProgressDirty = progress !== minProgress;
+
+            return isLaborDirty || isPhotosDirty || isNoteDirty || isProgressDirty;
+        }
+    };
+
+    const handleDateChange = (newDateStr: string) => {
+        if (newDateStr === reportDate) return;
+        if (hasUnsavedChanges()) {
+            const discard = window.confirm('เธเธธเธ“เธกเธตเธฃเธฒเธขเธเธฒเธฃเธ—เธตเนเธขเธฑเธเนเธกเนเนเธ”เนเธเธฑเธเธ—เธถเธเธเนเธฒเธเธญเธขเธนเน เธซเธฒเธเน€เธเธฅเธตเนเธขเธเธงเธฑเธเธ—เธตเน เธเธฒเธฃเน€เธเธฅเธตเนเธขเธเนเธเธฅเธเธ—เธฑเนเธเธซเธกเธ”เนเธเธซเธเนเธฒเธเธตเนเธเธฐเธชเธนเธเธซเธฒเธข เธเธธเธ“เธ•เนเธญเธเธเธฒเธฃเน€เธเธฅเธตเนเธขเธเธงเธฑเธเนเธ”เธขเธฅเธฐเธ—เธดเนเธเธเธฒเธฃเนเธเนเนเธเนเธเนเธซเธฃเธทเธญเนเธกเน?');
+            if (!discard) return;
+        }
+        setReportDate(newDateStr);
+    };
+
+    const renderTaskCard = (task: MasterTask, wo: WorkOrder, categoryId: string, isNew: boolean) => {
+        const isSelected = selectedTaskInfo?.task.id === task.id;
+        const isHighlighted = highlightedId === wo.id;
+        const project = realProjects.find(p => p.id === wo.projectId);
+
+        // Circular Progress Calculation
+        const progressColor = task.dailyProgress === 100 ? '#10b981' : task.dailyProgress > 0 ? '#3b82f6' : '#e2e8f0';
+
+        return (
+            <div
+                key={task.id}
+                onClick={() => handleSelectTask(task, wo, categoryId)}
+                style={{
+                    padding: '12px 14px', borderRadius: '16px', marginBottom: '8px',
+                    border: '1px solid', borderColor: isSelected ? '#3b82f6' : isHighlighted ? '#3b82f6' : isNew ? '#fcd34d' : '#f1f5f9',
+                    background: isSelected ? '#eff6ff' : isHighlighted ? '#eff6ff' : isNew ? '#fffbeb' : '#fff',
+                    cursor: 'pointer', transition: 'all 0.2s',
+                    boxShadow: isSelected || isHighlighted ? '0 8px 12px -3px rgba(59, 130, 246, 0.15)' : '0 2px 4px -1px rgba(0,0,0,0.05)',
+                    transform: isHighlighted && !isSelected ? 'scale(1.02)' : 'none',
+                    position: 'relative',
+                    display: 'flex', alignItems: 'center', gap: '12px'
+                }}
+            >
+                {/* Circular Progress */}
+                <div style={{ position: 'relative', width: '64px', height: '64px', flexShrink: 0 }}>
+                    <svg height="64" width="64" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="32" cy="32" r="26" stroke="#e2e8f0" strokeWidth="6" fill="none" />
+                        <circle
+                            cx="32" cy="32" r="26"
+                            stroke={progressColor} strokeWidth="6" fill="none"
+                            strokeDasharray={2 * Math.PI * 26}
+                            strokeDashoffset={(2 * Math.PI * 26) - (task.dailyProgress / 100) * (2 * Math.PI * 26)}
+                            strokeLinecap="round"
+                            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                        />
+                    </svg>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#334155', letterSpacing: '-0.03em' }}>{task.dailyProgress}%</span>
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', background: '#dbeafe', padding: '2px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>{wo.id}</div>
+                        {isNew && <div style={{ background: '#ef4444', color: '#fff', fontSize: '0.58rem', fontWeight: 800, padding: '2px 5px', borderRadius: '6px' }}>เนเธซเธกเน</div>}
+                    </div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{task.name}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
+                        <Building2 size={11} style={{ flexShrink: 0 }} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{wo.locationName}</span>
+                    </div>
+                </div>
+
+                {/* Project Image */}
+                <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, border: '1px solid #e2e8f0', background: '#f1f5f9' }}>
+                    {getTaskImage(task) ?
+                        <img loading="lazy" src={getTaskImage(task)!} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Task" /> :
+                        (project?.imageUrl ?
+                            <img loading="lazy" src={project.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Project" /> :
+                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}><Building2 size={20} /></div>
+                        )
+                    }
+                </div>
+            </div>
+        );
+    };
+
+    const renderTimeInput = (id: string, shift: 'normal' | 'otMorning' | 'otEvening', rangeStr: string) => {
+        const [start, end] = rangeStr.split(' - ').map(s => s.trim());
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: isEditingExisting ? 'auto' : 'none' }}>
+                <div
+                    onClick={() => openTimePicker(id, shift, 'start')}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px',
+                        padding: '4px 8px', cursor: 'pointer',
+                        fontSize: '0.75rem', fontWeight: 700, color: '#334155',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                    }}
+                >
+                    <Clock size={12} color="#94a3b8" />
+                    {start}
+                </div>
+                <span style={{ color: '#cbd5e1', fontWeight: 700 }}>-</span>
+                <div
+                    onClick={() => openTimePicker(id, shift, 'end')}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px',
+                        padding: '4px 8px', cursor: 'pointer',
+                        fontSize: '0.75rem', fontWeight: 700, color: '#334155',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                    }}
+                >
+                    {end}
+                </div>
+            </div>
+        );
+    };
+
+    const availableStaff = dailyContractors
+        .filter(c => (c.department || '').toLowerCase().endsWith('wh'))
+        .filter(c => !labor.some(l => l.staffId === c.id));
+
+    const availableContractors = realContractors.filter(c => !labor.some(l => l.contractorId === c.id));
+
+    return (
+        <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: isSidebarOpen ? '360px 1fr' : '1fr', 
+            gap: '2rem', 
+            height: 'calc(100vh - 120px)',
+            transition: 'grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}>
+            {timePickerTarget && <AnalogTimePicker value={timePickerTarget.currentValue} onChange={handleTimeChange} onClose={() => setTimePickerTarget(null)} />}
+            {activeModal && <BatchAddModal type={activeModal} availableItems={activeModal === 'Internal' ? availableStaff : availableContractors} onClose={() => setActiveModal(null)} onAdd={handleBatchAdd} />}
+            {showUnlockModal && selectedTaskInfo && (
+                <div style={{ 
+                    position: 'fixed', 
+                    top: 0, 
+                    left: 0, 
+                    right: 0, 
+                    bottom: 0, 
+                    background: 'rgba(15, 23, 42, 0.6)', 
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 2000, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center' 
+                }}>
+                    <div style={{ 
+                        background: '#ffffff', 
+                        borderRadius: '24px', 
+                        padding: '2rem', 
+                        width: '450px', 
+                        maxWidth: '90%', 
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1.25rem'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ background: '#fef2f2', padding: '10px', borderRadius: '12px', color: '#ef4444' }}>
+                                <Lock size={24} />
+                            </div>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>เธเธญเธญเธเธธเธกเธฑเธ•เธดเธเธฅเธ”เธฅเนเธญเธเนเธเนเนเธเธขเนเธญเธเธซเธฅเธฑเธ</h3>
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>เธชเธณเธซเธฃเธฑเธเนเธเธเธฒเธเธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเธเธฅเธ”เธฅเนเธญเธเน€เธเธดเธ 3 เธงเธฑเธเธ—เธตเนเธเธณเธซเธเธ”</p>
+                            </div>
+                        </div>
+
+                        <div style={{ padding: '12px 16px', background: '#eff6ff', borderRadius: '14px', border: '1px solid #bfdbfe' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e40af', display: 'block', marginBottom: '2px' }}>เธงเธฑเธเธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเธเธฅเธ”เธฅเนเธญเธ:</span>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#1e3a8a' }}>
+                                {new Date(pendingUnlockDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            </span>
+                        </div>
+
+                        <div>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>เน€เธซเธ•เธธเธเธฅเธเธงเธฒเธกเธเธณเน€เธเนเธเนเธเธเธฒเธฃเธเธฅเธ”เธฅเนเธญเธ: <span style={{ color: '#ef4444' }}>*</span></label>
+                            <textarea 
+                                placeholder="เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ” เน€เธเนเธ เธฅเธทเธกเธเธ”เธฃเธฒเธขเธเธฒเธเนเธเธฃเธฐเธเธ, เธฃเธญเน€เธญเธเธชเธฒเธฃเธขเธทเธเธขเธฑเธ..."
+                                value={unlockReason}
+                                onChange={(e) => setUnlockReason(e.target.value)}
+                                style={{ 
+                                    width: '100%', 
+                                    padding: '12px', 
+                                    borderRadius: '12px', 
+                                    border: '1px solid #cbd5e1', 
+                                    background: '#f8fafc',
+                                    fontSize: '0.85rem', 
+                                    outline: 'none', 
+                                    minHeight: '80px',
+                                    resize: 'none',
+                                    transition: 'all 0.2s',
+                                    boxSizing: 'border-box'
+                                }} 
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                            <button 
+                                onClick={() => {
+                                    setShowUnlockModal(false);
+                                    setUnlockReason('');
+                                }} 
+                                style={{ 
+                                    flex: 1, 
+                                    padding: '12px', 
+                                    borderRadius: '12px', 
+                                    border: '1px solid #cbd5e1', 
+                                    background: '#fff', 
+                                    color: '#64748b',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 700, 
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                เธขเธเน€เธฅเธดเธ
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    if (!unlockReason.trim()) {
+                                        alert('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเน€เธซเธ•เธธเธเธฅเนเธเธเธฒเธฃเธเธญเธเธฅเธ”เธฅเนเธญเธ');
+                                        return;
+                                    }
+                                    try {
+                                        await requestRetroactiveUnlock(
+                                            selectedTaskInfo.wo.id,
+                                            selectedTaskInfo.categoryId,
+                                            selectedTaskInfo.task.id,
+                                            pendingUnlockDate,
+                                            unlockReason
+                                        );
+                                        alert('เธชเนเธเธเธณเธเธญเธเธฅเธ”เธฅเนเธญเธเธชเธณเน€เธฃเนเธ (เนเธ”เนเธฃเธฑเธเธเธฒเธฃเธญเธเธธเธกเธฑเธ•เธดเธฃเธฐเธเธเธญเธฑเธ•เนเธเธกเธฑเธ•เธดเน€เธเนเธเน€เธงเธฅเธฒ 24 เธเธฑเนเธงเนเธกเธ)');
+                                        setReportDate(pendingUnlockDate);
+                                        setShowUnlockModal(false);
+                                        setUnlockReason('');
+                                    } catch (err) {
+                                        console.error(err);
+                                        alert('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”เนเธเธเธฒเธฃเธเธฅเธ”เธฅเนเธญเธ');
+                                    }
+                                }} 
+                                style={{ 
+                                    flex: 2, 
+                                    padding: '12px', 
+                                    borderRadius: '12px', 
+                                    border: 'none', 
+                                    background: '#3b82f6', 
+                                    color: '#fff', 
+                                    fontSize: '0.85rem',
+                                    fontWeight: 900, 
+                                    cursor: 'pointer',
+                                    boxShadow: '0 4px 6px rgba(59, 130, 246, 0.2)',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                เธขเธทเธเธขเธฑเธเธเธญเธเธฅเธ”เธฅเนเธญเธ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isSidebarOpen && (
+                <div style={{ background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ padding: '1.5rem', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ background: '#3b82f6', color: '#fff', padding: '8px', borderRadius: '10px' }}><LayoutDashboard size={20} /></div>
+                                <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>เธเธฒเธเธฃเธญเธฃเธฒเธขเธเธฒเธเธเธฅ</h2>
+                            </div>
+                            <button
+                                onClick={() => setIsSidebarOpen(false)}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: '#f1f5f9',
+                                    border: '1px solid #cbd5e1',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: '#64748b',
+                                    transition: 'all 0.2s',
+                                    padding: 0,
+                                    outline: 'none',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#3b82f6'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}
+                                title="เธเนเธญเธเนเธ–เธเธเนเธฒเธข"
+                            >
+                                <ChevronLeft size={16} strokeWidth={2.5} />
+                            </button>
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                            <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} size={16} />
+                            <input type="text" placeholder="เธเนเธเธซเธฒเน€เธฅเธเธ—เธตเนเธเธฒเธ เธซเธฃเธทเธญ เธชเธ–เธฒเธเธ—เธตเน..." style={{ width: '100%', padding: '10px 12px 10px 38px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '0.85rem', fontWeight: 600, boxSizing: 'border-box' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        </div>
+                    </div>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+                        {newTasks.length === 0 && inProgressTasks.length === 0 ? <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8' }}><div style={{ fontSize: '0.9rem', fontWeight: 700 }}>เนเธกเนเธกเธตเธเธฒเธเธ—เธตเนเธ•เนเธญเธเธฃเธฒเธขเธเธฒเธเนเธเธเธ“เธฐเธเธตเน</div></div> :
+                            <>
+                                {newTasks.length > 0 && <div style={{ marginBottom: '1.5rem' }}><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#f59e0b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}><Bell size={12} fill="currentColor" /> เธเธฒเธเนเธซเธกเน (New Assignments)</h3>{newTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, true))}</div>}
+                                {inProgressTasks.length > 0 && <div><h3 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', marginLeft: '8px', marginBottom: '10px', textTransform: 'uppercase' }}>เธเธฒเธเธ—เธตเนเธเธณเธฅเธฑเธเธ—เธณ (In Progress)</h3>{inProgressTasks.map(({ task, wo, categoryId }: any) => renderTaskCard(task, wo, categoryId, false))}</div>}
+                            </>
+                        }
+                    </div>
+                </div>
+            )}
+
+            <div style={{ background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'visible', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                {!selectedTaskInfo ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                        {!isSidebarOpen && (
+                            <button
+                                onClick={() => setIsSidebarOpen(true)}
+                                style={{
+                                    position: 'absolute',
+                                    top: '20px',
+                                    left: '20px',
+                                    background: '#eff6ff',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '10px',
+                                    padding: '8px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: 800,
+                                    fontSize: '0.85rem',
+                                    color: '#2563eb',
+                                    boxShadow: '0 4px 6px -1px rgba(59,130,246,0.1)',
+                                    transition: 'all 0.2s',
+                                    zIndex: 10
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = '#dbeafe'}
+                                onMouseOut={e => e.currentTarget.style.background = '#eff6ff'}
+                            >
+                                <ChevronRight size={16} strokeWidth={2.5} /> เนเธชเธ”เธเธฃเธฒเธขเธเธฒเธฃเธเธฒเธ
+                            </button>
+                        )}
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                            <LayoutDashboard size={64} style={{ opacity: 0.1, marginBottom: '1.5rem' }} />
+                            <h3 style={{ margin: 0, fontWeight: 800 }}>เน€เธฅเธทเธญเธเธฃเธฒเธขเธเธฒเธฃเธเธฒเธเธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเธฃเธฒเธขเธเธฒเธเธเธฅ</h3>
+                            <p style={{ margin: '8px 0 0 0', fontSize: '0.9rem' }}>เธฃเธฒเธขเธเธฒเธฃเธเธฒเธเธ—เธตเนเธ—เนเธฒเธเนเธ”เนเธฃเธฑเธเธกเธญเธเธซเธกเธฒเธขเธเธฐเนเธชเธ”เธเนเธเนเธ–เธเธ”เนเธฒเธเธเนเธฒเธข</p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                            <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'visible', display: 'flex', minHeight: '130px' }}>
+                                <div style={{ width: '150px', background: '#f1f5f9', position: 'relative', flexShrink: 0, borderTopLeftRadius: '15px', borderBottomLeftRadius: '15px', overflow: 'hidden' }}>
+                                    {getTaskImage(selectedTaskInfo.task) ? <img src={getTaskImage(selectedTaskInfo.task)!} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setZoomImage(getTaskImage(selectedTaskInfo.task)!)} alt="Task" /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}><AlertCircle size={24} /></div>}
+                                    <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px' }}>BEFORE</div>
+                                </div>
+                                <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                                {!isSidebarOpen && (
+                                                    <button
+                                                        onClick={() => setIsSidebarOpen(true)}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            background: '#eff6ff',
+                                                            border: '1px solid #dbeafe',
+                                                            borderRadius: '8px',
+                                                            padding: '4px 10px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 800,
+                                                            color: '#2563eb',
+                                                            transition: 'all 0.2s',
+                                                            marginRight: '4px'
+                                                        }}
+                                                        onMouseOver={e => { e.currentTarget.style.background = '#dbeafe'; }}
+                                                        onMouseOut={e => { e.currentTarget.style.background = '#eff6ff'; }}
+                                                    >
+                                                        <ChevronRight size={14} strokeWidth={2.5} />
+                                                        เนเธชเธ”เธเธฃเธฒเธขเธเธฒเธฃเธเธฒเธ
+                                                    </button>
+                                                )}
+                                                <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#3b82f6', textTransform: 'uppercase', background: '#dbeafe', padding: '2px 8px', borderRadius: '6px' }}>{selectedTaskInfo.wo.id}</div>
+                                                {(() => {
+                                                    const project = realProjects.find(p => p.id === selectedTaskInfo.wo.projectId);
+                                                    return project ? (
+                                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>๐ข {project.name}</div>
+                                                    ) : null;
+                                                })()}
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px', border: '1px solid #dbeafe' }}>
+                                                        <MapPin size={12} color="#3b82f6" />
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e40af' }}>{selectedTaskInfo.task.position || '-'}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '6px', border: '1px solid #dcfce7' }}>
+                                                        <Package size={12} color="#15803d" />
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#166534' }}>{selectedTaskInfo.task.amount || 1} {selectedTaskInfo.task.unit || 'เธเธธเธ”'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>{selectedTaskInfo.task.name}</h2>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end', minWidth: '200px', marginLeft: '20px' }}>
+                                            {/* Zone A: SLA + Countdown */}
+                                            {(() => {
+                                                const slaHoursMap = {
+                                                    'Immediately': 4,
+                                                    '24h': 24,
+                                                    '1-3d': 72,
+                                                    '3-7d': 168,
+                                                    '7-14d': 336,
+                                                    '14-30d': 720
+                                                };
+                                                const slaDuration = slaHoursMap[selectedTaskInfo.task.slaCategory as keyof typeof slaHoursMap] || 24;
+                                                return (
+                                                    <div style={{ width: '100%' }}>
+                                                        <SLACountdown startTime={selectedTaskInfo.task.slaStartTime || selectedTaskInfo.task.startDate || new Date().toISOString()} durationHours={slaDuration} />
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Zone B: Date Selection */}
+                                            <div style={{ 
+                                                width: '100%', 
+                                                padding: '8px 16px', 
+                                                background: '#f8fafc', 
+                                                borderRadius: '12px', 
+                                                border: '1px solid #e2e8f0',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                position: 'relative'
+                                            }}>
+                                                <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase' }}>เธฃเธฒเธขเธเธฒเธเธฃเธฐเธเธธเธงเธฑเธเธ—เธตเน</div>
+                                                <div 
+                                                    onClick={() => setShowCalendarDropdown(!showCalendarDropdown)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        color: '#1e40af',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 900,
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none'
+                                                    }}
+                                                >
+                                                    <Calendar size={14} />
+                                                    <span>{new Date(reportDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                                </div>
+
+                                                {showCalendarDropdown && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: '100%',
+                                                        right: 0,
+                                                        marginTop: '8px',
+                                                        zIndex: 1000,
+                                                        background: '#fff',
+                                                        border: '1px solid #cbd5e1',
+                                                        borderRadius: '16px',
+                                                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                                                        padding: '16px',
+                                                        width: '280px'
+                                                    }}>
+                                                        {/* Calendar Header */}
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (calendarMonth === 0) {
+                                                                        setCalendarMonth(11);
+                                                                        setCalendarYear(prev => prev - 1);
+                                                                    } else {
+                                                                        setCalendarMonth(prev => prev - 1);
+                                                                    }
+                                                                }}
+                                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}
+                                                            >
+                                                                <ChevronLeft size={16} />
+                                                            </button>
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>
+                                                                {['เธกเธเธฃเธฒเธเธก', 'เธเธธเธกเธ เธฒเธเธฑเธเธเน', 'เธกเธตเธเธฒเธเธก', 'เน€เธกเธฉเธฒเธขเธ', 'เธเธคเธฉเธ เธฒเธเธก', 'เธกเธดเธ–เธธเธเธฒเธขเธ', 'เธเธฃเธเธเธฒเธเธก', 'เธชเธดเธเธซเธฒเธเธก', 'เธเธฑเธเธขเธฒเธขเธ', 'เธ•เธธเธฅเธฒเธเธก', 'เธเธคเธจเธเธดเธเธฒเธขเธ', 'เธเธฑเธเธงเธฒเธเธก'][calendarMonth]} {calendarYear + 543}
+                                                            </span>
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (calendarMonth === 11) {
+                                                                        setCalendarMonth(0);
+                                                                        setCalendarYear(prev => prev + 1);
+                                                                    } else {
+                                                                        setCalendarMonth(prev => prev + 1);
+                                                                    }
+                                                                }}
+                                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}
+                                                            >
+                                                                <ChevronRight size={16} />
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Weekdays */}
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '8px' }}>
+                                                            {['เธญเธฒ', 'เธ', 'เธญ', 'เธ', 'เธเธค', 'เธจ', 'เธช'].map((day, i) => (
+                                                                <span key={i} style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>{day}</span>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* Monthly Days Grid */}
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center' }}>
+                                                            {/* Blank cells for padding first day */}
+                                                            {Array.from({ length: new Date(calendarYear, calendarMonth, 1).getDay() }).map((_, idx) => (
+                                                                <div key={`blank-${idx}`} style={{ width: '32px', height: '32px' }} />
+                                                            ))}
+
+                                                            {/* Actual Days */}
+                                                            {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, idx) => {
+                                                                const day = idx + 1;
+                                                                const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                                                const status = getDateStatus(dateStr, selectedTaskInfo.task, selectedTaskInfo.wo);
+                                                                
+                                                                let dotColor = '';
+                                                                if (status === 'reported') dotColor = '#10b981';
+                                                                else if (status === 'unlocked') dotColor = '#f59e0b';
+                                                                else if (status === 'locked') dotColor = '#ef4444';
+
+                                                                const isSelected = reportDate === dateStr;
+                                                                const isDisabled = status === 'disabled';
+
+                                                                return (
+                                                                    <div 
+                                                                        key={`day-${day}`}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (isDisabled) return;
+                                                                            if (status === 'locked') {
+                                                                                setPendingUnlockDate(dateStr);
+                                                                                setUnlockReason('');
+                                                                                setShowUnlockModal(true);
+                                                                                setShowCalendarDropdown(false);
+                                                                            } else {
+                                                                                handleDateChange(dateStr);
+                                                                                setShowCalendarDropdown(false);
+                                                                            }
+                                                                        }}
+                                                                        style={{
+                                                                            width: '32px',
+                                                                            height: '32px',
+                                                                            display: 'flex',
+                                                                            flexDirection: 'column',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            borderRadius: '8px',
+                                                                            fontSize: '0.75rem',
+                                                                            fontWeight: 800,
+                                                                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                                                            position: 'relative',
+                                                                            background: isSelected ? '#3b82f6' : 'transparent',
+                                                                            color: isDisabled ? '#cbd5e1' : isSelected ? '#fff' : '#334155',
+                                                                            opacity: isDisabled ? 0.6 : 1,
+                                                                            transition: 'all 0.15s'
+                                                                        }}
+                                                                        onMouseOver={e => {
+                                                                            if (!isDisabled && !isSelected) {
+                                                                                e.currentTarget.style.background = '#f1f5f9';
+                                                                            }
+                                                                        }}
+                                                                        onMouseOut={e => {
+                                                                            if (!isDisabled && !isSelected) {
+                                                                                e.currentTarget.style.background = 'transparent';
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {day}
+                                                                        {dotColor && (
+                                                                            <div style={{
+                                                                                position: 'absolute',
+                                                                                bottom: '3px',
+                                                                                width: '4px',
+                                                                                height: '4px',
+                                                                                borderRadius: '50%',
+                                                                                background: isSelected ? '#fff' : dotColor
+                                                                            }} />
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        {/* Calendar Legend */}
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            marginTop: '16px',
+                                                            paddingTop: '12px',
+                                                            borderTop: '1px solid #f1f5f9',
+                                                            fontSize: '0.65rem',
+                                                            fontWeight: 800
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+                                                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                                                                <span>เธกเธตเธเนเธญเธกเธนเธฅ</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+                                                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b' }} />
+                                                                <span>เธขเธฑเธเนเธกเนเนเธ”เนเธฅเธ</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+                                                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }} />
+                                                                <span>เนเธกเนเธกเธตเธเนเธญเธกเธนเธฅ</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
+                            {isReportDatePast3Days && (
+                                <div style={{
+                                    background: '#fff7ed',
+                                    border: '1px solid #fed7aa',
+                                    borderRadius: '16px',
+                                    padding: '1.25rem',
+                                    marginBottom: '2rem',
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '1rem',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+                                }}>
+                                    <div style={{ background: '#ffedd5', padding: '10px', borderRadius: '12px', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Lock size={20} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <h4 style={{ margin: '0 0 4px 0', color: '#c2410c', fontSize: '0.95rem', fontWeight: 900 }}>เธฃเธฒเธขเธเธฒเธเธเธตเนเธ–เธนเธเธฅเนเธญเธเธเธฒเธฃเนเธเนเนเธเธเธงเธฒเธกเธเธทเธเธซเธเนเธฒเนเธฅเธฐเธฃเธนเธเธ เธฒเธ</h4>
+                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#ea580c', fontWeight: 600, lineHeight: 1.5 }}>
+                                            เน€เธเธทเนเธญเธเธเธฒเธเธงเธฑเธเธ—เธตเนเธฃเธฒเธขเธเธฒเธเน€เธเธดเธ 3 เธงเธฑเธเธ—เธตเนเธเธณเธซเธเธ” เธเธธเธ“เธชเธฒเธกเธฒเธฃเธ–เนเธเนเนเธเนเธ”เนเน€เธเธเธฒเธฐเธเนเธญเธกเธนเธฅเนเธฃเธเธเธฒเธเนเธฅเธฐเธเธฒเธฃเน€เธเนเธฒเธ—เธณเธเธฒเธเน€เธ—เนเธฒเธเธฑเนเธ เธซเธฒเธเธ•เนเธญเธเธเธฒเธฃเนเธเนเนเธเธเธงเธฒเธกเธเธทเธเธซเธเนเธฒ เธฃเธนเธเธ เธฒเธ เธซเธฃเธทเธญเนเธเนเธ•เธซเธเนเธฒเธเธฒเธ เธเธฃเธธเธ“เธฒเธเธ”เธ—เธตเนเธงเธฑเธเธ—เธตเนเธฃเธฒเธขเธเธฒเธเนเธฅเธฐเธชเนเธเธเธณเธเธญเธเธฅเธ”เธฅเนเธญเธเธขเนเธญเธเธซเธฅเธฑเธเธเธฒเธเนเธญเธ”เธกเธดเธ
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                            {/* SLA MISMATCH WARNING & BOUNCE BACK */}
+                            {selectedTaskInfo.task.estimatedSla && 
+                             selectedTaskInfo.task.slaCategory && 
+                             selectedTaskInfo.task.estimatedSla !== selectedTaskInfo.task.slaCategory && 
+                             (selectedTaskInfo.task.dailyProgress || 0) === 0 && (
+                                <div style={{ 
+                                    background: '#fff7ed', 
+                                    border: '1px solid #fed7aa', 
+                                    borderRadius: '12px', 
+                                    padding: '1.25rem', 
+                                    marginBottom: '2rem',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+                                }}>
+                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                        <div style={{ background: '#ffedd5', padding: '10px', borderRadius: '12px', color: '#f97316' }}>
+                                            <AlertTriangle size={24} />
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: '0 0 4px 0', color: '#9a3412', fontSize: '0.95rem', fontWeight: 900 }}>SLA เนเธกเนเธ•เธฃเธเธ•เธฒเธกเธ—เธตเนเธเธฒเธ”เธเธฒเธฃเธ“เน</h4>
+                                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#c2410c', fontWeight: 500 }}>
+                                                เธเธธเธ“เธเธญ: <span style={{ fontWeight: 800 }}>{selectedTaskInfo.task.estimatedSla}</span> | 
+                                                เนเธญเธ”เธกเธดเธเธฃเธฐเธเธธ: <span style={{ fontWeight: 800 }}>{selectedTaskInfo.task.slaCategory}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleBounceBackSLA(selectedTaskInfo.wo.id, selectedTaskInfo.categoryId, selectedTaskInfo.task.id)}
+                                        disabled={isSubmitting}
+                                        style={{
+                                            background: '#ef4444',
+                                            color: '#fff',
+                                            border: 'none',
+                                            padding: '10px 18px',
+                                            borderRadius: '10px',
+                                            fontSize: '0.85rem',
+                                            fontWeight: 800,
+                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <XCircle size={18} /> เธ•เธตเธเธฅเธฑเธเนเธซเนเธเธฃเธฐเน€เธกเธดเธเนเธซเธกเน
+                                    </button>
+                                </div>
+                            )}
+
+                            <section style={{ marginBottom: '2.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={20} color="#3b82f6" /> เธเธฒเธฃเธเธฑเธ”เธเธฒเธฃเธเธเธเธฒเธ (Labor)</h3>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        {selectedTaskInfo.task.history?.some(h => (h.date?.split('T')[0]) === reportDate) && (
+                                            isEditingExisting ? (
+                                                <>
+                                                    <button 
+                                                        onClick={async () => {
+                                                            const confirmSave = window.confirm('เธเธธเธ“เธ•เนเธญเธเธเธฒเธฃเธเธฑเธเธ—เธถเธเธเธฒเธฃเนเธเนเนเธเธเนเธญเธกเธนเธฅเธฃเธฒเธขเธเธฒเธเธฃเธฒเธขเธงเธฑเธเธเธตเนเนเธเนเธซเธฃเธทเธญเนเธกเน?');
+                                                            if (confirmSave) {
+                                                                await handleSubmit();
+                                                            }
+                                                        }}
+                                                        disabled={isSubmitting || isUploading}
+                                                        style={{ 
+                                                            padding: '6px 12px', 
+                                                            borderRadius: '8px', 
+                                                            border: '1px solid #10b981', 
+                                                            background: '#f0fdf4', 
+                                                            color: '#10b981', 
+                                                            fontSize: '0.75rem', 
+                                                            fontWeight: 800, 
+                                                            cursor: (isSubmitting || isUploading) ? 'not-allowed' : 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <CheckCircle2 size={14} /> เธเธฑเธเธ—เธถเธเธเธฒเธฃเนเธเนเนเธ
+                                                    </button>
+                                                    <button 
+                                                        onClick={handleCancelEdit}
+                                                        style={{ 
+                                                            padding: '6px 12px', 
+                                                            borderRadius: '8px', 
+                                                            border: '1px solid #ef4444', 
+                                                            background: '#fef2f2', 
+                                                            color: '#ef4444', 
+                                                            fontSize: '0.75rem', 
+                                                            fontWeight: 800, 
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <XCircle size={14} /> เธขเธเน€เธฅเธดเธ
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setIsEditingExisting(true)}
+                                                    style={{ 
+                                                        padding: '6px 12px', 
+                                                        borderRadius: '8px', 
+                                                        border: '1px solid #6366f1', 
+                                                        background: '#fff', 
+                                                        color: '#6366f1', 
+                                                        fontSize: '0.75rem', 
+                                                        fontWeight: 800, 
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    <Edit2 size={14} /> เนเธเนเนเธเธเนเธญเธกเธนเธฅ
+                                                </button>
+                                            )
+                                        )}
+                                        {isEditingExisting && (
+                                            <>
+                                                <button onClick={() => setActiveModal('Internal')} style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={14} /> เธเธเธเธฒเธเธเธฃเธดเธฉเธฑเธ— (Internal)</button>
+                                                <button onClick={() => setActiveModal('Outsource')} style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={14} /> เธเธเธเธฒเธเธเธนเนเธฃเธฑเธเน€เธซเธกเธฒ (Subio)</button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', overflowX: 'auto' }}>
+                                    {labor.length === 0 ? (
+                                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700 }}>
+                                            <Users size={32} color="#cbd5e1" style={{ marginBottom: '10px' }} />
+                                            <div>เธขเธฑเธเนเธกเนเธกเธตเธเนเธญเธกเธนเธฅเนเธฃเธเธเธฒเธ (เธเธฃเธธเธ“เธฒเธเธ”เธเธธเนเธกเน€เธเธดเนเธกเธเธเธเธฒเธเธ”เนเธฒเธเธเธ)</div>
+                                        </div>
+                                    ) : (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '950px' }}>
+                                            <thead>
+                                                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '50px' }}>No.</th>
+                                                    <th style={{ padding: '12px 16px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', minWidth: '220px' }}>เธเธทเนเธญเนเธฃเธเธเธฒเธ</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>เน€เธงเธฅเธฒเธ—เธณเธเธฒเธเธเธเธ•เธด</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>OT : เน€เธเนเธฒ</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>OT : เน€เธ—เธตเนเธขเธ</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '140px' }}>OT : เน€เธขเนเธ</th>
+                                                    <th style={{ padding: '12px 16px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', minWidth: '200px' }}>Leave : เธฅเธฒ</th>
+                                                    <th style={{ padding: '12px 10px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', textAlign: 'center', width: '80px' }}>เธเธฑเธ”เธเธฒเธฃ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {labor.map((l, idx) => (
+                                                    <tr key={l.id} style={{ borderBottom: '1px solid #e2e8f0', transition: 'all 0.15s' }}>
+                                                        <td style={{ padding: '12px 10px', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', textAlign: 'center' }}>{idx + 1}</td>
+                                                        <td style={{ padding: '12px 16px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div style={{ width: 28, height: 28, borderRadius: 8, background: l.membership === 'Internal' ? '#eff6ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                                    {l.membership === 'Internal' ? <User size={14} color="#2563eb" /> : <HardHat size={14} color="#059669" />}
+                                                                </div>
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>
+                                                                        {l.employeeId ? `${l.employeeId} : ` : ''}{l.staffName || l.affiliation}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>
+                                                                        {l.membership === 'Internal' ? 'เธเธเธเธฒเธเธเธฃเธดเธฉเธฑเธ— (Internal)' : 'เธ—เธตเธกเธเธฒเธเธเธนเนเธฃเธฑเธเน€เธซเธกเธฒ (Subio)'}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        
+                                                        {/* Normal Shift */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && toggleShift(l.id, 'normal')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #2563eb', 
+                                                                        background: l.shifts?.normal ? '#2563eb' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: isEditingExisting ? 'pointer' : 'default',
+                                                                        opacity: isEditingExisting ? 1 : 0.6
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.normal && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.normal ? (
+                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'normal', l.shiftTimes?.day || '08:00 - 17:00') : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                            <Clock size={12} /> 08:00 - 17:00
+                                                                        </div>
+                                                                    )
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* OT Morning */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otMorning')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #f59e0b', 
+                                                                        background: l.shifts?.otMorning ? '#f59e0b' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
+                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.otMorning ? (
+                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'otMorning', l.shiftTimes?.otMorning || '06:00 - 08:00') : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                            <Clock size={12} /> 06:00 - 08:00
+                                                                        </div>
+                                                                    )
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* OT Noon */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otNoon')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #f59e0b', 
+                                                                        background: l.shifts?.otNoon ? '#f59e0b' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
+                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.otNoon ? (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                        <Clock size={12} /> 12:00 - 13:00
+                                                                    </div>
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* OT Evening */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                <div 
+                                                                    onClick={() => isEditingExisting && l.shifts?.normal && toggleShift(l.id, 'otEvening')} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #f59e0b', 
+                                                                        background: l.shifts?.otEvening ? '#f59e0b' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: (isEditingExisting && l.shifts?.normal) ? 'pointer' : 'default',
+                                                                        opacity: (isEditingExisting && l.shifts?.normal) ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    {l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.shifts?.otEvening ? (
+                                                                    l.membership === 'Internal' ? renderTimeInput(l.id, 'otEvening', l.shiftTimes?.otEvening || '18:00 - 21:00') : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>
+                                                                            <Clock size={12} /> 18:00 - 21:00
+                                                                        </div>
+                                                                    )
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Leave : เธฅเธฒ */}
+                                                        <td style={{ padding: '12px 16px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div 
+                                                                    onClick={() => {
+                                                                        if (!isEditingExisting) return;
+                                                                        setLabor(prev => prev.map(item => {
+                                                                            if (item.id === l.id) {
+                                                                                const leaveActive = !item.leave?.active;
+                                                                                return {
+                                                                                    ...item,
+                                                                                    leave: {
+                                                                                        active: leaveActive,
+                                                                                        time: item.leave?.time || '08:00 - 17:00',
+                                                                                        medCertFileUrl: item.leave?.medCertFileUrl || ''
+                                                                                    }
+                                                                                };
+                                                                            }
+                                                                            return item;
+                                                                        }));
+                                                                    }} 
+                                                                    style={{ 
+                                                                        width: 18, height: 18, borderRadius: 4, 
+                                                                        border: '2px solid #ef4444', 
+                                                                        background: l.leave?.active ? '#ef4444' : '#fff', 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        cursor: isEditingExisting ? 'pointer' : 'default',
+                                                                        opacity: isEditingExisting ? 1 : 0.6
+                                                                    }}
+                                                                >
+                                                                    {l.leave?.active && <CheckCircle2 size={12} color="#fff" />}
+                                                                </div>
+                                                                {l.leave?.active ? (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        {/* Leave Time */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff1f2', borderRadius: '8px', border: '1px solid #fecdd3', padding: '2px 6px', fontSize: '0.75rem', fontWeight: 700, color: '#e11d48' }}>
+                                                                            <Clock size={12} /> 08:00 - 17:00
+                                                                        </div>
+                                                                        
+                                                                        {/* Attachment Upload & Action Icons */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                            {l.leave?.medCertFileUrl ? (
+                                                                                <>
+                                                                                    <a 
+                                                                                        href={l.leave.medCertFileUrl} 
+                                                                                        target="_blank" 
+                                                                                        rel="noreferrer" 
+                                                                                        style={{ 
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                                            width: '24px', height: '24px', borderRadius: '6px', 
+                                                                                            background: '#eff6ff', color: '#2563eb', transition: 'all 0.2s'
+                                                                                        }}
+                                                                                        title="เธ”เธนเนเธเธฃเธฑเธเธฃเธญเธเนเธเธ—เธขเน"
+                                                                                    >
+                                                                                        <Eye size={12} />
+                                                                                    </a>
+                                                                                    {isEditingExisting && (
+                                                                                        <button 
+                                                                                            onClick={() => handleRemoveLeaveCert(l.id)} 
+                                                                                            style={{ 
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                                                width: '24px', height: '24px', borderRadius: '6px', 
+                                                                                                background: '#fef2f2', color: '#ef4444', border: 'none', 
+                                                                                                cursor: 'pointer', transition: 'all 0.2s', padding: 0
+                                                                                            }}
+                                                                                            title="เธฅเธเธฃเธนเธเนเธเธ"
+                                                                                        >
+                                                                                            <Trash2 size={12} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                isEditingExisting ? (
+                                                                                    <label 
+                                                                                        style={{ 
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                                            width: '24px', height: '24px', borderRadius: '6px', 
+                                                                                            background: '#f1f5f9', color: '#64748b', cursor: 'pointer',
+                                                                                            transition: 'all 0.2s'
+                                                                                        }}
+                                                                                        title="เนเธเธเนเธเธฃเธฑเธเธฃเธญเธเนเธเธ—เธขเน/เธซเธฅเธฑเธเธเธฒเธ"
+                                                                                    >
+                                                                                        <Paperclip size={12} />
+                                                                                        <input
+                                                                                            type="file"
+                                                                                            accept="image/*"
+                                                                                            style={{ display: 'none' }}
+                                                                                            onChange={(e) => handleUploadLeaveCert(l.id, e.target.files?.[0] || null)}
+                                                                                        />
+                                                                                    </label>
+                                                                                ) : (
+                                                                                    <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>เนเธกเนเธกเธตเธซเธฅเธฑเธเธเธฒเธ</span>
+                                                                                )
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span style={{ color: '#cbd5e1', fontWeight: 800 }}>-</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Actions (Delete Row) */}
+                                                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                            {isEditingExisting ? (
+                                                                <button 
+                                                                    onClick={() => setLabor(labor.filter(item => item.id !== l.id))} 
+                                                                    style={{
+                                                                        background: 'none', border: 'none', cursor: 'pointer', 
+                                                                        color: '#ef4444', transition: 'all 0.2s', padding: '4px'
+                                                                    }}
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            ) : (
+                                                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8' }}>เธฅเนเธญเธเนเธฅเนเธง</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* เธเธฃเธฑเธเธชเธฑเธ”เธชเนเธงเธ Grid เนเธซเนเธเนเธญเธเธเธงเธฒเธกเธเธทเธเธซเธเนเธฒเนเธเธเธฅเธ เนเธฅเธฐเธเนเธญเธเธฃเธนเธเธ–เนเธฒเธขเธเธงเนเธฒเธเธเธถเนเธเน€เธเธทเนเธญเธเธธเนเธกเนเธ—เนเธเธเธฐเนเธกเนเธ•เธเธเธฃเธฃเธ—เธฑเธ”เนเธซเธกเน */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.2fr) 2.8fr', gap: '2.5rem' }}>
+                                <div>
+                                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: '0 0 1.25rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}><CheckCircle2 size={20} color="#10b981" /> เธเธงเธฒเธกเธเธทเธเธซเธเนเธฒ</h3>
+                                    <div style={{ padding: '1.5rem', background: '#f8fafc', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '1.5rem' }}>
+                                            <div style={{ flex: 1, position: 'relative', opacity: isProgressNotePhotosEditable ? 1 : 0.6, pointerEvents: isProgressNotePhotosEditable ? 'auto' : 'none', transition: 'all 0.3s' }}>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    step="5"
+                                                    value={progress}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setProgress(Math.min(progressBounds.max, Math.max(progressBounds.min, val)));
+                                                    }}
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        height: '10px', 
+                                                        borderRadius: '6px', 
+                                                        appearance: 'none', 
+                                                        background: `linear-gradient(to right, #475569 0%, #475569 ${progressBounds.min}%, #3b82f6 ${progressBounds.min}%, #3b82f6 ${progress}%, #e2e8f0 ${progress}%, #e2e8f0 100%)`, 
+                                                        cursor: 'pointer', 
+                                                        outline: 'none',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div style={{ position: 'relative', width: '100px' }}>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    value={progress}
+                                                    disabled={!isProgressNotePhotosEditable}
+                                                    onChange={(e) => setProgress(Math.min(progressBounds.max, Math.max(progressBounds.min, parseInt(e.target.value) || 0)))}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '8px 30px 8px 12px',
+                                                        borderRadius: '10px',
+                                                        border: '1px solid #3b82f6',
+                                                        fontSize: '1rem',
+                                                        fontWeight: 900,
+                                                        color: '#1e40af',
+                                                        textAlign: 'center',
+                                                        outline: 'none',
+                                                        boxShadow: '0 2px 4px rgba(59, 130, 246, 0.1)'
+                                                    }}
+                                                />
+                                                <span style={{ position: 'absolute', right: '10px', top: '51%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: 800, color: '#3b82f6' }}>%</span>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: progress <= progressBounds.min || progress > progressBounds.max ? '#ef4444' : '#64748b' }}>
+                                                {(() => {
+                                                    const hasDataOnDate = selectedTaskInfo?.task.history?.some(h => (h.date?.split('T')[0]) === reportDate);
+                                                    if (hasDataOnDate && !isEditingExisting) {
+                                                        return `* เธฃเธฒเธขเธเธฒเธเธเธตเนเธ–เธนเธเธเธฑเธเธ—เธถเธเนเธงเนเนเธฅเนเธงเธ—เธตเน ${progress}%`;
+                                                    }
+                                                    if (reportDate === new Date().toISOString().split('T')[0]) {
+                                                        return `* เธเธงเธฒเธกเธเธทเธเธซเธเนเธฒเธเธฑเธเธเธธเธเธฑเธเธ•เนเธญเธเธฃเธฐเธเธธเธกเธฒเธเธเธงเนเธฒ ${progressBounds.min}%`;
+                                                    }
+                                                    return `* เธชเธณเธซเธฃเธฑเธเธงเธฑเธเธ—เธตเนเน€เธฅเธทเธญเธ เธ•เนเธญเธเธฃเธฐเธเธธเธฃเธฐเธซเธงเนเธฒเธ ${progressBounds.min + 1}% เธ–เธถเธ ${progressBounds.max}%`;
+                                                })()}
+                                            </div>
+                                            {isProgressNotePhotosEditable && progress > 0 && <button onClick={() => setProgress(0)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>เธฅเนเธฒเธเธเนเธฒ</button>}
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '1rem', pointerEvents: isProgressNotePhotosEditable ? 'auto' : 'none', opacity: isProgressNotePhotosEditable ? 1 : 0.6 }}>
+                                            {[0, 25, 50, 75, 100].map(v => {
+                                                const isLocked = v < progressBounds.min || v > progressBounds.max;
+                                                return (
+                                                <button
+                                                    key={v}
+                                                    onClick={() => setProgress(v)}
+                                                    disabled={isLocked}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '8px 0',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid',
+                                                        borderColor: progress === v ? '#3b82f6' : '#e2e8f0',
+                                                        background: progress === v ? '#eff6ff' : isLocked ? '#f1f5f9' : '#fff',
+                                                        color: progress === v ? '#2563eb' : isLocked ? '#94a3b8' : '#64748b',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 800,
+                                                        cursor: isLocked ? 'not-allowed' : 'pointer',
+                                                        transition: 'all 0.2s',
+                                                        opacity: isLocked ? 0.6 : 1,
+                                                        textDecoration: isLocked ? 'line-through' : 'none'
+                                                    }}
+                                                >
+                                                    {v === 0 ? 'เธฅเนเธฒเธ' : v === 100 ? 'เน€เธชเธฃเนเธเธชเธดเนเธ' : `${v}%`}
+                                                </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    {progress === 100 && reportDate !== new Date().toISOString().split('T')[0] && (
+                                        <div style={{ marginTop: '1rem', padding: '12px', background: '#fff7ed', borderRadius: '12px', fontSize: '0.75rem', color: '#c2410c', fontWeight: 700, display: 'flex', gap: '8px', border: '1px solid #ffedd5' }}>
+                                            <AlertCircle size={14} /> <span>เธเนเธญเธเธงเธฃเธฃเธฐเธงเธฑเธ: เธเธฒเธฃเธฅเธเธเธดเธ”เธเธฒเธ (100%) เธขเนเธญเธเธซเธฅเธฑเธ เธเธงเธฃเธ—เธณเน€เธเธเธฒเธฐเนเธเธเธฃเธ“เธตเธ—เธตเนเนเธกเนเธกเธตเธฃเธฒเธขเธเธฒเธเธเธญเธเธงเธฑเธเธ–เธฑเธ”เนเธ</span>
+                                        </div>
+                                    )}
+                                    {progress === 100 && reportDate === new Date().toISOString().split('T')[0] && <div style={{ marginTop: '1rem', padding: '12px', background: '#eff6ff', borderRadius: '12px', fontSize: '0.75rem', color: '#1e40af', fontWeight: 700, display: 'flex', gap: '8px' }}><Info size={14} /> <span>เธขเธทเธเธขเธฑเธเธ—เธตเน 100% เธฃเธฐเธเธเธเธฐเนเธเนเธฃเธนเธเธ เธฒเธเน€เธเนเธเธฃเธนเธ "เธซเธฅเธฑเธเธเนเธญเธก"</span></div>}
+                                </div>
+
+                                <div>
+                                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Camera size={20} color="#3b82f6" /> เธฃเธนเธเธ–เนเธฒเธขเธฃเธฒเธขเธเธฒเธเธเธฅ
+                                    </h3>
+
+                                    {/* === LB-Style Pill Tab Buttons === */}
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                                        {[
+                                            { id: 'site' as const, label: 'เธฃเธนเธเธ–เนเธฒเธขเธซเธเนเธฒเธเธฒเธ', required: 2, current: sitePhotos.filter(Boolean).length, isMinimum: true, show: true },
+                                            { id: 'regular' as const, label: 'เธเธฐเธเธเธ•เธด', required: 4, current: laborRegularPhotos.filter(Boolean).length, isMinimum: false, show: labor.some(l => l.shifts?.normal) },
+                                            { id: 'otMorning' as const, label: 'OT เน€เธเนเธฒ', required: 2, current: laborOtMorningPhotos.filter(Boolean).length, isMinimum: false, show: labor.some(l => l.shifts?.otMorning) },
+                                            { id: 'otNoon' as const, label: 'OT เน€เธ—เธตเนเธขเธ', required: 2, current: laborOtNoonPhotos.filter(Boolean).length, isMinimum: false, show: labor.some(l => l.shifts?.otNoon) },
+                                            { id: 'otEvening' as const, label: 'OT เน€เธขเนเธ', required: 2, current: laborOtEveningPhotos.filter(Boolean).length, isMinimum: false, show: labor.some(l => l.shifts?.otEvening) },
+                                        ].filter(tab => tab.show).map(tab => {
+                                            const isComplete = tab.current >= tab.required;
+                                            const isActive = activePhotoTab === tab.id;
+                                            return (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => setActivePhotoTab(tab.id)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '10px',
+                                                        padding: '10px 12px', borderRadius: '14px', border: '2px solid',
+                                                        borderColor: isActive ? (isComplete ? '#059669' : '#334155') : (isComplete ? '#10b981' : '#cbd5e1'),
+                                                        background: isActive ? (isComplete ? '#d1fae5' : '#f1f5f9') : (isComplete ? '#ecfdf5' : '#ffffff'),
+                                                        color: isComplete ? '#059669' : '#475569',
+                                                        cursor: 'pointer', textAlign: 'left',
+                                                        transition: 'all 0.2s cubic-bezier(0.4,0,0.2,1)',
+                                                        transform: isActive ? 'scale(1.02)' : 'scale(1)',
+                                                        boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                                                        minWidth: '135px',
+                                                    }}
+                                                >
+                                                    <span style={{ flexShrink: 0 }}>
+                                                        {isComplete
+                                                            ? <CheckCircle2 size={18} color="#059669" />
+                                                            : <Camera size={18} color="#94a3b8" />}
+                                                    </span>
+                                                    <span style={{ flex: 1 }}>
+                                                        <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, lineHeight: 1.2 }}>{tab.label}</span>
+                                                        <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: isComplete ? '#059669' : '#94a3b8', marginTop: '2px' }}>
+                                                            เนเธเธเนเธฅเนเธง {tab.current}/{tab.required} เธฃเธนเธ{tab.isMinimum ? ' (เธเธฑเนเธเธ•เนเธณ)' : ''}
+                                                        </span>
+                                                    </span>
+                                                    <ChevronRight size={14} style={{ opacity: 0.4, flexShrink: 0 }} />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* === Active Tab Content === */}
+                                    <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '16px', border: '1px solid #e2e8f0', minHeight: '160px' }}>
+
+                                        {/* Site Photos: Free upload grid */}
+                                        {activePhotoTab === 'site' && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' }}>
+                                                {sitePhotos.filter(Boolean).map((p, i) => (
+                                                    <div key={i} style={{ position: 'relative', width: 110, height: 110, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
+                                                        <img src={p} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setZoomImage(p)} alt="" />
+                                                        {isProgressNotePhotosEditable && (
+                                                            <button onClick={() => handleRemoveSlotPhoto('site', i)} style={{ position: 'absolute', top: 5, right: 5, background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {isProgressNotePhotosEditable && (
+                                                    <label style={{ width: 110, height: 110, border: '2px dashed #3b82f6', borderRadius: 14, background: '#eff6ff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#3b82f6', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', transition: 'all 0.2s', opacity: isUploading ? 0.6 : 1 }}>
+                                                        {isUploading ? <Loader2 className="animate-spin" size={22} /> : <Camera size={22} />}
+                                                        <span style={{ fontSize: '0.65rem', fontWeight: 900, textAlign: 'center' }}>{isUploading ? 'เธเธณเธฅเธฑเธเธญเธฑเธ...' : 'เน€เธเธดเนเธกเธฃเธนเธ'}</span>
+                                                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleSlotPhotoUpload('site', sitePhotos.length, e)} disabled={isUploading} />
+                                                    </label>
+                                                )}
+                                                {sitePhotos.filter(Boolean).length === 0 && (
+                                                    <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 700, padding: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <AlertCircle size={14} color="#ef4444" /> เธขเธฑเธเนเธกเนเธกเธตเธฃเธนเธเธ เธฒเธเธซเธเนเธฒเธเธฒเธ โ€” เธเธฃเธธเธ“เธฒเนเธเธเธญเธขเนเธฒเธเธเนเธญเธข 2 เธฃเธนเธ
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Shift Photos: Slot-based with labels */}
+                                        {(['regular', 'otMorning', 'otNoon', 'otEvening'] as const).map(shiftKey => {
+                                            if (activePhotoTab !== shiftKey) return null;
+                                            const slotLabels = shiftKey === 'regular' ? ['เน€เธเนเธฒ', 'เธเธฑเธเน€เธ—เธตเนเธขเธ', 'เน€เธเนเธฒเธเนเธฒเธข', 'เธญเธญเธ'] : ['เน€เธเนเธฒ', 'เธญเธญเธ'];
+                                            const shiftPhotos = {
+                                                regular: laborRegularPhotos,
+                                                otMorning: laborOtMorningPhotos,
+                                                otNoon: laborOtNoonPhotos,
+                                                otEvening: laborOtEveningPhotos,
+                                            }[shiftKey];
+                                            return (
+                                                <div key={shiftKey} style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                                    {slotLabels.map((slotLabel, slotIdx) => {
+                                                        const photoUrl = shiftPhotos[slotIdx];
+                                                        return (
+                                                            <div key={slotIdx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                                                {photoUrl ? (
+                                                                    <div style={{ position: 'relative', width: 120, height: 120, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
+                                                                        <img src={photoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setZoomImage(photoUrl)} alt={slotLabel} />
+                                                                        {isProgressNotePhotosEditable && (
+                                                                            <button onClick={() => handleRemoveSlotPhoto(shiftKey, slotIdx)} style={{ position: 'absolute', top: 5, right: 5, background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                                <Trash2 size={11} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : isProgressNotePhotosEditable ? (
+                                                                    <label style={{ width: 120, height: 120, border: '2px dashed #cbd5e1', borderRadius: 14, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', transition: 'all 0.2s', opacity: isUploading ? 0.6 : 1 }}>
+                                                                        {isUploading ? <Loader2 className="animate-spin" size={22} /> : <Camera size={22} />}
+                                                                        <span style={{ fontSize: '0.65rem', fontWeight: 800, textAlign: 'center' }}>เนเธเธเธฃเธนเธ</span>
+                                                                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleSlotPhotoUpload(shiftKey, slotIdx, e)} disabled={isUploading} />
+                                                                    </label>
+                                                                ) : (
+                                                                    <div style={{ width: 120, height: 120, border: '1px dashed #e2e8f0', borderRadius: 14, background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#e2e8f0' }}>
+                                                                        <Camera size={22} />
+                                                                    </div>
+                                                                )}
+                                                                <span style={{ fontSize: '0.7rem', fontWeight: 900, color: '#475569', background: photoUrl ? '#d1fae5' : '#f1f5f9', padding: '3px 12px', borderRadius: '6px', border: `1px solid ${photoUrl ? '#6ee7b7' : '#e2e8f0'}` }}>
+                                                                    {photoUrl ? 'โ“ ' : ''}{slotLabel}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ marginTop: '2.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>เธซเธกเธฒเธขเน€เธซเธ•เธธ (Site Notes)</h3>
+                                    
+                                    {/* Problem Toggle */}
+                                    <div 
+                                        onClick={() => isProgressNotePhotosEditable && setReportType(prev => prev === 'Problem' ? 'Update' : 'Problem')}
+                                        style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '10px', 
+                                            padding: '8px 16px', 
+                                            borderRadius: '12px',
+                                            background: reportType === 'Problem' ? '#fef2f2' : '#f8fafc',
+                                            border: reportType === 'Problem' ? '1px solid #ef4444' : '1px solid #e2e8f0',
+                                            cursor: isProgressNotePhotosEditable ? 'pointer' : 'default',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <div style={{ 
+                                            width: '40px', 
+                                            height: '22px', 
+                                            background: reportType === 'Problem' ? '#ef4444' : '#cbd5e1', 
+                                            borderRadius: '20px', 
+                                            position: 'relative',
+                                            transition: 'all 0.3s'
+                                        }}>
+                                            <div style={{ 
+                                                width: '16px', 
+                                                height: '16px', 
+                                                background: '#fff', 
+                                                borderRadius: '50%', 
+                                                position: 'absolute', 
+                                                top: '3px',
+                                                left: reportType === 'Problem' ? '21px' : '3px',
+                                                transition: 'all 0.3s',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                            }} />
+                                        </div>
+                                        <span style={{ 
+                                            fontSize: '0.85rem', 
+                                            fontWeight: 800, 
+                                            color: reportType === 'Problem' ? '#ef4444' : '#64748b' 
+                                        }}>
+                                            {reportType === 'Problem' ? '๐จ เธเธเธเธฑเธเธซเธฒเธซเธเนเธฒเธเธฒเธ' : 'เธชเธ–เธฒเธเธฐเธเธเธ•เธด'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <textarea 
+                                    placeholder={reportType === 'Problem' ? "เธฃเธฐเธเธธเธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธเธฑเธเธซเธฒเธ—เธตเนเธเธ..." : "เธฃเธฐเธเธธเธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เน€เธเธดเนเธกเน€เธ•เธดเธก..."}
+                                    disabled={!isProgressNotePhotosEditable}
+                                    style={{ 
+                                        width: '100%', 
+                                        padding: '1rem', 
+                                        borderRadius: '16px', 
+                                        border: reportType === 'Problem' ? '2px solid #ef4444' : '1px solid #e2e8f0', 
+                                        background: reportType === 'Problem' ? '#fff' : '#f8fafc', 
+                                        fontSize: '0.9rem', 
+                                        outline: 'none', 
+                                        minHeight: '100px',
+                                        transition: 'all 0.2s'
+                                    }} 
+                                    value={note} 
+                                    onChange={e => setNote(e.target.value)} 
+                                />
+                            </div>
+
+                            {/* Work History Timeline (Previous Logs) */}
+                            {selectedTaskInfo.task.history && selectedTaskInfo.task.history.length > 0 && (
+                                <div style={{ marginTop: '2.5rem' }}>
+                                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: '0 0 1.25rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Activity size={20} color="#6366f1" /> เธเธฃเธฐเธงเธฑเธ•เธดเธเธฒเธฃเธเธเธดเธเธฑเธ•เธดเธเธฒเธ (Work History)
+                                    </h3>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        {[...(selectedTaskInfo.task.history || [])]
+                                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                            .map((h) => {
+                                                    const totalManpower = h.labor.reduce((acc: number, l: any) => acc + l.amount, 0);
+                                                    return (
+                                                        <div 
+                                                            key={h.id} 
+                                                            onClick={() => handleDateChange(h.date.split('T')[0])}
+                                                    style={{ 
+                                                        padding: '16px', 
+                                                        borderRadius: '16px', 
+                                                        background: (h.date.split('T')[0]) === reportDate ? '#eff6ff' : (h.type === 'Problem' ? '#fef2f2' : '#fff'), 
+                                                        border: `2px solid ${(h.date.split('T')[0]) === reportDate ? '#3b82f6' : (h.type === 'Problem' ? '#fecaca' : '#e2e8f0')}`, 
+                                                        boxShadow: (h.date.split('T')[0]) === reportDate ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 2px 4px rgba(0,0,0,0.02)',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                        transform: (h.date.split('T')[0]) === reportDate ? 'translateY(-2px)' : 'none'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            <div style={{ fontSize: '0.9rem', fontWeight: 900, color: h.type === 'Problem' ? '#ef4444' : '#1e293b' }}>
+                                                                {h.type === 'Problem' && '๐จ '}
+                                                                {new Date(h.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.75rem', color: h.type === 'Problem' ? '#ef4444' : '#6366f1', background: h.type === 'Problem' ? '#fee2e2' : '#eef2ff', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                                                Progress: {h.progress}%
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>
+                                                            <Users size={12} style={{ marginRight: '4px' }} /> {totalManpower} เธเธ
+                                                        </div>
+                                                    </div>
+                                                    {h.note && (
+                                                        <div style={{ 
+                                                            fontSize: '0.85rem', 
+                                                            color: h.type === 'Problem' ? '#b91c1c' : '#475569', 
+                                                            marginBottom: '12px', 
+                                                            background: h.type === 'Problem' ? '#fff' : '#f8fafc', 
+                                                            padding: '10px', 
+                                                            borderRadius: '10px', 
+                                                            borderLeft: `3px solid ${h.type === 'Problem' ? '#ef4444' : '#6366f1'}`,
+                                                            fontWeight: h.type === 'Problem' ? 700 : 400
+                                                        }}>
+                                                            {h.type === 'Problem' && <div style={{ marginBottom: '4px', fontWeight: 900 }}>เธฃเธฒเธขเธเธฒเธเธเธฑเธเธซเธฒเธเธฒเธเธซเธเนเธฒเธเธฒเธ:</div>}
+                                                            {h.note}
+                                                        </div>
+                                                    )}
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                        {h.labor.map((l, lIdx) => (
+                                                            <span key={lIdx} style={{ fontSize: '0.7rem', color: '#4b5563', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                                                                {l.staffName || l.affiliation}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer: Standardized Close Button & Submit */}
+                        <div style={{ padding: '1.5rem 2rem', borderTop: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '1rem', borderBottomLeftRadius: '24px', borderBottomRightRadius: '24px' }}>
+                            <button
+                                onClick={() => setSelectedTaskInfo(null)}
+                                style={{
+                                    background: '#f8fafc',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '50%',
+                                    width: '44px',
+                                    height: '44px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: '#000000',
+                                    transition: 'all 0.2s',
+                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+                                    padding: 0
+                                }}
+                                onMouseOver={e => {
+                                    e.currentTarget.style.background = '#000000';
+                                    e.currentTarget.style.color = '#ffffff';
+                                    e.currentTarget.style.borderColor = '#000000';
+                                }}
+                                onMouseOut={e => {
+                                    e.currentTarget.style.background = '#f8fafc';
+                                    e.currentTarget.style.color = '#000000';
+                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                }}
+                            >
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                            <div style={{ flex: 1 }}></div>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={isSubmitting || isUploading}
+                                style={{
+                                    padding: '12px 32px', borderRadius: '14px', border: 'none',
+                                    background: (isSubmitting || isUploading) ? '#94a3b8' : '#2563eb',
+                                    color: '#fff', fontWeight: 900, cursor: (isSubmitting || isUploading) ? 'not-allowed' : 'pointer',
+                                    boxShadow: (isSubmitting || isUploading) ? 'none' : '0 4px 6px rgba(37, 99, 235, 0.2)',
+                                    display: 'flex', alignItems: 'center', gap: '8px'
+                                }}
+                            >
+                                {(isSubmitting || isUploading) && <Loader2 className="animate-spin" size={20} />}
+                                {isSubmitting ? 'เธเธณเธฅเธฑเธเธเธฑเธเธ—เธถเธ...' : 'เธขเธทเธเธขเธฑเธเธเธฒเธฃเธชเนเธเธฃเธฒเธขเธเธฒเธ'}
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+            {/* Image Zoom Lightbox Overlay */}
+            {zoomImage && (
+                <div 
+                    onClick={() => setZoomImage(null)}
+                    style={{ 
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(12px)',
+                        zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' 
+                    }}
+                >
+                    <img 
+                        src={zoomImage} 
+                        style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }} 
+                        alt="Zoomed view" 
+                    />
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default DailyReport;
