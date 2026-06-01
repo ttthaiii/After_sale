@@ -487,8 +487,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         cat.tasks.forEach((task: any) => {
           if (
             task.status === "Pending" ||
-            task.status === "Verified" ||
-            task.status === "Rejected"
+            task.status === "Verified"
           )
             return;
           const isWoOwner2 =
