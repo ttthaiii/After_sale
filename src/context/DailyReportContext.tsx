@@ -1,0 +1,1873 @@
+import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
+import { db, storage } from "../lib/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
+import { useWorkOrders } from "./WorkOrderContext";
+import { useAuth } from "./AuthContext";
+import { useNotifications } from "./NotificationContext";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { compressImage } from "../utils/imageCompression";
+import { useNavigate, useLocation } from "react-router-dom";
+import { logService } from "../services/logService";
+import {
+  LaborEntry,
+  WorkTask,
+  WorkOrder,
+  SelectedTaskInfo,
+  TaskListItem,
+  ModalAlertState,
+  BatchConfig,
+  TimePickerTarget,
+  RealProject,
+  RealContractor,
+  DailyContractor,
+  PendingDeliveryItem,
+  HistoryLaborEntry,
+  HistoryLeaveEntry,
+  HistoryPhotos,
+  EditHistoryRecord,
+  ShiftConfig,
+} from "../types/dailyReport.types";
+
+interface DailyReportContextType {
+  // Database / Contexts
+  workOrders: any[];
+  user: any;
+  sendNotification: any;
+  navigate: any;
+  location: any;
+  foremanId: string;
+  
+  // Selection / Highlight States
+  highlightedId: string | null;
+  setHighlightedId: React.Dispatch<React.SetStateAction<string | null>>;
+  selectedTaskInfo: SelectedTaskInfo | null;
+  setSelectedTaskInfo: React.Dispatch<React.SetStateAction<SelectedTaskInfo | null>>;
+  isTaskFinished: boolean;
+
+  // Search & Task Groupings
+  searchTerm: string;
+  setSearchTerm: React.Dispatch<React.SetStateAction<string>>;
+  progress: number;
+  setProgress: React.Dispatch<React.SetStateAction<number>>;
+  note: string;
+  setNote: React.Dispatch<React.SetStateAction<string>>;
+  labor: LaborEntry[];
+  setLabor: React.Dispatch<React.SetStateAction<LaborEntry[]>>;
+  sitePhotos: (File | string | null)[];
+  setSitePhotos: React.Dispatch<React.SetStateAction<(File | string | null)[]>>;
+  
+  // Shift Photos
+  laborRegularPhotos: (File | string | null)[];
+  setLaborRegularPhotos: React.Dispatch<React.SetStateAction<(File | string | null)[]>>;
+  laborOtMorningPhotos: (File | string | null)[];
+  setLaborOtMorningPhotos: React.Dispatch<React.SetStateAction<(File | string | null)[]>>;
+  laborOtNoonPhotos: (File | string | null)[];
+  setLaborOtNoonPhotos: React.Dispatch<React.SetStateAction<(File | string | null)[]>>;
+  laborOtEveningPhotos: (File | string | null)[];
+  setLaborOtEveningPhotos: React.Dispatch<React.SetStateAction<(File | string | null)[]>>;
+  activePhotoTab: string;
+  setActivePhotoTab: React.Dispatch<React.SetStateAction<string>>;
+  zoomImage: string | null;
+  setZoomImage: React.Dispatch<React.SetStateAction<string | null>>;
+  
+  // Layout & UI States
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  showCalendarDropdown: boolean;
+  setShowCalendarDropdown: React.Dispatch<React.SetStateAction<boolean>>;
+  showUnlockModal: boolean;
+  setShowUnlockModal: React.Dispatch<React.SetStateAction<boolean>>;
+  pendingUnlockDate: string;
+  setPendingUnlockDate: React.Dispatch<React.SetStateAction<string>>;
+  unlockReason: string;
+  setUnlockReason: React.Dispatch<React.SetStateAction<string>>;
+  calendarYear: number;
+  setCalendarYear: React.Dispatch<React.SetStateAction<number>>;
+  calendarMonth: number;
+  setCalendarMonth: React.Dispatch<React.SetStateAction<number>>;
+  isEditingExisting: boolean;
+  setIsEditingExisting: React.Dispatch<React.SetStateAction<boolean>>;
+  showSummaryModal: boolean;
+  setShowSummaryModal: React.Dispatch<React.SetStateAction<boolean>>;
+  collapsedHelpers: Record<string, boolean>;
+  setCollapsedHelpers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  
+  // Submission & Loader States
+  isUploading: boolean;
+  setIsUploading: React.Dispatch<React.SetStateAction<boolean>>;
+  uploadingLeaveCertId: string | null;
+  setUploadingLeaveCertId: React.Dispatch<React.SetStateAction<string | null>>;
+  isSubmitting: boolean;
+  setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
+  submittingRef: React.MutableRefObject<boolean>;
+  activeModal: "Internal" | "Outsource" | null;
+  setActiveModal: React.Dispatch<React.SetStateAction<"Internal" | "Outsource" | null>>;
+  timePickerTarget: TimePickerTarget | null;
+  setTimePickerTarget: React.Dispatch<React.SetStateAction<TimePickerTarget | null>>;
+  reportType: "Update" | "Problem";
+  setReportType: React.Dispatch<React.SetStateAction<"Update" | "Problem">>;
+  reportDate: string;
+  setReportDate: React.Dispatch<React.SetStateAction<string>>;
+  
+  // Masters Data List
+  realContractors: RealContractor[];
+  realProjects: RealProject[];
+  dailyContractors: DailyContractor[];
+  
+  // Modal alerts
+  modalAlert: ModalAlertState | null;
+  setModalAlert: React.Dispatch<React.SetStateAction<ModalAlertState | null>>;
+  isReviewModalOpen: boolean;
+  setIsReviewModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  reviewTaskInfo: any | null;
+  setReviewTaskInfo: React.Dispatch<React.SetStateAction<any | null>>;
+  isCustomerMockupOpen: boolean;
+  setIsCustomerMockupOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  mockupWorkOrder: any | null;
+  setMockupWorkOrder: React.Dispatch<React.SetStateAction<any | null>>;
+  
+  // Computed Staff Lists
+  availableStaff: DailyContractor[];
+  availableContractors: RealContractor[];
+  
+  // Computed Grouped Tasks Columns
+  newTasks: TaskListItem[];
+  inProgressTasks: TaskListItem[];
+  pendingInspectionTasks: TaskListItem[];
+  pendingDeliveryWorkOrders: PendingDeliveryItem[];
+  
+  // central hooks functions
+  addTaskUpdate: any;
+  updateTask: any;
+  updateWorkOrderStatus: any;
+  requestRetroactiveUnlock: any;
+  generateDeliveryQrToken: any;
+  submitCustomerInspection: any;
+  
+  // Handlers & Helpers
+  handleSelectTask: (task: WorkTask, wo: WorkOrder, categoryId: string) => void;
+  handleBatchAdd: (selectedIds: string[], config: BatchConfig) => void;
+  handleTimeChange: (val: string) => void;
+  handleRemoveSlotPhoto: (tab: string, index: number) => void;
+  handleSlotPhotoUpload: (tab: string, index: number, e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+  handleUploadLeaveCert: (laborId: string, file: File | undefined) => Promise<void>;
+  handleRemoveLeaveCert: (laborId: string) => void;
+  handleConfirmReview: (woId: string, categoryId: string, taskId: string, status: string, updates: any) => Promise<void>;
+  handleBounceBackSLA: (workOrderId: string, categoryId: string, taskId: string) => Promise<void>;
+  handleSubmit: () => Promise<void>;
+  handleFinalSubmit: () => Promise<void>;
+  handleCancelEdit: () => void;
+  handleDateChange: (newDateStr: string) => void;
+  
+  // Inner Helper Logic States (Cleaned to correct signatures & formats)
+  toggleShift: (laborId: string, shiftKey: keyof ShiftConfig) => void;
+  getDateStatus: (dateStr: string, task: WorkTask, wo: WorkOrder) => "disabled" | "reported" | "unlocked" | "locked";
+  isProgressNotePhotosEditable: boolean;
+  hasHistoryForSelectedDate: boolean;
+  getTaskImage: (task: WorkTask) => string | null;
+  openTimePicker: (id: string, shift: string, type: "start" | "end") => void;
+  
+  // Computed helpers to expose
+  isReportDatePast3Days: boolean;
+  isTimeOverlap: (time1: string, time2: string) => boolean;
+  progressBounds: { min: number; max: number; isToday: boolean };
+}
+
+const DailyReportContext = createContext<DailyReportContextType | undefined>(undefined);
+
+export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const {
+    workOrders: _workOrders,
+    addTaskUpdate,
+    updateTask,
+    updateWorkOrderStatus,
+    requestRetroactiveUnlock,
+    generateDeliveryQrToken,
+    submitCustomerInspection,
+  } = useWorkOrders();
+  const workOrders = _workOrders as any[];
+  const { user } = useAuth();
+  const { sendNotification } = useNotifications();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const foremanId = user?.id || "admin-initial";
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [selectedTaskInfo, setSelectedTaskInfo] =
+    useState<SelectedTaskInfo | null>(null);
+
+  const isTaskFinished = useMemo(() => {
+    if (!selectedTaskInfo) return false;
+    const currentWo = workOrders.find((w) => w.id === selectedTaskInfo.wo.id);
+    const currentTask =
+      currentWo?.categories
+        .flatMap((c: any) => c.tasks)
+        .find((t: any) => t.id === selectedTaskInfo.task.id) ||
+      selectedTaskInfo.task;
+    const history = currentTask.history || [];
+    const historyMax =
+      history.reduce((max: number, h: any) => Math.max(max, h.progress), 0) || 0;
+    const actualProgress = Math.max(currentTask.dailyProgress || 0, historyMax);
+    return (
+      actualProgress >= 100 ||
+      [
+        "Completed",
+        "Verified",
+        "Approved",
+        "completed",
+        "pending_inspection",
+        "for-checking",
+      ].includes(currentTask.status)
+    );
+  }, [selectedTaskInfo, workOrders]);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [note, setNote] = useState("");
+  const [labor, setLabor] = useState<LaborEntry[]>([]);
+  const [sitePhotos, setSitePhotos] = useState<(File | string | null)[]>([]);
+  const [laborRegularPhotos, setLaborRegularPhotos] = useState<
+    (File | string | null)[]
+  >([]);
+  const [laborOtMorningPhotos, setLaborOtMorningPhotos] = useState<
+    (File | string | null)[]
+  >([]);
+  const [laborOtNoonPhotos, setLaborOtNoonPhotos] = useState<
+    (File | string | null)[]
+  >([]);
+  const [laborOtEveningPhotos, setLaborOtEveningPhotos] = useState<
+    (File | string | null)[]
+  >([]);
+  const [activePhotoTab, setActivePhotoTab] = useState("site");
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showCalendarDropdown, setShowCalendarDropdown] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [pendingUnlockDate, setPendingUnlockDate] = useState("");
+  const [unlockReason, setUnlockReason] = useState("");
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [isEditingExisting, setIsEditingExisting] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [collapsedHelpers, setCollapsedHelpers] = useState<
+    Record<string, boolean>
+  >({});
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingLeaveCertId, setUploadingLeaveCertId] = useState<
+    string | null
+  >(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [activeModal, setActiveModal] = useState<
+    "Internal" | "Outsource" | null
+  >(null);
+  const [timePickerTarget, setTimePickerTarget] =
+    useState<TimePickerTarget | null>(null);
+  const [reportType, setReportType] = useState<"Update" | "Problem">("Update");
+  const [reportDate, setReportDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [realContractors, setRealContractors] = useState<RealContractor[]>([]);
+  const [realProjects, setRealProjects] = useState<RealProject[]>([]);
+  const [dailyContractors, setDailyContractors] = useState<DailyContractor[]>(
+    [],
+  );
+  const [modalAlert, setModalAlert] = useState<ModalAlertState | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewTaskInfo, setReviewTaskInfo] = useState<{
+    task: WorkTask;
+    categoryId: string;
+    woId: string;
+    wo?: any;
+  } | null>(null);
+  const [isCustomerMockupOpen, setIsCustomerMockupOpen] = useState(false);
+  const [mockupWorkOrder, setMockupWorkOrder] = useState<any | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const unsubContractors = onSnapshot(
+      collection(db, "contractors"),
+      (snap) => {
+        setRealContractors(
+          snap.docs.map((d) => ({
+            ...(d.data() as Omit<RealContractor, "id">),
+            id: d.id,
+          })),
+        );
+      },
+    );
+    const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
+      setRealProjects(
+        snap.docs.map((d) => ({
+          ...(d.data() as Omit<RealProject, "id">),
+          id: d.id,
+        })),
+      );
+    });
+    const unsubDailyContractors = onSnapshot(
+      collection(db, "dailyContractors"),
+      (snap) => {
+        setDailyContractors(
+          snap.docs.map((d) => ({
+            ...(d.data() as Omit<DailyContractor, "id">),
+            id: d.id,
+          })),
+        );
+      },
+    );
+    return () => {
+      unsubContractors();
+      unsubProjects();
+      unsubDailyContractors();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTaskInfo) return;
+    const existingReport = selectedTaskInfo.task.history?.find(
+      (h) => h.date?.split("T")[0] === reportDate,
+    );
+    if (existingReport) {
+      setProgress(existingReport.progress);
+      setNote(existingReport.note || "");
+      const mergedLabor: LaborEntry[] = [];
+      const laborMap = new Map<string, HistoryLaborEntry>();
+      const leaveMap = new Map<string, HistoryLeaveEntry>();
+      if (existingReport.labor) {
+        existingReport.labor.forEach((l) =>
+          laborMap.set(l.workerId || l.id || "", l),
+        );
+      }
+      const exLeave = existingReport.leave;
+      if (exLeave) {
+        exLeave.forEach((l) => leaveMap.set(l.workerId || l.id || "", l));
+      }
+      const allWorkerIds = Array.from(
+        new Set([...laborMap.keys(), ...leaveMap.keys()]),
+      );
+      allWorkerIds.forEach((wId) => {
+        const l = laborMap.get(wId);
+        const lv = leaveMap.get(wId);
+        const isInternal =
+          wId.startsWith("DC-") ||
+          (l && !l.contractorId) ||
+          (lv && !lv.contractorId);
+        mergedLabor.push({
+          id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          membership: isInternal ? "Internal" : "Outsource",
+          staffId: wId,
+          staffName:
+            l?.staffName ||
+            l?.workerName ||
+            lv?.staffName ||
+            lv?.workerName ||
+            "",
+          employeeId: l?.employeeId || lv?.employeeId || "",
+          affiliation:
+            l?.staffName || l?.workerName
+              ? isInternal
+                ? l?.staffName || l?.workerName || "General"
+                : l?.staffName || l?.workerName || "General"
+              : lv?.staffName || lv?.workerName || "General",
+          amount: Number(l?.amount) || 1,
+          timeType: "Normal",
+          shifts: {
+            normal: l?.shifts?.normal || false,
+            otMorning: l?.shifts?.otMorning || false,
+            otNoon: l?.shifts?.otNoon || false,
+            otEvening: l?.shifts?.otEvening || false,
+          },
+          shiftTimes: {
+            day: l?.shiftTimes?.day || "08:00 - 17:00",
+            otMorning: l?.shiftTimes?.otMorning || "06:00 - 08:00",
+            otNoon: "12:00 - 13:00",
+            otEvening: l?.shiftTimes?.otEvening || "18:00 - 21:00",
+          },
+          leave: {
+            active: lv?.leaveShifts?.custom || false,
+            time: lv?.leaveTimes?.custom || "08:00 - 17:00",
+            medCertFileUrl: lv?.medCertFileUrl || "",
+          },
+        });
+      });
+      setLabor(mergedLabor);
+      const mapRegularFromDb = (dbShift: any): (string | null)[] => {
+        if (!dbShift) return [];
+        if (Array.isArray(dbShift))
+          return [
+            dbShift[0] || "",
+            dbShift[1] || "",
+            dbShift[2] || "",
+            dbShift[3] || "",
+          ];
+        return [
+          dbShift.in || "",
+          dbShift.lunch || "",
+          dbShift.afternoon || "",
+          dbShift.out || "",
+        ];
+      };
+      const mapOtShiftFromDb = (dbShift: any): (string | null)[] => {
+        if (!dbShift) return [];
+        if (Array.isArray(dbShift)) return [dbShift[0] || "", dbShift[1] || ""];
+        return [dbShift.in || "", dbShift.out || ""];
+      };
+      if (existingReport.photos && !Array.isArray(existingReport.photos)) {
+        const pObj = existingReport.photos as HistoryPhotos;
+        setSitePhotos(pObj.site || []);
+        setLaborRegularPhotos(mapRegularFromDb(pObj.laborByShift?.regular));
+        setLaborOtMorningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otMorning));
+        setLaborOtNoonPhotos(mapOtShiftFromDb(pObj.laborByShift?.otNoon));
+        setLaborOtEveningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otEvening));
+      } else {
+        const pArr = (existingReport.photos as string[]) || [];
+        setSitePhotos(pArr);
+        setLaborRegularPhotos(existingReport.laborPhotos || []);
+        setLaborOtMorningPhotos([]);
+        setLaborOtNoonPhotos([]);
+        setLaborOtEveningPhotos([]);
+      }
+      setActivePhotoTab("site");
+      setIsEditingExisting(false);
+    } else {
+      const history = selectedTaskInfo.task.history || [];
+      const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+        ? history.filter(
+            (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
+          )
+        : history;
+      let min = 0;
+      filteredHistory.forEach((h) => {
+        const hDate = h.date?.split("T")[0] || "";
+        if (hDate && hDate < reportDate && h.progress > min) {
+          min = h.progress;
+        }
+      });
+      setProgress(min);
+      setNote("");
+      setLabor([]);
+      setSitePhotos([]);
+      setLaborRegularPhotos([]);
+      setLaborOtMorningPhotos([]);
+      setLaborOtNoonPhotos([]);
+      setLaborOtEveningPhotos([]);
+      setActivePhotoTab("site");
+      setIsEditingExisting(isTaskFinished ? false : true);
+    }
+  }, [reportDate, selectedTaskInfo?.task.id]);
+
+  useEffect(() => {
+    if (user) {
+      logService.trackPageView(
+        user,
+        "REPORTING",
+        "หน้าส่งงานรายวัน (Daily Report)",
+      );
+    }
+  }, [user]);
+
+  const {
+    newTasks,
+    inProgressTasks,
+    pendingInspectionTasks,
+    pendingDeliveryWorkOrders,
+  } = useMemo(() => {
+    const _newTasks: TaskListItem[] = [];
+    const _inProgressTasks: TaskListItem[] = [];
+    const _pendingInspectionTasks: TaskListItem[] = [];
+    const _pendingDeliveryWOs: PendingDeliveryItem[] = [];
+    workOrders.forEach((wo) => {
+      if (["Draft", "Completed", "Rejected", "Cancelled"].includes(wo.status))
+        return;
+      let totalActiveTasks = 0;
+      let completedActiveTasks = 0;
+      const woTasksList: TaskListItem[] = [];
+      wo.categories.forEach((cat: any) => {
+        cat.tasks.forEach((task: any) => {
+          if (
+            task.status === "Pending" ||
+            task.status === "Verified" ||
+            task.status === "Rejected"
+          )
+            return;
+          const isWoOwner2 =
+            wo.woOwnerId === user?.id ||
+            (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+            wo.reporterId === user?.id ||
+            (user?.employeeId && wo.reporterId === user.employeeId);
+          const isSubtaskOperator =
+            task.subtaskOperatorId === user?.id ||
+            (user?.employeeId && task.subtaskOperatorId === user.employeeId) ||
+            task.responsibleStaffIds?.includes(foremanId);
+          const isAssigned =
+            user?.role === "Admin" ||
+            user?.role === "Manager" ||
+            isWoOwner2 ||
+            isSubtaskOperator ||
+            (wo.reporterId === user?.id &&
+              task.status === "Approved" &&
+              (!task.responsibleStaffIds ||
+                task.responsibleStaffIds.length === 0));
+          if (isAssigned) {
+            const filteredHistory = task.revisionCreatedAt
+              ? (task.history || []).filter(
+                  (h: any) => h.date && h.date > task.revisionCreatedAt!,
+                )
+              : task.history || [];
+            const historyMax =
+              filteredHistory.reduce(
+                (max: number, h: any) => Math.max(max, h.progress),
+                0,
+              ) || 0;
+            const actualProgress = Math.max(
+              task.dailyProgress || 0,
+              historyMax,
+            );
+            const isReadOnly =
+              !isSubtaskOperator &&
+              !!isWoOwner2 &&
+              user?.role !== "Admin" &&
+              user?.role !== "Manager";
+            const item: TaskListItem = {
+              task: { ...task, dailyProgress: actualProgress, isReadOnly },
+              wo,
+              categoryId: cat.id,
+            };
+            if (searchTerm) {
+              const match =
+                (task.name || "")
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase()) ||
+                (wo.locationName || "")
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase()) ||
+                (wo.id || "").toLowerCase().includes(searchTerm.toLowerCase());
+              if (!match) return;
+            }
+            totalActiveTasks++;
+            if (actualProgress === 100) {
+              completedActiveTasks++;
+            }
+            woTasksList.push(item);
+          }
+        });
+      });
+      const isWoOwner =
+        wo.woOwnerId === user?.id ||
+        (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+        wo.reporterId === user?.id ||
+        (user?.employeeId && wo.reporterId === user.employeeId);
+      if (
+        totalActiveTasks > 0 &&
+        completedActiveTasks === totalActiveTasks &&
+        isWoOwner &&
+        wo.status !== "pending_delivery"
+      ) {
+        _pendingDeliveryWOs.push({ wo });
+      } else {
+        woTasksList.forEach((item) => {
+          if (item.task.dailyProgress === 100) {
+            _pendingInspectionTasks.push(item);
+          } else if (item.task.dailyProgress && item.task.dailyProgress > 0) {
+            _inProgressTasks.push(item);
+          } else {
+            _newTasks.push(item);
+          }
+        });
+      }
+    });
+    return {
+      newTasks: _newTasks,
+      inProgressTasks: _inProgressTasks,
+      pendingInspectionTasks: _pendingInspectionTasks,
+      pendingDeliveryWorkOrders: _pendingDeliveryWOs,
+    };
+  }, [
+    workOrders,
+    searchTerm,
+    foremanId,
+    user?.role,
+    user?.employeeId,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const workOrderId = params.get("id");
+    if (workOrderId && workOrders.length > 0) {
+      const item =
+        newTasks.find((n) => n.wo.id === workOrderId) ||
+        inProgressTasks.find((i) => i.wo.id === workOrderId) ||
+        pendingInspectionTasks.find((p) => p.wo.id === workOrderId);
+      if (item) {
+        setHighlightedId(workOrderId);
+        handleSelectTask(item.task, item.wo, item.categoryId);
+      } else {
+        const wo = workOrders.find((w) => w.id === workOrderId);
+        if (wo) {
+          let message = "";
+          let title = "ใบสั่งงานไม่พร้อมสำหรับการรายงาน";
+          let type: "info" | "success" | "error" | "warning" = "info";
+          if (wo.status === "Completed") {
+            message =
+              "งานในใบงานนี้ได้รับการรายงานความคืบหน้าครบถ้วนและเสร็จสิ้นเรียบร้อยแล้ว";
+            title = "ใบสั่งงานเสร็จสิ้นแล้ว";
+            type = "success";
+          } else if (wo.status === "Cancelled") {
+            message = "ใบสั่งงานนี้ถูกยกเลิกการดำเนินงานแล้ว";
+            title = "ใบสั่งงานถูกยกเลิก";
+            type = "error";
+          } else if (wo.status === "Rejected") {
+            message =
+              "ใบสั่งงานนี้ถูกปฏิเสธโดยแอดมิน กรุณาเข้าหน้า 'ใบงานและติดตามผล' เพื่อทำการแก้ไขและส่งใหม่";
+            title = "ใบสั่งงานถูกปฏิเสธการประเมิน";
+            type = "warning";
+          } else if (wo.status === "Draft") {
+            message =
+              "ใบสั่งงานนี้ยังคงอยู่ในสถานะแบบร่าง กรุณาส่งใบงานเพื่อรับการประเมินจากแอดมิน";
+            title = "ใบสั่งงานแบบร่าง";
+            type = "warning";
+          } else if (wo.status === "Evaluating") {
+            message =
+              "ใบสั่งงานนี้อยู่ระหว่างขั้นตอนการประเมินโดยแอดมิน หรือยังไม่มีงานประเมินที่ระบุให้คุณรับผิดชอบในขณะนี้";
+            title = "อยู่ระหว่างการประเมิน";
+            type = "info";
+          } else {
+            const statusThai: Record<string, string> = {
+              Pending: "รออนุมัติ",
+              Approved: "อนุมัติแล้ว",
+              "Partially Approved": "อนุมัติบางส่วน",
+              "In Progress": "กำลังดำเนินการ",
+              Verified: "ตรวจสอบแล้ว",
+            };
+            message = `ไม่พบงานที่พร้อมสำหรับการรายงานความคืบหน้าในระบบ (สถานะปัจจุบันของใบงาน: ${statusThai[wo.status] || wo.status})`;
+            title = "ไม่สามารถรายงานความคืบหน้าได้";
+            type = "info";
+          }
+          setModalAlert({
+            isOpen: true,
+            title,
+            message,
+            type,
+          });
+        } else {
+          setModalAlert({
+            isOpen: true,
+            title: "ไม่พบใบสั่งงาน",
+            message:
+              "ไม่พบข้อมูลใบสั่งงานนี้ในระบบ หรือคุณไม่มีสิทธิ์ในการรายงานความคืบหน้าของงานชุดนี้",
+            type: "error",
+          });
+        }
+      }
+      const newParams = new URLSearchParams(location.search);
+      newParams.delete("id");
+      const newSearch = newParams.toString();
+      navigate(location.pathname + (newSearch ? `?${newSearch}` : ""), {
+        replace: true,
+      });
+    }
+  }, [
+    location.search,
+    newTasks,
+    inProgressTasks,
+    workOrders,
+    navigate,
+    pendingInspectionTasks,
+  ]);
+
+  const handleSelectTask = (
+    task: WorkTask,
+    wo: WorkOrder,
+    categoryId: string,
+  ) => {
+    const history = task.history || [];
+    const todayStr = new Date().toISOString().split("T")[0];
+    const filteredHistory = task.revisionCreatedAt
+      ? history.filter((h) => h.date && h.date > task.revisionCreatedAt!)
+      : history;
+    const historyBeforeToday = filteredHistory
+      .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    const minP =
+      historyBeforeToday.length > 0 ? historyBeforeToday[0].progress : 0;
+    const currentP = task.dailyProgress || 0;
+    setSelectedTaskInfo({ task, wo, categoryId });
+    setProgress(currentP < minP ? minP : currentP);
+    setNote("");
+    setLabor([]);
+    setSitePhotos([]);
+    setLaborRegularPhotos([]);
+    setLaborOtMorningPhotos([]);
+    setLaborOtNoonPhotos([]);
+    setLaborOtEveningPhotos([]);
+    setReportType("Update");
+    setReportDate(new Date().toISOString().split("T")[0]);
+  };
+
+  const getDateStatus = (dateStr: string, task: WorkTask, wo: WorkOrder) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (dateStr > todayStr) {
+      return "disabled";
+    }
+    const openingDate = wo.startDate || wo.createdAt || "";
+    const openingDateStr = openingDate
+      ? new Date(openingDate).toISOString().split("T")[0]
+      : "";
+    if (openingDateStr && dateStr < openingDateStr) {
+      return "disabled";
+    }
+    const reported = task.history?.some(
+      (h) => h.date?.split("T")[0] === dateStr,
+    );
+    if (reported) {
+      return "reported";
+    }
+    const todayVal = new Date(todayStr).getTime();
+    const dateVal = new Date(dateStr).getTime();
+    const diffTime = todayVal - dateVal;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const unlocked =
+      task.unlockedDates?.[dateStr] &&
+      new Date(task.unlockedDates[dateStr].unlockedUntil).getTime() >
+        Date.now();
+    if (diffDays <= 3 || unlocked) {
+      return "unlocked";
+    }
+    return "locked";
+  };
+
+  const progressBounds = useMemo(() => {
+    if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
+    const history = selectedTaskInfo.task.history || [];
+    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+      ? history.filter(
+          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
+        )
+      : history;
+    const targetDate = reportDate;
+    let min = 0;
+    let max = 100;
+    filteredHistory.forEach((h) => {
+      const hDate = h.date?.split("T")[0] || "";
+      if (!hDate) return;
+      if (hDate < targetDate) {
+        if (h.progress > min) min = h.progress;
+      } else if (hDate > targetDate) {
+        if (h.progress < max) max = h.progress;
+      }
+    });
+    const isToday = reportDate === new Date().toISOString().split("T")[0];
+    const effectiveMax = isToday ? 100 : Math.min(max, 99);
+    return { min, max: effectiveMax, isToday };
+  }, [selectedTaskInfo, reportDate]);
+
+  const isReportDatePast3Days = useMemo(() => {
+    if (!selectedTaskInfo) return false;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todayVal = new Date(todayStr).getTime();
+    const dateVal = new Date(reportDate).getTime();
+    const diffTime = todayVal - dateVal;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const unlocked =
+      selectedTaskInfo.task.unlockedDates?.[reportDate] &&
+      new Date(
+        selectedTaskInfo.task.unlockedDates[reportDate].unlockedUntil,
+      ).getTime() > Date.now();
+    return diffDays > 3 && !unlocked;
+  }, [reportDate, selectedTaskInfo?.task.unlockedDates]);
+
+  const isProgressNotePhotosEditable =
+    isEditingExisting && !isReportDatePast3Days && !isTaskFinished;
+
+  const hasHistoryForSelectedDate = useMemo(() => {
+    if (!selectedTaskInfo) return false;
+    return (
+      selectedTaskInfo.task.history?.some(
+        (h) => h.date?.split("T")[0] === reportDate,
+      ) || false
+    );
+  }, [selectedTaskInfo, reportDate]);
+
+  const getTaskImage = (task: WorkTask) => {
+    const img =
+      task.beforePhotoUrl ||
+      task.latestPhotoUrl ||
+      task.afterPhotoUrl ||
+      (task.images && task.images.length > 0 ? task.images[0] : null) ||
+      (task.attachments && task.attachments.length > 0
+        ? task.attachments[0].url
+        : null);
+    if (
+      img &&
+      typeof img === "string" &&
+      (img.startsWith("http") ||
+        img.startsWith("https") ||
+        img.startsWith("blob:"))
+    ) {
+      return img;
+    }
+    return null;
+  };
+
+  const handleBatchAdd = (selectedIds: string[], config: BatchConfig) => {
+    const newRecords: LaborEntry[] = [];
+    if (activeModal === "Internal") {
+      selectedIds.forEach((id) => {
+        const contractor = dailyContractors.find((c) => c.id === id);
+        if (contractor) {
+          newRecords.push({
+            id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            membership: "Internal",
+            staffId: contractor.id,
+            staffName: contractor.name,
+            employeeId:
+              contractor.employeeId || contractor.id.replace("DC-", ""),
+            affiliation: contractor.skillId || "General",
+            amount: 1,
+            timeType: "Normal",
+            shifts: {
+              normal: config.day,
+              otMorning: config.otMorning,
+              otNoon: config.otNoon,
+              otEvening: config.otEvening,
+            },
+            shiftTimes: {
+              day: config.timeDay,
+              otMorning: config.timeOtMorning,
+              otNoon: "12:00 - 13:00",
+              otEvening: config.timeOtEvening,
+            },
+            leave: {
+              active: false,
+              time: "08:00 - 17:00",
+              medCertFileUrl: "",
+            },
+          });
+        }
+      });
+    } else if (activeModal === "Outsource") {
+      selectedIds.forEach((id) => {
+        const contractor = realContractors.find((c) => c.id === id);
+        if (contractor) {
+          newRecords.push({
+            id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            membership: "Outsource",
+            affiliation: contractor.name,
+            contractorId: contractor.id,
+            employeeId: "",
+            amount: 1,
+            timeType: "Normal",
+            shifts: {
+              normal: config.day,
+              otMorning: false,
+              otNoon: false,
+              otEvening: false,
+            },
+            shiftTimes: { day: "" },
+            leave: {
+              active: false,
+              time: "08:00 - 17:00",
+              medCertFileUrl: "",
+            },
+          });
+        }
+      });
+    }
+    setLabor([...labor, ...newRecords]);
+    setActiveModal(null);
+  };
+
+  const isTimeOverlap = (time1: string, time2: string) => {
+    if (!time1 || !time2 || time1.includes("--") || time2.includes("--"))
+      return false;
+    const parse = (t: string) => {
+      const [start, end] = t.split(" - ").map((s) => {
+        const [h, m] = s.split(":").map(Number);
+        return h * 60 + (m || 0);
+      });
+      return { start, end };
+    };
+    try {
+      const t1 = parse(time1);
+      const t2 = parse(time2);
+      return t1.start < t2.end && t2.start < t1.end;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const toggleShift = (id: string, shiftKey: keyof ShiftConfig) => {
+    if (!isEditingExisting) return;
+    setLabor((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        const currentShifts = l.shifts || {
+          normal: false,
+          otMorning: false,
+          otNoon: false,
+          otEvening: false,
+        };
+        const isActive = !currentShifts[shiftKey];
+        let newShiftTimes = { ...(l.shiftTimes || {}) };
+        let leaveObj = l.leave
+          ? { ...l.leave }
+          : { active: false, time: "08:00 - 17:00" };
+        if (isActive && l.membership === "Internal") {
+          if (shiftKey === "otMorning" && !newShiftTimes.otMorning)
+            newShiftTimes.otMorning = "06:00 - 08:00";
+          if (shiftKey === "otNoon" && !newShiftTimes.otNoon)
+            newShiftTimes.otNoon = "12:00 - 13:00";
+          if (shiftKey === "otEvening" && !newShiftTimes.otEvening)
+            newShiftTimes.otEvening = "18:00 - 21:00";
+        }
+        if (isActive && shiftKey !== "normal" && leaveObj.active) {
+          const otDefaultTimes: Record<string, string> = {
+            otMorning: "06:00 - 08:00",
+            otNoon: "12:00 - 13:00",
+            otEvening: "18:00 - 21:00",
+          };
+          const otTime =
+            newShiftTimes[shiftKey] || otDefaultTimes[shiftKey] || "";
+          if (
+            otTime &&
+            isTimeOverlap(otTime, leaveObj.time || "08:00 - 17:00")
+          ) {
+            return l;
+          }
+        }
+        let updatedShifts = { ...currentShifts, [shiftKey]: isActive };
+        if (shiftKey === "normal") {
+          if (isActive) {
+            const regTime = newShiftTimes.day || "08:00 - 17:00";
+            if (
+              leaveObj.active &&
+              isTimeOverlap(regTime, leaveObj.time || "08:00 - 17:00")
+            ) {
+              const leaveTime = leaveObj.time || "08:00 - 17:00";
+              if (leaveTime === "08:00 - 12:00") {
+                newShiftTimes.day = "13:00 - 17:00";
+              } else if (leaveTime === "13:00 - 17:00") {
+                newShiftTimes.day = "08:00 - 12:00";
+              } else {
+                leaveObj.active = false;
+              }
+            }
+          } else {
+            updatedShifts.otMorning = false;
+            updatedShifts.otNoon = false;
+            updatedShifts.otEvening = false;
+          }
+        }
+        return {
+          ...l,
+          shifts: updatedShifts,
+          shiftTimes: newShiftTimes,
+          leave: leaveObj,
+        };
+      }),
+    );
+  };
+
+  const openTimePicker = (id: string, shift: string, type: "start" | "end") => {
+    if (!isEditingExisting) return;
+    const record = labor.find((l) => l.id === id);
+    if (!record) return;
+    let rangeStr = "";
+    if (shift === "leave") {
+      rangeStr = record.leave?.time || "08:00 - 17:00";
+    } else if (record.shiftTimes) {
+      if (shift === "normal")
+        rangeStr = record.shiftTimes.day || "08:00 - 17:00";
+      else rangeStr = (record.shiftTimes as any)[shift] || "";
+    }
+    if (!rangeStr) rangeStr = "00:00 - 00:00";
+    const [start, end] = rangeStr.split(" - ").map((s) => s.trim());
+    setTimePickerTarget({
+      id,
+      shift,
+      type,
+      currentValue: (type === "start" ? start : end) || "00:00",
+    });
+  };
+
+  const handleTimeChange = (val: string) => {
+    if (!timePickerTarget) return;
+    const { id, type, shift } = timePickerTarget;
+    setLabor((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        if (shift === "leave") {
+          const leaveObj = l.leave || { active: true, time: "08:00 - 17:00" };
+          let range = leaveObj.time || "08:00 - 17:00";
+          let [start, end] = range.split(" - ").map((s) => s.trim());
+          if (type === "start") start = val;
+          else end = val;
+          const newRange = `${start} - ${end}`;
+          const updatedLeave = { ...leaveObj, time: newRange };
+          let updatedTimes = l.shiftTimes
+            ? { ...l.shiftTimes }
+            : { day: "08:00 - 17:00" };
+          let shiftsObj = l.shifts
+            ? { ...l.shifts }
+            : {
+                normal: false,
+                otMorning: false,
+                otNoon: false,
+                otEvening: false,
+              };
+          if (newRange === "08:00 - 12:00") {
+            if (updatedTimes.day === "08:00 - 17:00" && shiftsObj.normal) {
+              updatedTimes.day = "13:00 - 17:00";
+            }
+          } else if (newRange === "13:00 - 17:00") {
+            if (updatedTimes.day === "08:00 - 17:00" && shiftsObj.normal) {
+              updatedTimes.day = "08:00 - 12:00";
+            }
+          }
+          const regTime = updatedTimes.day || "08:00 - 17:00";
+          if (shiftsObj.normal && isTimeOverlap(newRange, regTime)) {
+            shiftsObj.normal = false;
+            shiftsObj.otMorning = false;
+            shiftsObj.otNoon = false;
+            shiftsObj.otEvening = false;
+          }
+          return {
+            ...l,
+            leave: updatedLeave,
+            shiftTimes: updatedTimes,
+            shifts: shiftsObj,
+          };
+        } else {
+          const times = { ...(l.shiftTimes || {}) };
+          let range = "";
+          if (shift === "normal") range = times.day || "08:00 - 17:00";
+          else range = (times as any)[shift] || "00:00 - 00:00";
+          let [start, end] = range.split(" - ").map((s) => s.trim());
+          if (type === "start") start = val;
+          else end = val;
+          const newRange = `${start} - ${end}`;
+          let shiftsObj = l.shifts
+            ? { ...l.shifts }
+            : {
+                normal: false,
+                otMorning: false,
+                otNoon: false,
+                otEvening: false,
+              };
+          let leaveObj = l.leave
+            ? { ...l.leave }
+            : { active: false, time: "08:00 - 17:00" };
+          if (shift === "normal") {
+            times.day = newRange;
+            if (
+              leaveObj.active &&
+              isTimeOverlap(newRange, leaveObj.time || "08:00 - 17:00")
+            ) {
+              leaveObj.active = false;
+            }
+          } else {
+            (times as any)[shift] = newRange;
+          }
+          return {
+            ...l,
+            shiftTimes: times,
+            shifts: shiftsObj,
+            leave: leaveObj,
+          };
+        }
+      }),
+    );
+  };
+
+  useEffect(() => {
+    const isRegularActive = labor.some((l) => l.shifts?.normal);
+    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
+    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
+    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
+    if (activePhotoTab === "regular" && !isRegularActive)
+      setActivePhotoTab("site");
+    if (activePhotoTab === "otMorning" && !isOtMorningActive)
+      setActivePhotoTab("site");
+    if (activePhotoTab === "otNoon" && !isOtNoonActive)
+      setActivePhotoTab("site");
+    if (activePhotoTab === "otEvening" && !isOtEveningActive)
+      setActivePhotoTab("site");
+  }, [labor, activePhotoTab]);
+
+  const handleRemoveSlotPhoto = (tab: string, index: number) => {
+    if (tab === "site") {
+      setSitePhotos((prev) => prev.filter((_, i) => i !== index));
+    } else {
+      const clearSlot = (prev: any[]) => {
+        const u = [...prev];
+        u[index] = "";
+        return u;
+      };
+      if (tab === "regular") setLaborRegularPhotos(clearSlot);
+      else if (tab === "otMorning") setLaborOtMorningPhotos(clearSlot);
+      else if (tab === "otNoon") setLaborOtNoonPhotos(clearSlot);
+      else if (tab === "otEvening") setLaborOtEveningPhotos(clearSlot);
+    }
+  };
+
+  const handleSlotPhotoUpload = async (
+    tab: string,
+    slotIndex: number,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedTaskInfo) return;
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `progress_${tab}_slot${slotIndex}_${Date.now()}.${fileExt}`;
+      const storagePath = `work_orders/${selectedTaskInfo.wo.id}/progress/${fileName}`;
+      const storageRef = ref(storage, storagePath);
+      const compressedFile = await compressImage(file, 1280, 0.7);
+      const snapshot = await uploadBytes(storageRef, compressedFile, {
+        cacheControl: "public, max-age=31536000",
+        contentType: compressedFile.type || "image/jpeg",
+      });
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      if (tab === "site") {
+        setSitePhotos((prev) => [...prev, downloadURL]);
+      } else {
+        const putSlot = (prev: any[]) => {
+          const u = [...prev];
+          u[slotIndex] = downloadURL;
+          return u;
+        };
+        if (tab === "regular") setLaborRegularPhotos(putSlot);
+        else if (tab === "otMorning") setLaborOtMorningPhotos(putSlot);
+        else if (tab === "otNoon") setLaborOtNoonPhotos(putSlot);
+        else if (tab === "otEvening") setLaborOtEveningPhotos(putSlot);
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert("อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleUploadLeaveCert = async (
+    laborId: string,
+    file: File | undefined,
+  ) => {
+    if (!file || !selectedTaskInfo) return;
+    if (uploadingLeaveCertId === laborId) return;
+    setUploadingLeaveCertId(laborId);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `leave_${laborId}_${Date.now()}.${fileExt}`;
+      const storagePath = `work_orders/${selectedTaskInfo.wo.id}/leave_certs/${fileName}`;
+      const storageRef = ref(storage, storagePath);
+      const compressedFile = await compressImage(file, 1280, 0.7);
+      const metadata = {
+        cacheControl: "public, max-age=31536000",
+        contentType: compressedFile.type || "image/jpeg",
+      };
+      const snapshot = await uploadBytes(storageRef, compressedFile, metadata);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      setLabor((prev) =>
+        prev.map((l) => {
+          if (l.id === laborId) {
+            return {
+              ...l,
+              leave: {
+                ...(l.leave || { active: true, time: "08:00 - 17:00" }),
+                medCertFileUrl: downloadURL,
+              },
+            };
+          }
+          return l;
+        }),
+      );
+    } catch (error) {
+      console.error("Leave cert upload failed:", error);
+      alert("อัปโหลดใบรับรองแพทย์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setUploadingLeaveCertId(null);
+    }
+  };
+
+  const handleRemoveLeaveCert = (laborId: string) => {
+    setLabor((prev) =>
+      prev.map((l) => {
+        if (l.id === laborId) {
+          return {
+            ...l,
+            leave: {
+              ...(l.leave || { active: true, time: "08:00 - 17:00" }),
+              medCertFileUrl: "",
+            },
+          };
+        }
+        return l;
+      }),
+    );
+  };
+
+  const handleConfirmReview = async (
+    woId: string,
+    categoryId: string,
+    taskId: string,
+    status: string,
+    updates: any,
+  ) => {
+    try {
+      const now = new Date().toISOString();
+      if (status === "Verified") {
+        await updateTask(woId, categoryId, taskId, {
+          status: "Verified",
+          ownerName: updates.ownerName || "",
+          notes: updates.notes || "",
+          evaluationChecklist: updates.evaluationChecklist || {},
+          overallSatisfaction: updates.overallSatisfaction || 0,
+          updatedAt: now,
+        });
+        if (selectedTaskInfo?.task.id === taskId) {
+          setSelectedTaskInfo(null);
+        }
+        setModalAlert({
+          isOpen: true,
+          title: "ตรวจรับงานสำเร็จ",
+          message:
+            "ระบบได้ตรวจรับงานเรียบร้อยแล้ว รายการนี้จะย้ายไปอยู่ในส่วนของประวัติงานย้อนหลัง",
+          type: "success",
+        });
+      } else if (status === "Rejected") {
+        await updateTask(woId, categoryId, taskId, {
+          status: "Rejected",
+          revisionName: updates.rejectReason || "",
+          revisionCreatedAt: now,
+          currentRevision: updates.currentRevision || "rev01",
+          evaluationChecklist: updates.evaluationChecklist || {},
+          dailyProgress: 0,
+          updatedAt: now,
+        });
+        if (selectedTaskInfo?.task.id === taskId) {
+          setSelectedTaskInfo(null);
+        }
+        setModalAlert({
+          isOpen: true,
+          title: "ส่งกลับแก้ไขสำเร็จ",
+          message: `ระบบได้ส่งกลับแก้ไข (ตีกลับ) เรียบร้อยแล้ว โปรเกรสของงานถูกรีเซ็ตเป็น 0% (${updates.currentRevision || "REV. 01"})`,
+          type: "warning",
+        });
+      }
+    } catch (error) {
+      console.error("Error confirming review:", error);
+      setModalAlert({
+        isOpen: true,
+        title: "เกิดข้อผิดพลาด",
+        message: "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง",
+        type: "error",
+      });
+    }
+  };
+
+  const handleBounceBackSLA = async (
+    workOrderId: string,
+    categoryId: string,
+    taskId: string,
+  ) => {
+    if (
+      !window.confirm(
+        "คุณต้องการตีกลับใบงานนี้เพื่อให้แอดมินประเมิน SLA ใหม่ใช่หรือไม่?\n(งานจะถูกถอดออกจากการมอบหมายและส่งกลับไปที่แอดมิน)",
+      )
+    )
+      return;
+    setIsSubmitting(true);
+    try {
+      await updateTask(workOrderId, categoryId, taskId, {
+        status: "Pending",
+        slaCategory: null,
+        responsibleStaffIds: [],
+      });
+      await updateWorkOrderStatus(workOrderId, "Evaluating");
+      await sendNotification({
+        recipientRole: "Admin",
+        senderId: user?.id || "foreman",
+        senderName: user?.name || "Foreman",
+        title: "ใบงานถูกตีกลับ (SLA Mismatch)",
+        message: `งาน "${selectedTaskInfo?.task.name}" ถูกตีกลับโดยโฟร์แมนเพื่อขอประเมิน SLA ใหม่`,
+        type: "warning",
+        targetPath: `/evaluation?id=${workOrderId}`,
+      });
+      logService.trackAction({
+        userId: user?.id || "unknown",
+        userName: user?.name || "Unknown",
+        role: user?.role || "Foreman",
+        action: "UPDATE",
+        module: "REPORTING",
+        details: `Foreman rejected SLA (${selectedTaskInfo?.task.slaCategory}) and requested re-evaluation. Expected: ${selectedTaskInfo?.task.estimatedSla}`,
+        targetId: taskId,
+      });
+      alert("ตีกลับใบงานเรียบร้อยแล้ว");
+      setSelectedTaskInfo(null);
+    } catch (err) {
+      console.error("Bounce back error:", err);
+      alert("เกิดข้อผิดพลาดในการตีกลับใบงาน");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (submittingRef.current || isSubmitting) return;
+    if (!selectedTaskInfo) return;
+    if (labor.length === 0)
+      return alert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
+    if (sitePhotos.filter(Boolean).length < 2)
+      return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+    const isRegularActive = labor.some((l) => l.shifts?.normal);
+    if (isRegularActive && laborRegularPhotos.filter(Boolean).length < 4) {
+      return alert(
+        "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
+      );
+    }
+    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
+    if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
+      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+    }
+    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
+    if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
+      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+    }
+    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
+    if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
+      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+    }
+    if (progress <= progressBounds.min) {
+      alert(
+        `ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${progressBounds.min}% (ตามประวัติก่อนหน้า)`,
+      );
+      return;
+    }
+    if (progress > progressBounds.max) {
+      alert(
+        `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% ${!progressBounds.isToday && progress === 100 ? "(ห้ามลงปิดงาน 100% ย้อนหลัง)" : "(เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)"}`,
+      );
+      return;
+    }
+    const history = selectedTaskInfo.task.history || [];
+    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+      ? history.filter(
+          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
+        )
+      : history;
+    const existingHistory = filteredHistory.find(
+      (h) => h.date?.split("T")[0] === reportDate,
+    );
+    if (existingHistory && !isEditingExisting) {
+      alert(
+        `คุณเคยส่งรายงานของวันที่ ${new Date(reportDate).toLocaleDateString("th-TH")} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`,
+      );
+      return;
+    }
+    setShowSummaryModal(true);
+  };
+
+  const handleFinalSubmit = async () => {
+    if (submittingRef.current || isSubmitting) return;
+    if (!selectedTaskInfo) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      const history = selectedTaskInfo.task.history || [];
+      const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+        ? history.filter(
+            (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
+          )
+        : history;
+      const existingHistory = filteredHistory.find(
+        (h) => h.date?.split("T")[0] === reportDate,
+      );
+      const laborPayload = labor
+        .filter(
+          (l) =>
+            l.shifts?.normal ||
+            l.shifts?.otMorning ||
+            l.shifts?.otNoon ||
+            l.shifts?.otEvening,
+        )
+        .map((l) => ({
+          membership: l.membership || "Internal",
+          workerId: l.staffId || l.contractorId || l.id,
+          workerName: l.staffName || l.affiliation || "",
+          staffId: l.staffId || "",
+          staffName: l.staffName || "",
+          contractorId: l.contractorId || "",
+          employeeId: l.employeeId || "",
+          shiftTimes: {
+            day: l.shifts?.normal ? l.shiftTimes?.day || "08:00 - 17:00" : null,
+            otEvening: l.shifts?.otEvening
+              ? l.shiftTimes?.otEvening || "18:00 - 21:00"
+              : null,
+            otMorning: l.shifts?.otMorning
+              ? l.shiftTimes?.otMorning || "06:00 - 08:00"
+              : null,
+            otNoon: l.shifts?.otNoon ? "12:00 - 13:00" : null,
+          },
+          shifts: {
+            normal: l.shifts?.normal || false,
+            otEvening: l.shifts?.otEvening || false,
+            otMorning: l.shifts?.otMorning || false,
+            otNoon: l.shifts?.otNoon || false,
+          },
+          expectedShifts: {
+            normal: l.shifts?.normal || false,
+            otEvening: l.shifts?.otEvening || false,
+            otMorning: l.shifts?.otMorning || false,
+            otNoon: l.shifts?.otNoon || false,
+          },
+          expectedHours: {
+            normal: l.shifts?.normal ? 8 : 0,
+            otMorning: l.shifts?.otMorning ? 2 : 0,
+            otNoon: l.shifts?.otNoon ? 1 : 0,
+            otEvening: l.shifts?.otEvening ? 3 : 0,
+          },
+          amount: l.amount || 1,
+        }));
+      const leavePayload = labor
+        .filter((l) => l.leave?.active)
+        .map((l) => ({
+          workerId: l.staffId || l.id,
+          workerName: l.staffName || "",
+          employeeId: l.employeeId || "",
+          leaveTimes: {
+            custom: l.leave?.time || "08:00 - 17:00",
+          },
+          leaveShifts: {
+            custom: true,
+          },
+          medCertFileUrl: l.leave?.medCertFileUrl || "",
+          leaveType: l.leave?.medCertFileUrl ? "paid" : "unpaid",
+        }));
+      const photosPayload = {
+        site: sitePhotos.filter(Boolean),
+        laborByShift: {
+          regular: laborRegularPhotos.some(Boolean)
+            ? laborRegularPhotos.slice(0, 4)
+            : null,
+          otMorning:
+            laborOtMorningPhotos[0] || laborOtMorningPhotos[1]
+              ? {
+                  in: laborOtMorningPhotos[0] || "",
+                  out: laborOtMorningPhotos[1] || "",
+                }
+              : null,
+          otNoon:
+            laborOtNoonPhotos[0] || laborOtNoonPhotos[1]
+              ? {
+                  in: laborOtNoonPhotos[0] || "",
+                  out: laborOtNoonPhotos[1] || "",
+                }
+              : null,
+          otEvening:
+            laborOtEveningPhotos[0] || laborOtEveningPhotos[1]
+              ? {
+                  in: laborOtEveningPhotos[0] || "",
+                  out: laborOtEveningPhotos[1] || "",
+                }
+              : null,
+        },
+      };
+      const foremanEmpId = user?.employeeId || user?.id || "101527";
+      let updatedEditHistory = existingHistory?.editHistory || [];
+      if (isEditingExisting && existingHistory) {
+        const prevSnapshot = {
+          labor: existingHistory.labor || [],
+          leave: existingHistory.leave || [],
+          photos: existingHistory.photos || null,
+          note: existingHistory.note || "",
+          progress: existingHistory.progress || 0,
+          serverTimestamp:
+            existingHistory.serverTimestamp || existingHistory.date || "",
+        };
+        const editRecord: EditHistoryRecord = {
+          editedAt: new Date().toISOString(),
+          editedBy: foremanEmpId,
+          snapshot: prevSnapshot,
+        };
+        updatedEditHistory = [...updatedEditHistory, editRecord];
+      }
+      const isWoaWop =
+        selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
+        selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+      const updateId = isWoaWop
+        ? reportDate
+        : isEditingExisting && existingHistory
+          ? existingHistory.id
+          : `h-${Date.now()}`;
+      const newUpdate = {
+        id: updateId,
+        date: `${reportDate}T${new Date().toISOString().split("T")[1]}`,
+        note,
+        progress,
+        photos: photosPayload,
+        labor: laborPayload,
+        leave: leavePayload,
+        type: reportType,
+        projectLocationId: selectedTaskInfo.wo.projectId || "",
+        ...(updatedEditHistory.length > 0
+          ? { editHistory: updatedEditHistory }
+          : {}),
+        createdBy:
+          isEditingExisting && existingHistory
+            ? existingHistory.createdBy || foremanEmpId
+            : foremanEmpId,
+        createdAt:
+          isEditingExisting && existingHistory
+            ? existingHistory.createdAt || new Date().toISOString()
+            : new Date().toISOString(),
+        updatedBy: foremanEmpId,
+        updatedAt: new Date().toISOString(),
+      };
+      await addTaskUpdate(
+        selectedTaskInfo.wo.id,
+        selectedTaskInfo.categoryId,
+        selectedTaskInfo.task.id,
+        newUpdate as any,
+      );
+      alert("บันทึกรายงานเรียบร้อยแล้ว");
+      setShowSummaryModal(false);
+      if (existingHistory) {
+        setIsEditingExisting(false);
+      } else {
+        setSelectedTaskInfo(null);
+        setProgress(0);
+        setNote("");
+        setLabor([]);
+        setSitePhotos([]);
+        setLaborRegularPhotos([]);
+        setLaborOtMorningPhotos([]);
+        setLaborOtNoonPhotos([]);
+        setLaborOtEveningPhotos([]);
+        setReportType("Update");
+        setReportDate(new Date().toISOString().split("T")[0]);
+      }
+    } catch (error) {
+      console.error("Submit failed:", error);
+      alert("บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (!selectedTaskInfo) return;
+    const confirmCancel = window.confirm(
+      "คุณต้องการยกเลิกการแก้ไขใช่หรือไม่? การเปลี่ยนแปลงทั้งหมดที่ยังไม่ได้บันทึกจะสูญหาย",
+    );
+    if (!confirmCancel) return;
+    const history = selectedTaskInfo.task.history || [];
+    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+      ? history.filter(
+          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
+        )
+      : history;
+    const existingReport = filteredHistory.find(
+      (h) => h.date?.split("T")[0] === reportDate,
+    );
+    if (existingReport) {
+      setProgress(existingReport.progress);
+      setNote(existingReport.note || "");
+      const mergedLabor: LaborEntry[] = [];
+      const laborMap = new Map<string, HistoryLaborEntry>();
+      const leaveMap = new Map<string, HistoryLeaveEntry>();
+      if (existingReport.labor) {
+        existingReport.labor.forEach((l) =>
+          laborMap.set(l.workerId || l.id || "", l),
+        );
+      }
+      const exLeave = existingReport.leave;
+      if (exLeave) {
+        exLeave.forEach((l) => leaveMap.set(l.workerId || l.id || "", l));
+      }
+      const allWorkerIds = Array.from(
+        new Set([...laborMap.keys(), ...leaveMap.keys()]),
+      );
+      allWorkerIds.forEach((wId) => {
+        const l = laborMap.get(wId);
+        const lv = leaveMap.get(wId);
+        const isInternal =
+          wId.startsWith("DC-") ||
+          (l && !l.contractorId) ||
+          (lv && !lv.contractorId);
+        mergedLabor.push({
+          id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          membership: isInternal ? "Internal" : "Outsource",
+          staffId: wId,
+          staffName:
+            l?.staffName ||
+            l?.workerName ||
+            lv?.staffName ||
+            lv?.workerName ||
+            "",
+          employeeId: l?.employeeId || lv?.employeeId || "",
+          affiliation:
+            l?.staffName || l?.workerName
+              ? isInternal
+                ? l?.staffName || l?.workerName || "General"
+                : l?.staffName || l?.workerName || "General"
+              : lv?.staffName || lv?.workerName || "General",
+          amount: Number(l?.amount) || 1,
+          timeType: "Normal",
+          shifts: {
+            normal: l?.shifts?.normal || false,
+            otMorning: l?.shifts?.otMorning || false,
+            otNoon: l?.shifts?.otNoon || false,
+            otEvening: l?.shifts?.otEvening || false,
+          },
+          shiftTimes: {
+            day: l?.shiftTimes?.day || "08:00 - 17:00",
+            otMorning: l?.shiftTimes?.otMorning || "06:00 - 08:00",
+            otNoon: "12:00 - 13:00",
+            otEvening: l?.shiftTimes?.otEvening || "18:00 - 21:00",
+          },
+          leave: {
+            active: lv?.leaveShifts?.custom || false,
+            time: lv?.leaveTimes?.custom || "08:00 - 17:00",
+            medCertFileUrl: lv?.medCertFileUrl || "",
+          },
+        });
+      });
+      setLabor(mergedLabor);
+      const mapRegularFromDb = (dbShift: any): (string | null)[] => {
+        if (!dbShift) return [];
+        if (Array.isArray(dbShift))
+          return [
+            dbShift[0] || "",
+            dbShift[1] || "",
+            dbShift[2] || "",
+            dbShift[3] || "",
+          ];
+        return [
+          dbShift.in || "",
+          dbShift.lunch || "",
+          dbShift.afternoon || "",
+          dbShift.out || "",
+        ];
+      };
+      const mapOtShiftFromDb = (dbShift: any): (string | null)[] => {
+        if (!dbShift) return [];
+        if (Array.isArray(dbShift)) return [dbShift[0] || "", dbShift[1] || ""];
+        return [dbShift.in || "", dbShift.out || ""];
+      };
+      if (existingReport.photos && !Array.isArray(existingReport.photos)) {
+        const pObj = existingReport.photos as HistoryPhotos;
+        setSitePhotos(pObj.site || []);
+        setLaborRegularPhotos(mapRegularFromDb(pObj.laborByShift?.regular));
+        setLaborOtMorningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otMorning));
+        setLaborOtNoonPhotos(mapOtShiftFromDb(pObj.laborByShift?.otNoon));
+        setLaborOtEveningPhotos(mapOtShiftFromDb(pObj.laborByShift?.otEvening));
+      } else {
+        const pArr = (existingReport.photos as string[]) || [];
+        setSitePhotos(pArr);
+        setLaborRegularPhotos(existingReport.laborPhotos || []);
+        setLaborOtMorningPhotos([]);
+        setLaborOtNoonPhotos([]);
+        setLaborOtEveningPhotos([]);
+      }
+      setActivePhotoTab("site");
+    }
+    setIsEditingExisting(false);
+  };
+
+  const hasUnsavedChanges = () => {
+    if (!selectedTaskInfo) return false;
+    const history = selectedTaskInfo.task.history || [];
+    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
+      ? history.filter(
+          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
+        )
+      : history;
+    const existingReport = filteredHistory.find(
+      (h) => h.date?.split("T")[0] === reportDate,
+    );
+    if (existingReport) {
+      return isEditingExisting;
+    } else {
+      const isLaborDirty = labor.length > 0;
+      const isPhotosDirty =
+        sitePhotos.some(Boolean) ||
+        laborRegularPhotos.some(Boolean) ||
+        laborOtMorningPhotos.some(Boolean) ||
+        laborOtNoonPhotos.some(Boolean) ||
+        laborOtEveningPhotos.some(Boolean);
+      const isNoteDirty = note.trim() !== "";
+      let minProgress = 0;
+      filteredHistory.forEach((h) => {
+        const hDate = h.date?.split("T")[0] || "";
+        if (hDate && hDate < reportDate && h.progress > minProgress) {
+          minProgress = h.progress;
+        }
+      });
+      const isProgressDirty = progress !== minProgress;
+      return isLaborDirty || isPhotosDirty || isNoteDirty || isProgressDirty;
+    }
+  };
+
+  const handleDateChange = (newDateStr: string) => {
+    if (newDateStr === reportDate) return;
+    if (hasUnsavedChanges()) {
+      const discard = window.confirm(
+        "คุณมีรายการที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนวันที่ การเปลี่ยนแปลงทั้งหมดในหน้านี้จะสูญหาย คุณต้องการเปลี่ยนวันโดยละทิ้งการแก้ไขใช่หรือไม่?",
+      );
+      if (!discard) return;
+    }
+    setReportDate(newDateStr);
+  };
+
+
+  const availableStaff = dailyContractors
+    .filter((c) => (c.department || "").toLowerCase().endsWith("wh"))
+    .filter((c) => !labor.some((l) => l.staffId === c.id));
+
+  const availableContractors = realContractors.filter(
+    (c) => !labor.some((l) => l.contractorId === c.id),
+  );
+
+  return (
+    <DailyReportContext.Provider
+      value={{
+        workOrders,
+        user,
+        sendNotification,
+        navigate,
+        location,
+        foremanId,
+        highlightedId,
+        setHighlightedId,
+        selectedTaskInfo,
+        setSelectedTaskInfo,
+        isTaskFinished,
+        searchTerm,
+        setSearchTerm,
+        progress,
+        setProgress,
+        note,
+        setNote,
+        labor,
+        setLabor,
+        sitePhotos,
+        setSitePhotos,
+        laborRegularPhotos,
+        setLaborRegularPhotos,
+        laborOtMorningPhotos,
+        setLaborOtMorningPhotos,
+        laborOtNoonPhotos,
+        setLaborOtNoonPhotos,
+        laborOtEveningPhotos,
+        setLaborOtEveningPhotos,
+        activePhotoTab,
+        setActivePhotoTab,
+        zoomImage,
+        setZoomImage,
+        isSidebarOpen,
+        setIsSidebarOpen,
+        showCalendarDropdown,
+        setShowCalendarDropdown,
+        showUnlockModal,
+        setShowUnlockModal,
+        pendingUnlockDate,
+        setPendingUnlockDate,
+        unlockReason,
+        setUnlockReason,
+        calendarYear,
+        setCalendarYear,
+        calendarMonth,
+        setCalendarMonth,
+        isEditingExisting,
+        setIsEditingExisting,
+        showSummaryModal,
+        setShowSummaryModal,
+        collapsedHelpers,
+        setCollapsedHelpers,
+        isUploading,
+        setIsUploading,
+        uploadingLeaveCertId,
+        setUploadingLeaveCertId,
+        isSubmitting,
+        setIsSubmitting,
+        submittingRef,
+        activeModal,
+        setActiveModal,
+        timePickerTarget,
+        setTimePickerTarget,
+        reportType,
+        setReportType,
+        reportDate,
+        setReportDate,
+        realContractors,
+        realProjects,
+        dailyContractors,
+        modalAlert,
+        setModalAlert,
+        isReviewModalOpen,
+        setIsReviewModalOpen,
+        reviewTaskInfo,
+        setReviewTaskInfo,
+        isCustomerMockupOpen,
+        setIsCustomerMockupOpen,
+        mockupWorkOrder,
+        setMockupWorkOrder,
+        
+        availableStaff,
+        availableContractors,
+        newTasks,
+        inProgressTasks,
+        pendingInspectionTasks,
+        pendingDeliveryWorkOrders,
+        
+        addTaskUpdate,
+        updateTask,
+        updateWorkOrderStatus,
+        requestRetroactiveUnlock,
+        generateDeliveryQrToken,
+        submitCustomerInspection,
+        
+        handleSelectTask,
+        handleBatchAdd,
+        handleTimeChange,
+        handleRemoveSlotPhoto,
+        handleSlotPhotoUpload,
+        handleUploadLeaveCert,
+        handleRemoveLeaveCert,
+        handleConfirmReview,
+        handleBounceBackSLA,
+        handleSubmit,
+        handleFinalSubmit,
+        handleCancelEdit,
+        handleDateChange,
+        
+        toggleShift,
+        getDateStatus,
+        isProgressNotePhotosEditable,
+        hasHistoryForSelectedDate,
+        getTaskImage,
+        openTimePicker,
+        
+        isReportDatePast3Days,
+        isTimeOverlap,
+        progressBounds,
+      }}
+    >
+      {children}
+    </DailyReportContext.Provider>
+  );
+};
+
+export const useDailyReport = () => {
+  const context = useContext(DailyReportContext);
+  if (context === undefined) {
+    throw new Error("useDailyReport must be used within a DailyReportProvider");
+  }
+  return context;
+};

@@ -1,0 +1,1202 @@
+import React, { Fragment } from "react";
+import {
+  ChevronLeft,
+  Search,
+  Building2,
+  Lock,
+  QrCode,
+  CheckCircle2,
+  Package,
+  Sparkles,
+  LayoutDashboard,
+} from "lucide-react";
+import { useDailyReport } from "../../context/DailyReportContext";
+import { GroupSLACountdown } from "./SLACountdowns";
+import { WorkTask, WorkOrder } from "../../types/dailyReport.types";
+
+export const WorkOrderGroupList: React.FC = () => {
+  const {
+    workOrders,
+    user,
+    highlightedId,
+    selectedTaskInfo,
+    searchTerm,
+    setSearchTerm,
+    setIsSidebarOpen,
+    collapsedHelpers,
+    setCollapsedHelpers,
+    newTasks,
+    inProgressTasks,
+    pendingInspectionTasks,
+    pendingDeliveryWorkOrders,
+    handleSelectTask,
+    getTaskImage,
+    realProjects,
+    setIsCustomerMockupOpen,
+    setMockupWorkOrder,
+    generateDeliveryQrToken,
+  } = useDailyReport();
+
+  // Helper render function with lexical scope access
+  const renderTaskCard = (
+    task: WorkTask,
+    wo: WorkOrder,
+    categoryId: string,
+    isNew: boolean,
+  ) => {
+    const isReadOnly = task.isReadOnly;
+    const isSelected = selectedTaskInfo?.task.id === task.id;
+    const isHighlighted = highlightedId === wo.id;
+    const project = realProjects.find((p) => p.id === wo.projectId);
+    const progressColor =
+      task.dailyProgress === 100
+        ? "#10b981"
+        : task.dailyProgress && task.dailyProgress > 0
+          ? "#3b82f6"
+          : "#e2e8f0";
+    const isCompleted100 = (task.dailyProgress || 0) >= 100;
+
+    return (
+      <div
+        key={task.id}
+        onClick={() => {
+          if (isReadOnly) {
+            alert(
+              "คุณเห็นงานนี้ในฐานะผู้ดูแลภาพรวมใบงาน (Owner) เท่านั้น ไม่สามารถแก้ไขหรือบันทึกรายงานได้ (เฉพาะช่างผู้มาช่วยเท่านั้นที่อัปเดตได้)",
+            );
+            return;
+          }
+          handleSelectTask(task, wo, categoryId);
+        }}
+        style={{
+          padding: "12px 14px",
+          borderRadius: "16px",
+          marginBottom: "8px",
+          border: "1px solid",
+          borderColor: isSelected
+            ? "#3b82f6"
+            : isHighlighted
+              ? "#3b82f6"
+              : isReadOnly
+                ? "#cbd5e1"
+                : isCompleted100
+                  ? "#a7f3d0"
+                  : isNew
+                    ? "#fcd34d"
+                    : "#f1f5f9",
+          background: isSelected
+            ? "#eff6ff"
+            : isHighlighted
+              ? "#eff6ff"
+              : isReadOnly
+                ? "#f8fafc"
+                : isCompleted100
+                  ? "#f0fdf4"
+                  : isNew
+                    ? "#fffbeb"
+                    : "#fff",
+          cursor: isReadOnly ? "not-allowed" : "pointer",
+          transition: "all 0.2s",
+          boxShadow:
+            isSelected || isHighlighted
+              ? "0 8px 12px -3px rgba(59, 130, 246, 0.15)"
+              : isCompleted100
+                ? "0 4px 6px -1px rgba(16, 185, 129, 0.08)"
+                : "0 2px 4px -1px rgba(0,0,0,0.05)",
+          transform: isHighlighted && !isSelected ? "scale(1.02)" : "none",
+          position: "relative",
+          opacity: isReadOnly ? 0.75 : 1,
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width: "64px",
+            height: "64px",
+            flexShrink: 0,
+          }}
+        >
+          <svg height="64" width="64" style={{ transform: "rotate(-90deg)" }}>
+            <circle
+              cx="32"
+              cy="32"
+              r="26"
+              stroke="#e2e8f0"
+              strokeWidth="6"
+              fill="none"
+            />
+            <circle
+              cx="32"
+              cy="32"
+              r="26"
+              stroke={progressColor}
+              strokeWidth="6"
+              fill="none"
+              strokeDasharray={2 * Math.PI * 26}
+              strokeDashoffset={
+                2 * Math.PI * 26 -
+                ((task.dailyProgress || 0) / 100) * (2 * Math.PI * 26)
+              }
+              strokeLinecap="round"
+              style={{ transition: "stroke-dashoffset 0.5s ease" }}
+            />
+          </svg>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.95rem",
+                fontWeight: 900,
+                color: "#334155",
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {task.dailyProgress}%
+            </span>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "3px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.65rem",
+                fontWeight: 800,
+                color: "#3b82f6",
+                textTransform: "uppercase",
+                background: "#dbeafe",
+                padding: "2px 5px",
+                borderRadius: "4px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {task.id || task.taskCode}
+            </div>
+            {isReadOnly && (
+              <div
+                style={{
+                  background: "#cbd5e1",
+                  color: "#475569",
+                  fontSize: "0.58rem",
+                  fontWeight: 800,
+                  padding: "2px 5px",
+                  borderRadius: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "2px",
+                }}
+              >
+                <Lock size={8} /> ดูได้อย่างเดียว
+              </div>
+            )}
+            {isNew && (
+              <div
+                style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  fontSize: "0.58rem",
+                  fontWeight: 800,
+                  padding: "2px 5px",
+                  borderRadius: "6px",
+                }}
+              >
+                ใหม่
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: "0.82rem",
+              fontWeight: 800,
+              color: "#0f172a",
+              marginBottom: "3px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            {task.name}
+            {task.currentRevision && task.currentRevision !== "rev00" && (
+              <span
+                style={{
+                  color: "#ef4444",
+                  marginLeft: "6px",
+                  fontWeight: 900,
+                  background: "#fef2f2",
+                  padding: "1px 5px",
+                  borderRadius: "4px",
+                  border: "1px solid #fca5a5",
+                  fontSize: "0.62rem",
+                  display: "inline-block",
+                }}
+              >
+                REV. {parseInt(task.currentRevision.replace("rev", ""))}
+              </span>
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: "0.7rem",
+              color: "#64748b",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              overflow: "hidden",
+            }}
+          >
+            <Building2 size={11} style={{ flexShrink: 0 }} />{" "}
+            <span
+              style={{
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {wo.locationName}
+            </span>
+          </div>
+          {isCompleted100 &&
+            (() => {
+              const isHelper = wo.id.includes("202G") || wo.id.includes("G-WO");
+              const isWoOwner =
+                !isHelper &&
+                (wo.woOwnerId === user?.id ||
+                  (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+                  wo.reporterId === user?.id ||
+                  (user?.employeeId && wo.reporterId === user.employeeId));
+              return (
+                <div
+                  style={{
+                    marginTop: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "#15803d",
+                      background: "#dcfce7",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontWeight: 800,
+                      fontSize: "0.65rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                  >
+                    <CheckCircle2 size={10} style={{ color: "#10b981" }} />
+                    {isWoOwner ? "รอส่งมอบภาพรวม" : "เสร็จสมบูรณ์ 100%"}
+                  </span>
+                </div>
+              );
+            })()}
+        </div>
+        <div
+          style={{
+            width: "44px",
+            height: "44px",
+            borderRadius: "10px",
+            overflow: "hidden",
+            flexShrink: 0,
+            border: "1px solid #e2e8f0",
+            background: "#f1f5f9",
+          }}
+        >
+          {getTaskImage(task) ? (
+            <img
+              loading="lazy"
+              src={getTaskImage(task)!}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              alt="Task"
+            />
+          ) : project?.imageUrl ? (
+            <img
+              loading="lazy"
+              src={project.imageUrl}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              alt="Project"
+            />
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#cbd5e1",
+              }}
+            >
+              <Building2 size={20} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Renders the Sidebar JSX
+  return (
+<div
+          style={{
+            background: "#fff",
+            borderRadius: "24px",
+            border: "1px solid #e2e8f0",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          {" "}
+          
+          <div
+            style={{
+              padding: "1.5rem",
+              borderBottom: "1px solid #f1f5f9",
+              background: "#f8fafc",
+            }}
+          >
+            {" "}
+            
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "1rem",
+              }}
+            >
+              {" "}
+              
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                
+                <div
+                  style={{
+                    background: "#3b82f6",
+                    color: "#fff",
+                    padding: "8px",
+                    borderRadius: "10px",
+                  }}
+                >
+                  {" "}
+                  
+                  <LayoutDashboard size={20} />
+                </div>{" "}
+                
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "1.2rem",
+                    fontWeight: 900,
+                    color: "#0f172a",
+                  }}
+                >
+                  งานรอรายงานผล
+                </h2>
+              </div>{" "}
+              
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "50%",
+                  background: "#f1f5f9",
+                  border: "1px solid #cbd5e1",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "#64748b",
+                  transition: "all 0.2s",
+                  padding: 0,
+                  outline: "none",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = "#e2e8f0";
+                  e.currentTarget.style.color = "#3b82f6";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = "#f1f5f9";
+                  e.currentTarget.style.color = "#64748b";
+                }}
+                title="ซ่อนแถบซ้าย"
+              >
+                {" "}
+                
+                <ChevronLeft size={16} strokeWidth={2.5} />
+              </button>
+            </div>{" "}
+            
+            <div
+              style={{
+                position: "relative",
+              }}
+            >
+              {" "}
+              
+              <Search
+                style={{
+                  position: "absolute",
+                  left: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "#94a3b8",
+                }}
+                size={16}
+              />{" "}
+              
+              <input
+                type="text"
+                placeholder="ค้นหาเลขที่งาน หรือ สถานที่..."
+                style={{
+                  width: "100%",
+                  padding: "10px 12px 10px 38px",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                  outline: "none",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  boxSizing: "border-box",
+                }}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>{" "}
+          
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "1rem",
+            }}
+          >
+            {pendingDeliveryWorkOrders.length === 0 &&
+            newTasks.length === 0 &&
+            inProgressTasks.length === 0 &&
+            pendingInspectionTasks.length === 0 ? (
+               <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem 1rem",
+                  color: "#94a3b8",
+                }}
+              >
+                {" "}
+                
+                <div
+                  style={{
+                    fontSize: "0.9rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  ไม่มีงานที่ต้องรายงานในขณะนี้
+                </div>
+              </div>
+            ) : (
+               <Fragment>
+                {pendingDeliveryWorkOrders.length > 0 && (
+                   <div
+                    style={{
+                      marginBottom: "1.5rem",
+                    }}
+                  >
+                    {" "}
+                    
+                    <h3
+                      style={{
+                        fontSize: "0.8rem",
+                        fontWeight: 800,
+                        color: "#6366f1",
+                        marginLeft: "8px",
+                        marginBottom: "10px",
+                        textTransform: "uppercase",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      {" "}
+                      
+                      <Package
+                        size={12}
+                        style={{
+                          color: "#6366f1",
+                        }}
+                      />{" "}
+                      งานที่รอส่งมอบภาพรวม (Delivery)
+                    </h3>
+                    {pendingDeliveryWorkOrders.map(({ wo }) => (
+                       <div
+                        style={{
+                          background: "#f8fafc",
+                          border: "2px solid #e0e7ff",
+                          borderRadius: "16px",
+                          padding: "14px",
+                          marginBottom: "10px",
+                          boxShadow: "0 4px 6px -1px rgba(99, 102, 241, 0.05)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                        }}
+                        key={wo.id}
+                      >
+                        {" "}
+                        
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          {" "}
+                          
+                          <span
+                            style={{
+                              fontSize: "0.72rem",
+                              fontWeight: 900,
+                              color: "#4f46e5",
+                              background: "#e0e7ff",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                            }}
+                          >
+                            {wo.id}
+                          </span>{" "}
+                          
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              color: "#15803d",
+                              background: "#dcfce7",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                            }}
+                          >
+                            เสร็จครบ 100%
+                          </span>
+                        </div>{" "}
+                        
+                        <div
+                          style={{
+                            fontSize: "0.85rem",
+                            fontWeight: 900,
+                            color: "#1e293b",
+                          }}
+                        >
+                          📍 {wo.locationName}
+                        </div>{" "}
+                        
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            width: "100%",
+                          }}
+                        >
+                          {" "}
+                          
+                          <button
+                            onClick={async () => {
+                              if (
+                                confirm(
+                                  "คุณต้องการสร้าง QR Code สำหรับส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?",
+                                )
+                              ) {
+                                try {
+                                  const token = await generateDeliveryQrToken(
+                                    wo.id,
+                                    user?.employeeId || user?.id || "unknown",
+                                  );
+                                  alert(`สร้าง QR Code ตรวจรับงานเรียบร้อย!
+Token: ${token}`);
+                                } catch (err) {
+                                  console.error(err);
+                                  alert("เกิดข้อผิดพลาดในการสร้าง QR Code");
+                                }
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "8px",
+                              borderRadius: "10px",
+                              border: "none",
+                              background:
+                                "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                              color: "#fff",
+                              fontWeight: 800,
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "4px",
+                              boxShadow: "0 4px 10px rgba(99, 102, 241, 0.15)",
+                            }}
+                          >
+                            {" "}
+                            
+                            <QrCode size={12} /> QR Code
+                          </button>{" "}
+                          
+                          <button
+                            onClick={async () => {
+                              try {
+                                let token = wo.deliveryQrToken;
+                                if (!token) {
+                                  token = await generateDeliveryQrToken(
+                                    wo.id,
+                                    user?.employeeId || user?.id || "unknown",
+                                  );
+                                }
+                                setMockupWorkOrder(wo);
+                                setIsCustomerMockupOpen(true);
+                              } catch (err) {
+                                console.error(err);
+                                alert("เกิดข้อผิดพลาดในการจำลองหน้าลูกค้า");
+                              }
+                            }}
+                            style={{
+                              flex: 1.2,
+                              padding: "8px",
+                              borderRadius: "10px",
+                              border: "1.5px solid #22c55e",
+                              background: "#f0fdf4",
+                              color: "#166534",
+                              fontWeight: 800,
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "4px",
+                              transition: "all 0.2s",
+                            }}
+                          >
+                            {" "}
+                            
+                            <Sparkles
+                              size={12}
+                              style={{
+                                color: "#22c55e",
+                              }}
+                            />{" "}
+                            จำลองตรวจรับ
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(() => {
+                  const allActiveItems = [
+                    ...newTasks,
+                    ...inProgressTasks,
+                    ...pendingInspectionTasks,
+                  ];
+                  if (allActiveItems.length === 0) return null;
+                  const groups: Record<string, any> = {};
+                  allActiveItems.forEach((item) => {
+                    const woId = item.wo.id;
+                    const slaHoursMap: Record<string, number> = {
+                      Immediately: 4,
+                      "24h": 24,
+                      "1-3d": 72,
+                      "3-7d": 168,
+                      "7-14d": 336,
+                      "14-30d": 720,
+                    };
+                    const taskSla =
+                      item.task.slaCategory ||
+                      item.task.baselineSla ||
+                      item.task.estimatedSla ||
+                      "24h";
+                    const durationHours = slaHoursMap[taskSla] || 24;
+                    let startTime = item.task.slaStartTime;
+                    if (!startTime && item.task.startDate) {
+                      startTime = `${item.task.startDate}T08:00:00`;
+                    }
+                    if (!startTime) {
+                      startTime =
+                        item.wo.createdAt ||
+                         new Date().toISOString();
+                    }
+                    const deadlineTime =
+                      new Date(startTime).getTime() +
+                      durationHours * 60 * 60 * 1e3;
+                    let globalDeadlineTime = deadlineTime;
+                    const fullWo = (workOrders as any[]).find((w) => w.id === woId);
+                    if (fullWo) {
+                      let maxDl = 0;
+                      fullWo.categories.forEach((cat: any) => {
+                        cat.tasks.forEach((t: any) => {
+                          const tSla =
+                            t.slaCategory ||
+                            t.baselineSla ||
+                            t.estimatedSla ||
+                            "24h";
+                          const tDurHours = slaHoursMap[tSla] || 24;
+                          let tStart = t.slaStartTime;
+                          if (!tStart && t.startDate) {
+                            tStart = `${t.startDate}T08:00:00`;
+                          }
+                          if (!tStart) {
+                            tStart =
+                              fullWo.createdAt ||
+                               new Date().toISOString();
+                          }
+                          const tDeadline =
+                            new Date(tStart).getTime() +
+                            tDurHours * 60 * 60 * 1e3;
+                          if (tDeadline > maxDl) {
+                            maxDl = tDeadline;
+                          }
+                        });
+                      });
+                      if (maxDl > 0) {
+                        globalDeadlineTime = maxDl;
+                      }
+                    }
+                    if (!groups[woId]) {
+                      groups[woId] = {
+                        wo: item.wo,
+                        myTasks: [],
+                        helperTasks: [],
+                        maxSla: taskSla,
+                        globalDeadline: globalDeadlineTime,
+                        subtaskDeadline: deadlineTime,
+                      };
+                    } else {
+                      if (globalDeadlineTime > groups[woId].globalDeadline) {
+                        groups[woId].globalDeadline = globalDeadlineTime;
+                      }
+                      if (deadlineTime > groups[woId].subtaskDeadline) {
+                        groups[woId].subtaskDeadline = deadlineTime;
+                      }
+                    }
+                    if (item.task.isReadOnly) {
+                      groups[woId].helperTasks.push(item);
+                    } else {
+                      groups[woId].myTasks.push(item);
+                    }
+                  });
+                  return (
+                     <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "1.5rem",
+                      }}
+                    >
+                      {" "}
+                      
+                      <h3
+                        style={{
+                          fontSize: "0.8rem",
+                          fontWeight: 900,
+                          color: "#334155",
+                          marginLeft: "8px",
+                          marginBottom: "-4px",
+                          textTransform: "uppercase",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        {" "}
+                        
+                        <LayoutDashboard size={12} color="#475569" />{" "}
+                        รายการใบงานแยกกลุ่ม (Work Orders)
+                      </h3>
+                      {Object.values(groups).map(
+                        ({
+                          wo,
+                          myTasks,
+                          helperTasks,
+                          globalDeadline,
+                          subtaskDeadline,
+                        }) => {
+                          const isCollapsed = collapsedHelpers[wo.id] !== false;
+                          const totalTasks =
+                            myTasks.length + helperTasks.length;
+                          const isAllCompleted =
+                            totalTasks > 0 &&
+                            myTasks.every(
+                              (t: any) => t.task.dailyProgress === 100,
+                            ) &&
+                            helperTasks.every(
+                              (t: any) => t.task.dailyProgress === 100,
+                            );
+                          const hasInProgress =
+                            myTasks.some(
+                              (t: any) =>
+                                t.task.dailyProgress > 0 &&
+                                t.task.dailyProgress < 100,
+                            ) ||
+                            helperTasks.some(
+                              (t: any) =>
+                                t.task.dailyProgress > 0 &&
+                                t.task.dailyProgress < 100,
+                            );
+                          const hasNew =
+                            myTasks.some((t: any) => t.task.dailyProgress === 0) ||
+                            helperTasks.some((t: any) => t.task.dailyProgress === 0);
+                          let groupBorderColor = "#e2e8f0";
+                          let groupHeaderBg =
+                            "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)";
+                          let statusBadge = (
+                             <span
+                              style={{
+                                fontSize: "0.62rem",
+                                fontWeight: 900,
+                                color: "#64748b",
+                                background: "#e2e8f0",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              รอดำเนินการ
+                            </span>
+                          );
+                          if (isAllCompleted) {
+                            groupBorderColor = "#a5f3fc";
+                            groupHeaderBg =
+                              "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)";
+                            statusBadge = (
+                               <span
+                                style={{
+                                  fontSize: "0.62rem",
+                                  fontWeight: 900,
+                                  color: "#0891b2",
+                                  background: "#cffafe",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                เสร็จครบ 100%
+                              </span>
+                            );
+                          } else if (hasInProgress) {
+                            groupBorderColor = "#fef08a";
+                            groupHeaderBg =
+                              "linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%)";
+                            statusBadge = (
+                               <span
+                                style={{
+                                  fontSize: "0.62rem",
+                                  fontWeight: 900,
+                                  color: "#854d0e",
+                                  background: "#fef9c3",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                กำลังทำ
+                              </span>
+                            );
+                          } else if (hasNew) {
+                            groupBorderColor = "#cbd5e1";
+                          }
+                          return (
+                             <div
+                              style={{
+                                background: "#fff",
+                                border: `2px solid ${groupBorderColor}`,
+                                borderRadius: "20px",
+                                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                                overflow: "hidden",
+                              }}
+                              key={wo.id}
+                            >
+                              {" "}
+                              
+                              <div
+                                style={{
+                                  background: groupHeaderBg,
+                                  padding: "14px 16px",
+                                  borderBottom: `1px solid ${groupBorderColor}`,
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "6px",
+                                }}
+                              >
+                                {" "}
+                                
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  {" "}
+                                  
+                                  <span
+                                    style={{
+                                      fontSize: "0.78rem",
+                                      fontWeight: 900,
+                                      color: "#0f172a",
+                                    }}
+                                  >
+                                    {wo.id}
+                                  </span>{" "}
+                                  
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                    }}
+                                  >
+                                    {statusBadge}
+                                    {isAllCompleted &&
+                                      (() => {
+                                        const isHelper =
+                                          wo.id.includes("202G") ||
+                                          wo.id.includes("G-WO");
+                                        const isWoOwner =
+                                          !isHelper &&
+                                          (wo.woOwnerId === user?.id ||
+                                            (user?.employeeId &&
+                                              wo.woOwnerId ===
+                                                user.employeeId));
+                                        return isWoOwner ? (
+                                           <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              try {
+                                                let token = wo.deliveryQrToken;
+                                                if (!token) {
+                                                  if (
+                                                    window.confirm(
+                                                      "คุณต้องการสร้าง QR Code สำหรับส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?",
+                                                    )
+                                                  ) {
+                                                    token =
+                                                      await generateDeliveryQrToken(
+                                                        wo.id,
+                                                        user?.employeeId ||
+                                                          user?.id ||
+                                                          "unknown",
+                                                      );
+                                                    alert(
+                                                      "สร้าง QR Code สำหรับส่งมอบเรียบร้อย!",
+                                                    );
+                                                  } else {
+                                                    return;
+                                                  }
+                                                }
+                                                setMockupWorkOrder(wo);
+                                                setIsCustomerMockupOpen(true);
+                                              } catch (err) {
+                                                console.error(err);
+                                                alert(
+                                                  "เกิดข้อผิดพลาดในการเปิดการส่งมอบ",
+                                                );
+                                              }
+                                            }}
+                                            style={{
+                                              fontSize: "0.62rem",
+                                              fontWeight: 900,
+                                              color: "#ffffff",
+                                              background:
+                                                "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                                              border: "none",
+                                              padding: "3px 8px",
+                                              borderRadius: "6px",
+                                              cursor: "pointer",
+                                              boxShadow:
+                                                "0 2px 4px rgba(16, 185, 129, 0.2)",
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: "3px",
+                                              transition: "all 0.2s",
+                                            }}
+                                            onMouseOver={(el) =>
+                                              (el.currentTarget.style.transform =
+                                                "scale(1.05)")
+                                            }
+                                            onMouseOut={(el) =>
+                                              (el.currentTarget.style.transform =
+                                                "scale(1)")
+                                            }
+                                          >
+                                            {" "}
+                                            
+                                            <QrCode size={10} /> ส่งมอบภาพรวม
+                                          </button>
+                                        ) : null;
+                                      })()}
+                                  </div>
+                                </div>{" "}
+                                
+                                <div
+                                  style={{
+                                    fontSize: "0.8rem",
+                                    fontWeight: 800,
+                                    color: "#475569",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  📍 {wo.locationName}
+                                </div>{" "}
+                                
+                                <div
+                                  style={{
+                                    marginTop: "6px",
+                                    borderTop: "1px dashed #cbd5e1",
+                                    paddingTop: "6px",
+                                  }}
+                                >
+                                  {" "}
+                                  
+                                  <GroupSLACountdown
+                                    globalDeadline={globalDeadline}
+                                    subtaskDeadline={subtaskDeadline}
+                                    isCompleted={isAllCompleted}
+                                  />
+                                </div>
+                              </div>{" "}
+                              
+                              <div
+                                style={{
+                                  padding: "12px",
+                                }}
+                              >
+                                {myTasks.length > 0 && (
+                                   <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: "8px",
+                                    }}
+                                  >
+                                    {myTasks.map(({ task, categoryId }: any) =>
+                                      renderTaskCard(
+                                        task,
+                                        wo,
+                                        categoryId,
+                                        false,
+                                      ),
+                                    )}
+                                  </div>
+                                )}
+                                {helperTasks.length > 0 && (
+                                   <div
+                                    style={{
+                                      marginTop:
+                                        myTasks.length > 0 ? "12px" : "0px",
+                                      borderTop:
+                                        myTasks.length > 0
+                                          ? "1.5px dashed #f1f5f9"
+                                          : "none",
+                                      paddingTop:
+                                        myTasks.length > 0 ? "10px" : "0px",
+                                    }}
+                                  >
+                                    {" "}
+                                    
+                                    <button
+                                      onClick={() =>
+                                        setCollapsedHelpers((prev) => ({
+                                          ...prev,
+                                          [wo.id]: !isCollapsed,
+                                        }))
+                                      }
+                                      style={{
+                                        width: "100%",
+                                        background: "#f8fafc",
+                                        border: "1px solid #cbd5e1",
+                                        padding: "6px 12px",
+                                        borderRadius: "10px",
+                                        color: "#475569",
+                                        fontSize: "0.7rem",
+                                        fontWeight: 800,
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: "4px",
+                                        marginBottom: isCollapsed
+                                          ? "0px"
+                                          : "10px",
+                                      }}
+                                    >
+                                      {isCollapsed
+                                        ? `แสดงงานช่วยแถม (${helperTasks.length} รายการ)`
+                                        : `ซ่อนงานช่วยแถม`}
+                                    </button>
+                                    {!isCollapsed && (
+                                       <div
+                                        style={{
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          gap: "8px",
+                                        }}
+                                      >
+                                        {helperTasks.map(
+                                          ({ task, categoryId }: any) =>
+                                            renderTaskCard(
+                                              task,
+                                              wo,
+                                              categoryId,
+                                              false,
+                                            ),
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  );
+                })()}
+              </Fragment>
+            )}
+          </div>
+        </div>
+  );
+};

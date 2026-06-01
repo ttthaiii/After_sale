@@ -1,0 +1,518 @@
+import React, { useState, useEffect } from "react";
+import { Clock, Info } from "lucide-react";
+import { TimeLeft, SLACountdownProps, GroupSLACountdownProps } from "../../types/dailyReport.types";
+
+// Helper: format deadline date
+export const formatDeadline = (timestamp: number | string | undefined) => {
+  if (!timestamp) return "-";
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString("th-TH", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }) + " " + d.toLocaleTimeString("th-TH", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + " น.";
+  } catch (e) {
+    return "-";
+  }
+};
+
+export const SLACountdown: React.FC<SLACountdownProps> = ({
+  startTime,
+  durationHours = 24,
+  appointmentDate,
+  actualStartDate,
+  isCompleted,
+  groupDeadline,
+}) => {
+  const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      const start2 = new Date(startTime).getTime();
+      const end = start2 + durationHours * 60 * 60 * 1000;
+      const now = new Date().getTime();
+      const diff = end - now;
+      if (diff < 0) {
+        const overdueDiff = Math.abs(diff);
+        const days = Math.floor(overdueDiff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(
+          (overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+        );
+        const minutes = Math.floor(
+          (overdueDiff % (1000 * 60 * 60)) / (1000 * 60),
+        );
+        setTimeLeft({ days, hours, minutes, isOverdue: true });
+      } else {
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(
+          (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+        );
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        setTimeLeft({ days, hours, minutes, isOverdue: false });
+      }
+    };
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 60000);
+    return () => clearInterval(timer);
+  }, [startTime, durationHours]);
+
+  if (!timeLeft)
+    return (
+      <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>คำนวณเวลา...</div>
+    );
+
+  const durationDays = durationHours / 24;
+  const formattedDurationDays = `${durationDays} วัน`;
+  const formattedAppDate = appointmentDate
+    ? new Date(appointmentDate).toLocaleDateString("th-TH", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "ไม่ระบุ";
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const isAppTodayOrPast = appointmentDate ? appointmentDate <= todayStr : true;
+  const step2Text = actualStartDate
+    ? `เริ่มจริงเมื่อ ${new Date(actualStartDate).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+    : isAppTodayOrPast
+      ? "เริ่มได้แล้ววันนี้"
+      : `เริ่มได้เมื่อ ${formattedAppDate}`;
+
+  const start = new Date(startTime).getTime();
+  const deadlineTime = start + durationHours * 60 * 60 * 1000;
+  const deadlineDate = new Date(deadlineTime);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deadlineMidnight = new Date(deadlineDate);
+  deadlineMidnight.setHours(0, 0, 0, 0);
+  const timeDiff = deadlineMidnight.getTime() - today.getTime();
+  const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+  return (
+    <div
+      style={{
+        background:
+          "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.95) 100%)",
+        backdropFilter: "blur(8px)",
+        padding: "10px 14px",
+        borderRadius: "16px",
+        border: "1px solid rgba(226,232,240,0.9)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.02)",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          borderBottom: "1px solid #f1f5f9",
+          paddingBottom: "6px",
+        }}
+      >
+        <Clock
+          size={13}
+          style={{
+            color: isCompleted
+              ? "#0891b2"
+              : timeLeft.isOverdue
+                ? "#ef4444"
+                : "#0891b2",
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontSize: "0.72rem",
+            fontWeight: 900,
+            color: "#334155",
+            letterSpacing: "0.02em",
+          }}
+        >
+          การประเมินกำหนดส่งเป้าหมาย (SLA)
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "0.72rem",
+          }}
+        >
+          <span style={{ color: "#0284c7", fontWeight: 900, flexShrink: 0 }}>
+            1. วันนัดดำเนินการ:
+          </span>
+          <span style={{ fontWeight: 800, color: "#1e293b" }}>
+            {formattedAppDate}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "0.72rem",
+          }}
+        >
+          <span style={{ color: "#c026d3", fontWeight: 900, flexShrink: 0 }}>
+            2. เป้าหมาย SLA:
+          </span>
+          <span style={{ fontWeight: 800, color: "#1e293b" }}>
+            {formattedDurationDays}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "0.72rem",
+          }}
+        >
+          <span style={{ color: "#0891b2", fontWeight: 900, flexShrink: 0 }}>
+            3. การเริ่มงาน:
+          </span>
+          <span style={{ fontWeight: 800, color: "#1e293b" }}>{step2Text}</span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "0.72rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <span
+            style={{
+              color: isCompleted
+                ? "#0891b2"
+                : timeLeft.isOverdue
+                  ? "#dc2626"
+                  : "#16a34a",
+              fontWeight: 900,
+              flexShrink: 0,
+            }}
+          >
+            4. เวลาคงเหลือ:
+          </span>
+          <span
+            style={{
+              fontWeight: 900,
+              color: isCompleted
+                ? "#0891b2"
+                : timeLeft.isOverdue
+                  ? "#ef4444"
+                  : "#10b981",
+              fontSize: "0.76rem",
+            }}
+          >
+            {isCompleted
+              ? "✅ เสร็จสมบูรณ์ 100%"
+              : daysDiff > 0
+                ? `เหลืออีก ${daysDiff} วัน`
+                : daysDiff === 0
+                  ? `ครบกำหนดวันนี้!`
+                  : `เกินกำหนดมา ${Math.abs(daysDiff)} วัน`}
+          </span>
+          <span
+            style={{
+              fontSize: "0.65rem",
+              fontWeight: 800,
+              color: "#94a3b8",
+              marginLeft: "auto",
+            }}
+          >
+            (เดดไลน์{" "}
+            {new Date(deadlineTime).toLocaleDateString("th-TH", {
+              day: "numeric",
+              month: "short",
+            })}
+            )
+          </span>
+        </div>
+      </div>
+      {groupDeadline &&
+        groupDeadline > deadlineTime &&
+        !isCompleted &&
+        (() => {
+          const formattedGroupDate = new Date(groupDeadline).toLocaleDateString(
+            "th-TH",
+            { day: "numeric", month: "short", year: "numeric" },
+          );
+          return (
+            <div
+              style={{
+                marginTop: "8px",
+                padding: "6px 10px",
+                background: "#f8fafc",
+                border: "1px dashed #cbd5e1",
+                borderRadius: "10px",
+                fontSize: "0.68rem",
+                color: "#475569",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <Info size={12} color="#0284c7" style={{ flexShrink: 0 }} />
+              <span>
+                เป้าหมายส่งมอบลูกค้ารวม:{" "}
+                <strong style={{ color: "#0f172a" }}>
+                  {formattedGroupDate}
+                </strong>{" "}
+                (มีเวลาเผื่อจากวันปิดงานย่อย)
+              </span>
+            </div>
+          );
+        })()}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-Component: GroupSLACountdown
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
+  globalDeadline,
+  subtaskDeadline,
+  isCompleted,
+}) => {
+  const [timeLeftGlobal, setTimeLeftGlobal] = useState<TimeLeft | null>(null);
+  const [timeLeftSub, setTimeLeftSub] = useState<TimeLeft | null>(null);
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const now = new Date().getTime();
+      const diffGlobal = globalDeadline - now;
+      if (diffGlobal < 0) {
+        const overdueDiff = Math.abs(diffGlobal);
+        const days = Math.floor(overdueDiff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(
+          (overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+        );
+        const minutes = Math.floor(
+          (overdueDiff % (1000 * 60 * 60)) / (1000 * 65),
+        );
+        setTimeLeftGlobal({ days, hours, minutes, isOverdue: true });
+      } else {
+        const days = Math.floor(diffGlobal / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(
+          (diffGlobal % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+        );
+        const minutes = Math.floor(
+          (diffGlobal % (1000 * 60 * 60)) / (1000 * 60),
+        );
+        setTimeLeftGlobal({ days, hours, minutes, isOverdue: false });
+      }
+      const diffSub = subtaskDeadline - now;
+      if (diffSub < 0) {
+        const overdueDiff = Math.abs(diffSub);
+        const days = Math.floor(overdueDiff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(
+          (overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+        );
+        const minutes = Math.floor(
+          (overdueDiff % (1000 * 60 * 60)) / (1000 * 65),
+        );
+        setTimeLeftSub({ days, hours, minutes, isOverdue: true });
+      } else {
+        const days = Math.floor(diffSub / (1000 * 60 * 60 * 24));
+        const hours = Math.floor(
+          (diffSub % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+        );
+        const minutes = Math.floor((diffSub % (1000 * 60 * 60)) / (1000 * 60));
+        setTimeLeftSub({ days, hours, minutes, isOverdue: false });
+      }
+    };
+    calculateTime();
+    const timer = setInterval(calculateTime, 60000);
+    return () => clearInterval(timer);
+  }, [globalDeadline, subtaskDeadline]);
+
+  if (!timeLeftGlobal)
+    return (
+      <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>
+        คำนวณเวลา...
+      </span>
+    );
+
+  const formattedGlobalDate = new Date(globalDeadline).toLocaleDateString(
+    "th-TH",
+    { day: "numeric", month: "short", year: "numeric" },
+  );
+  const formattedGlobalTime =
+    new Date(globalDeadline).toLocaleTimeString("th-TH", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + " น.";
+  const formattedSubDate = new Date(subtaskDeadline).toLocaleDateString(
+    "th-TH",
+    { day: "numeric", month: "short", year: "numeric" },
+  );
+
+  let globalBadgeColor = "#ef4444";
+  let globalBadgeBg = "#fef2f2";
+  let globalBorderColor = "#fca5a5";
+  let globalLabelText = "";
+  const totalGlobalHours = timeLeftGlobal.days * 24 + timeLeftGlobal.hours;
+
+  if (isCompleted) {
+    globalBadgeColor = "#0891b2";
+    globalBadgeBg = "#ecfeff";
+    globalBorderColor = "#a5f3fc";
+    globalLabelText = "เสร็จสมบูรณ์ 100%";
+  } else if (timeLeftGlobal.isOverdue) {
+    globalBadgeColor = "#ef4444";
+    globalBadgeBg = "#fef2f2";
+    globalBorderColor = "#fca5a5";
+    globalLabelText = `เกินกำหนด: ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
+  } else {
+    if (totalGlobalHours < 24) {
+      globalBadgeColor = "#d97706";
+      globalBadgeBg = "#fffbeb";
+      globalBorderColor = "#fde047";
+      globalLabelText = `ด่วน! เหลือ ${timeLeftGlobal.hours} ชม. ${timeLeftGlobal.minutes} น.`;
+    } else {
+      globalBadgeColor = "#059669";
+      globalBadgeBg = "#f0fdf4";
+      globalBorderColor = "#a7f3d0";
+      globalLabelText = `เหลือ ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
+    }
+  }
+
+  const hasSubtaskDifference = globalDeadline > subtaskDeadline;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "5px",
+        width: "100%",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <span
+          style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}
+        >
+          กำหนดส่งมอบ (ลูกค้า):
+        </span>
+        <span style={{ fontSize: "0.7rem", fontWeight: 900, color: "#1e293b" }}>
+          {formattedGlobalDate} ({formattedGlobalTime})
+        </span>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: "1px",
+        }}
+      >
+        <span
+          style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}
+        >
+          เวลาคงเหลือ (ลูกค้า):
+        </span>
+        <span
+          style={{
+            fontSize: "0.68rem",
+            fontWeight: 900,
+            color: globalBadgeColor,
+            background: globalBadgeBg,
+            padding: "1px 6px",
+            borderRadius: "4px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "2px",
+            border: `1.5px solid ${globalBorderColor}`,
+          }}
+        >
+          {isCompleted ? "✅" : "⏳"} {globalLabelText}
+        </span>
+      </div>
+      {hasSubtaskDifference &&
+        !isCompleted &&
+        timeLeftSub &&
+        (() => {
+          let subBadgeColor = "#4f46e5";
+          let subBadgeBg = "#e0e7ff";
+          let subBorderColor = "#c7d2fe";
+          let subLabelText = "";
+          if (timeLeftSub.isOverdue) {
+            subBadgeColor = "#9a3412";
+            subBadgeBg = "#ffedd5";
+            subBorderColor = "#fed7aa";
+            subLabelText = `เป้าหมายช่าง: เกินแล้ว ${timeLeftSub.days > 0 ? `${timeLeftSub.days} วัน ` : ""}${timeLeftSub.hours} ชม.`;
+          } else {
+            subLabelText = `เป้าหมายช่าง: เหลือ ${timeLeftSub.days > 0 ? `${timeLeftSub.days} วัน ` : ""}${timeLeftSub.hours} ชม.`;
+          }
+          return (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "3px",
+                padding: "4px 8px",
+                background: "#f8fafc",
+                border: "1px dashed #cbd5e1",
+                borderRadius: "8px",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.62rem",
+                  fontWeight: 800,
+                  color: "#64748b",
+                }}
+              >
+                เป้าหมายภายใน (งานย่อย):
+              </span>
+              <span
+                style={{
+                  fontSize: "0.62rem",
+                  fontWeight: 800,
+                  color: subBadgeColor,
+                  background: subBadgeBg,
+                  padding: "1px 5px",
+                  borderRadius: "4px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "2px",
+                  border: `1px solid ${subBorderColor}`,
+                }}
+                title={`กำหนดเวลาภายในงานนี้: ${formattedSubDate}`}
+              >
+                🛠️ {subLabelText}
+              </span>
+            </div>
+          );
+        })()}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-Component: BatchAddModal
+// ─────────────────────────────────────────────────────────────────────────────
+
