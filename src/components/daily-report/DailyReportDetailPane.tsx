@@ -352,14 +352,14 @@ export const DailyReportDetailPane: React.FC = () => {
                   border: "1px solid #e2e8f0",
                   overflow: "visible",
                   display: "flex",
-                  minHeight: "130px",
+                  height: "220px",
                 }}
               >
                 {" "}
                 
                 <div
                   style={{
-                    width: "150px",
+                    width: "190px",
                     background: "#f1f5f9",
                     position: "relative",
                     flexShrink: 0,
@@ -418,10 +418,10 @@ export const DailyReportDetailPane: React.FC = () => {
                 <div
                   style={{
                     flex: 1,
-                    padding: "16px 20px",
+                    padding: "12px 16px",
                     display: "flex",
                     flexDirection: "column",
-                    gap: "10px",
+                    height: "100%",
                   }}
                 >
                   {" "}
@@ -430,7 +430,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
-                      alignItems: "flex-start",
+                      alignItems: "stretch",
+                      height: "100%",
                     }}
                   >
                     {" "}
@@ -439,207 +440,158 @@ export const DailyReportDetailPane: React.FC = () => {
                       style={{
                         flex: 1,
                         minWidth: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        height: "100%",
                       }}
                     >
                       {" "}
                       
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          gap: "8px",
-                          marginBottom: "4px",
-                        }}
-                      >
+                      <div>
                         {!isSidebarOpen && (
-                           <button
-                            onClick={() => setIsSidebarOpen(true)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              background: "#eff6ff",
-                              border: "1px solid #dbeafe",
-                              borderRadius: "8px",
-                              padding: "4px 10px",
-                              cursor: "pointer",
-                              fontSize: "0.75rem",
-                              fontWeight: 800,
-                              color: "#2563eb",
-                              transition: "all 0.2s",
-                              marginRight: "4px",
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.background = "#dbeafe";
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.background = "#eff6ff";
-                            }}
-                          >
-                            {" "}
-                            
-                            <ChevronRight size={14} strokeWidth={2.5} />
-                            แสดงรายการงาน
-                          </button>
-                        )}{" "}
-                        
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 900,
-                            color: "#3b82f6",
-                            textTransform: "uppercase",
-                            background: "#dbeafe",
-                            padding: "2px 8px",
-                            borderRadius: "6px",
-                          }}
-                        >
-                          {selectedTaskInfo.task.id ||
-                            selectedTaskInfo.task.taskCode}
-                        </div>
-                        {(() => {
-                          const project = realProjects.find(
-                            (p) => p.id === selectedTaskInfo.wo.projectId,
-                          );
-                          return project ? (
-                             <div
+                          <div style={{ marginBottom: "8px" }}>
+                            <button
+                              onClick={() => setIsSidebarOpen(true)}
                               style={{
-                                fontSize: "0.7rem",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                background: "#eff6ff",
+                                border: "1px solid #dbeafe",
+                                borderRadius: "8px",
+                                padding: "4px 10px",
+                                cursor: "pointer",
+                                fontSize: "0.72rem",
                                 fontWeight: 800,
-                                color: "#64748b",
-                                background: "#f1f5f9",
-                                padding: "2px 8px",
-                                borderRadius: "6px",
-                                border: "1px solid #e2e8f0",
+                                color: "#2563eb",
+                                transition: "all 0.2s",
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.background = "#dbeafe";
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.background = "#eff6ff";
                               }}
                             >
-                              🏢 {project.name}
-                            </div>
-                          ) : null;
-                        })()}{" "}
-                        
-                        <div
+                              <ChevronRight size={12} strokeWidth={2.5} />
+                              แสดงรายการงาน
+                            </button>
+                          </div>
+                        )}
+
+                        <h2
                           style={{
+                            margin: 0,
+                            fontSize: "1.1rem",
+                            fontWeight: 900,
+                            color: "#0f172a",
+                            lineHeight: 1.2,
                             display: "flex",
-                            gap: "4px",
+                            alignItems: "center",
+                            gap: "8px",
+                            flexWrap: "wrap",
                           }}
                         >
                           {" "}
+                          <span>{selectedTaskInfo.task.name || selectedTaskInfo.task.taskName}</span>
                           
-                          <div
+                          <span
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              background: "#eff6ff",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              border: "1px solid #dbeafe",
-                            }}
-                          >
-                            {" "}
-                            
-                            <MapPin size={12} color="#3b82f6" /> 
-                            <span
-                              style={{
-                                fontSize: "0.75rem",
-                                fontWeight: 800,
-                                color: "#1e40af",
-                              }}
-                            >
-                              {selectedTaskInfo.task.position || "-"}
-                            </span>
-                          </div>{" "}
-                          
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
+                              fontSize: "0.68rem",
+                              fontWeight: 800,
+                              color: "#166534",
                               background: "#f0fdf4",
                               padding: "2px 8px",
                               borderRadius: "6px",
                               border: "1px solid #dcfce7",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            {" "}
-                            
-                            <Package size={12} color="#15803d" /> 
-                            <span
-                              style={{
-                                fontSize: "0.75rem",
-                                fontWeight: 800,
-                                color: "#166534",
-                              }}
-                            >
-                              {selectedTaskInfo.task.amount || 1}{" "}
-                              {selectedTaskInfo.task.unit || "จุด"}
+                            <Package size={10} color="#15803d" />
+                            {selectedTaskInfo.task.amount || 1} {selectedTaskInfo.task.unit || "จุด"}
+                          </span>
+
+                          {selectedTaskInfo.task.currentRevision &&
+                            selectedTaskInfo.task.currentRevision !== "rev00" && (
+                               <span
+                                style={{
+                                  color: "#ef4444",
+                                  fontWeight: 900,
+                                  background: "#fef2f2",
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #fca5a5",
+                                  fontSize: "0.68rem",
+                                }}
+                              >
+                                REV. {parseInt(
+                                  selectedTaskInfo.task.currentRevision.replace(
+                                    "rev",
+                                    "",
+                                  ),
+                                )}
+                              </span>
+                            )}
+                        </h2>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                            marginTop: "8px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสรายการ:</span>
+                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
+                              {selectedTaskInfo.task.id || selectedTaskInfo.task.taskCode || "-"}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>โครงการ:</span>
+                            <span style={{ fontWeight: 800, color: "#1e293b" }}>
+                              {(() => {
+                                const project = realProjects.find((p) => p.id === selectedTaskInfo.wo.projectId);
+                                return project ? project.name : "-";
+                              })()}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>สถานที่:</span>
+                            <span style={{ fontWeight: 800, color: "#1e293b" }}>
+                              {(() => {
+                                const parts = [];
+                                if (selectedTaskInfo.wo.building) parts.push("อาคาร " + selectedTaskInfo.wo.building);
+                                if (selectedTaskInfo.wo.floor) parts.push("ชั้น " + selectedTaskInfo.wo.floor);
+                                if (selectedTaskInfo.wo.room) parts.push("ห้อง " + selectedTaskInfo.wo.room);
+                                return parts.length > 0 ? parts.join(" / ") : "-";
+                              })()}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>หมวดงาน:</span>
+                            <span style={{ fontWeight: 800, color: "#1e293b" }}>
+                              {(() => {
+                                const category = selectedTaskInfo.wo.categories.find((c) => c.id === selectedTaskInfo.categoryId);
+                                return category ? category.name : "-";
+                              })()}
                             </span>
                           </div>
                         </div>
-                      </div>{" "}
-                      
-                      <h2
-                        style={{
-                          margin: 0,
-                          fontSize: "1.25rem",
-                          fontWeight: 900,
-                          color: "#0f172a",
-                          lineHeight: 1.2,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {" "}
-                        <span>{selectedTaskInfo.task.name}</span>
-                        {isTaskFinished && (
-                           <span
-                            style={{
-                              color: "#0891b2",
-                              fontWeight: 900,
-                              background: "#ecfeff",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              border: "1px solid #a5f3fc",
-                              fontSize: "0.72rem",
-                            }}
-                          >
-                            ✅ เสร็จสมบูรณ์ 100%
-                          </span>
-                        )}
-                        {selectedTaskInfo.task.currentRevision &&
-                          selectedTaskInfo.task.currentRevision !== "rev00" && (
-                             <span
-                              style={{
-                                color: "#ef4444",
-                                fontWeight: 900,
-                                background: "#fef2f2",
-                                padding: "2px 8px",
-                                borderRadius: "6px",
-                                border: "1px solid #fca5a5",
-                                fontSize: "0.72rem",
-                              }}
-                            >
-                              งานแก้ไข - REV.{" "}
-                              {parseInt(
-                                selectedTaskInfo.task.currentRevision.replace(
-                                  "rev",
-                                  "",
-                                ),
-                              )}
-                            </span>
-                          )}
-                      </h2>
-                    </div>{" "}
+                      </div>
+                    </div> {" "}
                     
                     <div
                       style={{
                         display: "flex",
                         flexDirection: "column",
-                        gap: "8px",
+                        gap: "6px",
                         alignItems: "flex-end",
                         minWidth: "200px",
                         marginLeft: "20px",
@@ -742,7 +694,7 @@ export const DailyReportDetailPane: React.FC = () => {
                       <div
                         style={{
                           width: "100%",
-                          padding: "8px 16px",
+                          padding: "6px 12px",
                           background: "#f8fafc",
                           borderRadius: "12px",
                           border: "1px solid #e2e8f0",

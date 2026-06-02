@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { WorkOrder } from '../types';
-import { Star, Sparkles, Building2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Star, Sparkles, Building2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+
 
 interface CustomerInspectionMockupProps {
     isOpen: boolean;
@@ -19,6 +20,30 @@ interface CustomerInspectionMockupProps {
     ) => Promise<void>;
 }
 
+const getAfterPhotos = (task: any): string[] => {
+    const photosList = [];
+    if (task.history && task.history.length > 0) {
+        const entry100 = task.history.find((h) => h.progress === 100) 
+                      || [...task.history].sort((a, b) => (b.progress || 0) - (a.progress || 0))[0];
+        if (entry100 && entry100.photos) {
+            const photos = entry100.photos;
+            if (Array.isArray(photos)) {
+                photos.forEach((p) => { if (p) photosList.push(p); });
+            } else if (typeof photos === 'object') {
+                const siteArr = photos.site;
+                if (Array.isArray(siteArr)) {
+                    siteArr.forEach((p) => { if (p) photosList.push(p); });
+                }
+            }
+        }
+    }
+    if (photosList.length === 0) {
+        if (task.latestPhotoUrl) photosList.push(task.latestPhotoUrl);
+        else if (task.afterPhotoUrl) photosList.push(task.afterPhotoUrl);
+    }
+    return photosList;
+};
+
 export default function CustomerInspectionMockup({
     isOpen,
     onClose,
@@ -33,8 +58,15 @@ export default function CustomerInspectionMockup({
     }>>({});
     
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+    const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>({});
     const { logCustomerQrView } = useWorkOrders();
+    const [lightboxPhotos, setLightboxPhotos] = useState<string[]>([]);
+    const [lightboxActiveIdx, setLightboxActiveIdx] = useState<number>(0);
+    const [lightboxTaskId, setLightboxTaskId] = useState<string | null>(null);
+    const [activePhotoIndices, setActivePhotoIndices] = useState<Record<string, number>>({});
+
+
+
 
     useEffect(() => {
         if (isOpen && workOrder.id) {
@@ -67,14 +99,49 @@ export default function CustomerInspectionMockup({
     );
 
     const handleSelectAction = (taskId: string, status: 'approved' | 'rejected') => {
-        setApprovals(prev => ({
-            ...prev,
-            [taskId]: {
-                status,
-                reason: status === 'rejected' ? rejectReasons[taskId] || '' : undefined,
-                defectCategories: status === 'rejected' ? defectCategories[taskId] || {} : undefined
+        const incompleteRejectTask = eligibleTasks.find(t => 
+            approvals[t.id]?.status === 'rejected' && !rejectReasons[t.id]?.trim()
+        );
+        
+        if (incompleteRejectTask && incompleteRejectTask.id !== taskId) {
+            alert(`กรุณากรอกสาเหตุสำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนทำการประเมินรายการอื่น`);
+            return;
+        }
+
+        setApprovals(prev => {
+            const current = prev[taskId];
+            if (current && current.status === status) {
+                const next = { ...prev };
+                delete next[taskId];
+                return next;
             }
-        }));
+            return {
+                ...prev,
+                [taskId]: {
+                    status,
+                    reason: status === 'rejected' ? rejectReasons[taskId] || '' : undefined,
+                    defectCategories: status === 'rejected' ? defectCategories[taskId] || {} : undefined
+                }
+            };
+        });
+    };
+
+    const handleToggleExpand = (taskId: string) => {
+        const incompleteRejectTask = eligibleTasks.find(t => 
+            approvals[t.id]?.status === 'rejected' && !rejectReasons[t.id]?.trim()
+        );
+        
+        if (incompleteRejectTask) {
+            if (incompleteRejectTask.id !== taskId) {
+                alert(`กรุณากรอกสาเหตุสำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนจึงจะสามารถเปิดรายการอื่นได้`);
+                return;
+            } else {
+                alert('กรุณากรอกสาเหตุสำหรับการสั่งแก้ไข (Reject) ให้เรียบร้อยก่อนปิดรายการนี้');
+                return;
+            }
+        }
+        
+        setExpandedTaskIds(prev => ({ ...prev, [taskId]: !prev[taskId] }));
     };
 
     const handleRejectReasonChange = (taskId: string, reason: string) => {
@@ -133,7 +200,11 @@ export default function CustomerInspectionMockup({
             };
 
             await onSubmitInspection(approvals, surveyPayload);
-            alert('บันทึกการส่งมอบและประเมินงานลูกค้าเรียบร้อยแล้ว!');
+            if (hasRejections) {
+                alert('เราได้รับข้อมูลจุดที่ต้องแก้ไขเรียบร้อยแล้ว ทางทีมงานจะรีบดำเนินการแก้ไขให้เสร็จสิ้นโดยเร็วที่สุดค่ะ');
+            } else {
+                alert('บันทึกการประเมินและตรวจรับงานเรียบร้อยแล้ว ขอบคุณที่ไว้วางใจเลือกใช้บริการของเราค่ะ');
+            }
             onClose();
         } catch (err) {
             console.error(err);
@@ -218,7 +289,7 @@ export default function CustomerInspectionMockup({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <h3 style={{ margin: '4px 0 8px 8px', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>รายการส่งมอบ ({eligibleTasks.length} รายการ)</h3>
                         {eligibleTasks.map((task) => {
-                            const isExpanded = expandedTaskId === task.id;
+                            const isExpanded = !!expandedTaskIds[task.id];
                             const decision = approvals[task.id];
                             
                             return (
@@ -232,7 +303,7 @@ export default function CustomerInspectionMockup({
                                 >
                                     {/* Collapsible Trigger bar */}
                                     <div 
-                                        onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
+                                        onClick={() => handleToggleExpand(task.id)}
                                         style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
                                     >
                                         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -260,7 +331,7 @@ export default function CustomerInspectionMockup({
                                             >
                                                 แก้ (Reject)
                                             </button>
-                                            <div onClick={() => setExpandedTaskId(isExpanded ? null : task.id)} style={{ padding: '4px', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                                            <div onClick={() => handleToggleExpand(task.id)} style={{ padding: '4px', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
                                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                             </div>
                                         </div>
@@ -273,24 +344,157 @@ export default function CustomerInspectionMockup({
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                                                     <span style={{ fontWeight: 800, display: 'block', marginBottom: '4px' }}>ภาพก่อนซ่อม (BEFORE):</span>
-                                                    <div style={{ height: 120, background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                                                        {task.beforePhotoUrl ? <img src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Before" /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>ไม่มีรูปภาพ</div>}
+                                                    <div 
+                                                        onClick={() => {
+                                                            if (task.beforePhotoUrl) {
+                                                                setLightboxPhotos([task.beforePhotoUrl]);
+                                                                setLightboxActiveIdx(0);
+                                                                setLightboxTaskId(null);
+                                                            }
+                                                        }}
+                                                        style={{ 
+                                                            height: 120, 
+                                                            background: '#e2e8f0', 
+                                                            borderRadius: '10px', 
+                                                            overflow: 'hidden',
+                                                            cursor: task.beforePhotoUrl ? 'zoom-in' : 'default',
+                                                            position: 'relative'
+                                                        }}
+                                                    >
+                                                        {task.beforePhotoUrl ? (
+                                                            <img src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Before" />
+                                                        ) : (
+                                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>ไม่มีรูปภาพ</div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                                                     <span style={{ fontWeight: 800, display: 'block', marginBottom: '4px' }}>ภาพหลังซ่อมเสร็จ (AFTER):</span>
-                                                    <div style={{ height: 120, background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                                                        {task.latestPhotoUrl || task.afterPhotoUrl ? <img src={task.latestPhotoUrl || task.afterPhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="After" /> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>ไม่มีรูปภาพ</div>}
-                                                    </div>
+                                                    {(() => {
+                                                        const afterPhotos = getAfterPhotos(task);
+                                                        const currentIndex = activePhotoIndices[task.id] || 0;
+                                                        const currentPhoto = afterPhotos[currentIndex];
+                                                        
+                                                        return (
+                                                            <div style={{ height: 120, background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden', position: 'relative' }}>
+                                                                {currentPhoto ? (
+                                                                    <div 
+                                                                        style={{ width: '100%', height: '100%', position: 'relative', cursor: 'zoom-in' }} 
+                                                                        onClick={() => {
+                                                                            setLightboxPhotos(afterPhotos);
+                                                                            setLightboxActiveIdx(currentIndex);
+                                                                            setLightboxTaskId(task.id);
+                                                                        }}
+                                                                    >
+                                                                        <img
+                                                                            src={currentPhoto}
+                                                                            style={{
+                                                                                width: '100%',
+                                                                                height: '100%',
+                                                                                objectFit: 'cover',
+                                                                            }}
+                                                                            alt={`After Photo ${currentIndex + 1}`}
+                                                                        />
+                                                                        
+                                                                        {/* Floating Left Arrow */}
+                                                                        {afterPhotos.length > 1 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    const prevIdx = (currentIndex - 1 + afterPhotos.length) % afterPhotos.length;
+                                                                                    setActivePhotoIndices(prev => ({ ...prev, [task.id]: prevIdx }));
+                                                                                }}
+                                                                                style={{
+                                                                                    position: 'absolute',
+                                                                                    left: '6px',
+                                                                                    top: '50%',
+                                                                                    transform: 'translateY(-50%)',
+                                                                                    background: 'rgba(15, 23, 42, 0.65)',
+                                                                                    border: 'none',
+                                                                                    width: '26px',
+                                                                                    height: '26px',
+                                                                                    borderRadius: '50%',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'center',
+                                                                                    color: '#fff',
+                                                                                    cursor: 'pointer',
+                                                                                    transition: 'all 0.2s',
+                                                                                    padding: 0
+                                                                                }}
+                                                                                onMouseOver={e => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)'}
+                                                                                onMouseOut={e => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.65)'}
+                                                                            >
+                                                                                <ChevronLeft size={16} />
+                                                                            </button>
+                                                                        )}
+
+                                                                        {/* Floating Right Arrow */}
+                                                                        {afterPhotos.length > 1 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    const nextIdx = (currentIndex + 1) % afterPhotos.length;
+                                                                                    setActivePhotoIndices(prev => ({ ...prev, [task.id]: nextIdx }));
+                                                                                }}
+                                                                                style={{
+                                                                                    position: 'absolute',
+                                                                                    right: '6px',
+                                                                                    top: '50%',
+                                                                                    transform: 'translateY(-50%)',
+                                                                                    background: 'rgba(15, 23, 42, 0.65)',
+                                                                                    border: 'none',
+                                                                                    width: '26px',
+                                                                                    height: '26px',
+                                                                                    borderRadius: '50%',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'center',
+                                                                                    color: '#fff',
+                                                                                    cursor: 'pointer',
+                                                                                    transition: 'all 0.2s',
+                                                                                    padding: 0
+                                                                                }}
+                                                                                onMouseOver={e => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)'}
+                                                                                onMouseOut={e => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.65)'}
+                                                                            >
+                                                                                <ChevronRight size={16} />
+                                                                            </button>
+                                                                        )}
+
+                                                                        {/* Page Indicator Badge */}
+                                                                        {afterPhotos.length > 1 && (
+                                                                            <div
+                                                                                style={{
+                                                                                    position: 'absolute',
+                                                                                    bottom: '6px',
+                                                                                    right: '6px',
+                                                                                    background: 'rgba(0, 0, 0, 0.65)',
+                                                                                    color: '#fff',
+                                                                                    fontSize: '0.62rem',
+                                                                                    fontWeight: 800,
+                                                                                    padding: '2px 6px',
+                                                                                    borderRadius: '4px',
+                                                                                    pointerEvents: 'none',
+                                                                                    letterSpacing: '0.05em',
+                                                                                }}
+                                                                            >
+                                                                                {currentIndex + 1}/{afterPhotos.length} รูป
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>ไม่มีรูปภาพ</div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
 
-                                            {/* Site Notes */}
-                                            {task.history && task.history.length > 0 && (
-                                                <div style={{ fontSize: '0.78rem', background: '#fff', border: '1px solid #e2e8f0', padding: '10px 12px', borderRadius: '10px', fontStyle: 'italic', color: '#475569' }}>
-                                                    "หมายเหตุช่าง: {task.history[0].note || 'ไม่มีหมายเหตุ'}"
-                                                </div>
-                                            )}
+
 
                                             {/* Defect Diagnostics Form (Unlocked on Reject) */}
                                             {decision?.status === 'rejected' && (
@@ -362,15 +566,187 @@ export default function CustomerInspectionMockup({
                         disabled={isSubmitting || eligibleTasks.length === 0}
                         style={{
                             padding: '10px 32px', borderRadius: '12px', border: 'none',
-                            background: isSubmitting ? '#94a3b8' : hasRejections ? '#ef4444' : '#22c55e',
+                            background: isSubmitting ? '#94a3b8' : '#3b82f6',
                             color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                            boxShadow: isSubmitting ? 'none' : `0 4px 10px ${hasRejections ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)'}`
+                            boxShadow: isSubmitting ? 'none' : '0 4px 10px rgba(59, 130, 246, 0.2)'
                         }}
                     >
-                        {isSubmitting ? 'กำลังส่งข้อมูล...' : hasRejections ? 'ส่งบันทึกการสั่งแก้ไขงาน (Reject)' : 'ยืนยันปิดใบงาน (Verify & Close)'}
+                        {isSubmitting ? 'กำลังส่งข้อมูล...' : 'ส่งผลการประเมิน'}
                     </button>
                 </div>
             </div>
+            
+            {/* Image Lightbox Modal */}
+            {lightboxPhotos.length > 0 && (
+                <div 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setLightboxPhotos([]);
+                    }}
+                    style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(20px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 4000, padding: '20px', cursor: 'zoom-out',
+                        animation: 'fadeIn 0.2s ease-out'
+                    }}
+                >
+                    <style dangerouslySetInnerHTML={{__html: `
+                        @keyframes fadeIn {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                        }
+                        @keyframes scaleUp {
+                            from { transform: scale(0.9); opacity: 0; }
+                            to { transform: scale(1); opacity: 1; }
+                        }
+                    `}} />
+                    
+                    {/* Floating Left Arrow (Lightbox) */}
+                    {lightboxPhotos.length > 1 && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const prevIdx = (lightboxActiveIdx - 1 + lightboxPhotos.length) % lightboxPhotos.length;
+                                setLightboxActiveIdx(prevIdx);
+                                if (lightboxTaskId) {
+                                    setActivePhotoIndices(prev => ({ ...prev, [lightboxTaskId]: prevIdx }));
+                                }
+                            }}
+                            style={{
+                                position: 'absolute',
+                                left: '24px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'rgba(15, 23, 42, 0.75)',
+                                border: '2px solid rgba(255, 255, 255, 0.3)',
+                                width: '44px',
+                                height: '44px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                zIndex: 4100,
+                                padding: 0
+                            }}
+                            onMouseOver={e => {
+                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.9)';
+                                e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                            }}
+                            onMouseOut={e => {
+                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.75)';
+                                e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                            }}
+                        >
+                            <ChevronLeft size={24} />
+                        </button>
+                    )}
+
+                    {/* Floating Right Arrow (Lightbox) */}
+                    {lightboxPhotos.length > 1 && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const nextIdx = (lightboxActiveIdx + 1) % lightboxPhotos.length;
+                                setLightboxActiveIdx(nextIdx);
+                                if (lightboxTaskId) {
+                                    setActivePhotoIndices(prev => ({ ...prev, [lightboxTaskId]: nextIdx }));
+                                }
+                            }}
+                            style={{
+                                position: 'absolute',
+                                right: '24px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'rgba(15, 23, 42, 0.75)',
+                                border: '2px solid rgba(255, 255, 255, 0.3)',
+                                width: '44px',
+                                height: '44px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                zIndex: 4100,
+                                padding: 0
+                            }}
+                            onMouseOver={e => {
+                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.9)';
+                                e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                            }}
+                            onMouseOut={e => {
+                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.75)';
+                                e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                            }}
+                        >
+                            <ChevronRight size={24} />
+                        </button>
+                    )}
+
+                    {/* Lightbox Image Container */}
+                    <div style={{ position: 'relative', maxWidth: '80vw', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+                        <img 
+                            src={lightboxPhotos[lightboxActiveIdx]} 
+                            style={{ 
+                                maxWidth: '100%', 
+                                maxHeight: '80vh', 
+                                borderRadius: '16px', 
+                                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                                objectFit: 'contain',
+                                animation: 'scaleUp 0.2s ease-out',
+                                border: '3px solid #fff'
+                            }} 
+                            alt="Enlarged view" 
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setLightboxPhotos([])}
+                            style={{
+                                position: 'absolute', top: '-16px', right: '-16px',
+                                background: '#ef4444', color: '#fff', border: '2px solid #fff',
+                                width: '32px', height: '32px', borderRadius: '50%',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                padding: 0
+                            }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    {/* Page Indicator (Lightbox) */}
+                    {lightboxPhotos.length > 1 && (
+                        <div
+                            style={{
+                                position: 'absolute',
+                                bottom: '24px',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                background: 'rgba(15, 23, 42, 0.85)',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                color: '#fff',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                padding: '6px 16px',
+                                borderRadius: '30px',
+                                pointerEvents: 'none',
+                                letterSpacing: '0.05em',
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
+                                zIndex: 4100
+                            }}
+                        >
+                            รูปที่ {lightboxActiveIdx + 1} จาก {lightboxPhotos.length}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

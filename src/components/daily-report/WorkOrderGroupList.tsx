@@ -607,168 +607,234 @@ export const WorkOrderGroupList: React.FC = () => {
                       />{" "}
                       งานที่รอส่งมอบภาพรวม (Delivery)
                     </h3>
-                    {pendingDeliveryWorkOrders.map(({ wo }) => (
-                       <div
-                        style={{
-                          background: "#f8fafc",
-                          border: "2px solid #e0e7ff",
-                          borderRadius: "16px",
-                          padding: "14px",
-                          marginBottom: "10px",
-                          boxShadow: "0 4px 6px -1px rgba(99, 102, 241, 0.05)",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                        }}
-                        key={wo.id}
-                      >
-                        {" "}
-                        
+                    {pendingDeliveryWorkOrders.map(({ wo }) => {
+                      const isHelper = wo.id.includes("202G") || wo.id.includes("G-WO");
+                      const isWoOwner =
+                        !isHelper &&
+                        (wo.woOwnerId === user?.id ||
+                          (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+                          wo.reporterId === user?.id ||
+                          (user?.employeeId && wo.reporterId === user.employeeId));
+
+                      const globalTasks = wo.categories.flatMap((c) => c.tasks);
+                      
+                      // Calculate global deadlines
+                      let maxDl = 0;
+                      let minSubDl = Infinity;
+                      wo.categories.forEach((cat) => {
+                        cat.tasks.forEach((t) => {
+                          const slaHoursMap = {
+                            Immediately: 4,
+                            "24h": 24,
+                            "1-3d": 72,
+                            "3-7d": 168,
+                            "7-14d": 336,
+                            "14-30d": 720,
+                          };
+                          const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
+                          const tDurHours = slaHoursMap[tSla] || 24;
+                          let tStart = t.slaStartTime;
+                          if (!tStart && t.startDate) {
+                            tStart = `${t.startDate}T08:00:00`;
+                          }
+                          if (!tStart) {
+                            tStart = wo.createdAt || new Date().toISOString();
+                          }
+                          const tDeadline = new Date(tStart).getTime() + tDurHours * 60 * 60 * 1e3;
+                          if (tDeadline > maxDl) {
+                            maxDl = tDeadline;
+                          }
+                          if (t.deadline) {
+                            const subDl = new Date(t.deadline).getTime();
+                            if (subDl < minSubDl) {
+                              minSubDl = subDl;
+                            }
+                          }
+                        });
+                      });
+                      const globalDeadline = maxDl > 0 ? maxDl : new Date().getTime();
+                      const subtaskDeadline = minSubDl !== Infinity ? minSubDl : globalDeadline;
+
+                      const isSelected = selectedTaskInfo?.wo.id === wo.id;
+
+                      return (
                         <div
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
+                            background: "#fff",
+                            border: isSelected ? "2.5px solid #3b82f6" : "2px solid #a5f3fc",
+                            borderRadius: "20px",
+                            boxShadow: isSelected
+                              ? "0 10px 15px -3px rgba(59, 130, 246, 0.15)"
+                              : "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                            overflow: "hidden",
+                            marginBottom: "10px",
+                            cursor: "pointer",
+                            transition: "all 0.2s",
                           }}
-                        >
-                          {" "}
-                          
-                          <span
-                            style={{
-                              fontSize: "0.72rem",
-                              fontWeight: 900,
-                              color: "#4f46e5",
-                              background: "#e0e7ff",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                            }}
-                          >
-                            {wo.id}
-                          </span>{" "}
-                          
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              fontWeight: 800,
-                              color: "#15803d",
-                              background: "#dcfce7",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                            }}
-                          >
-                            เสร็จครบ 100%
-                          </span>
-                        </div>{" "}
-                        
-                        <div
-                          style={{
-                            fontSize: "0.85rem",
-                            fontWeight: 900,
-                            color: "#1e293b",
+                          onClick={() => {
+                            if (globalTasks.length > 0) {
+                              const firstTask = globalTasks[0];
+                              const catId = wo.categories.find((c) =>
+                                c.tasks.some((t) => t.id === firstTask.id)
+                              )?.id || wo.categories[0]?.id;
+                              handleSelectTask(firstTask, wo, catId);
+                            }
                           }}
+                          key={wo.id}
                         >
-                          📍 {wo.locationName}
-                        </div>{" "}
-                        
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            width: "100%",
-                          }}
-                        >
-                          {" "}
-                          
-                          <button
-                            onClick={async () => {
-                              if (
-                                confirm(
-                                  "คุณต้องการสร้าง QR Code สำหรับส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?",
-                                )
-                              ) {
-                                try {
-                                  const token = await generateDeliveryQrToken(
-                                    wo.id,
-                                    user?.employeeId || user?.id || "unknown",
-                                  );
-                                  alert(`สร้าง QR Code ตรวจรับงานเรียบร้อย!
-Token: ${token}`);
-                                } catch (err) {
-                                  console.error(err);
-                                  alert("เกิดข้อผิดพลาดในการสร้าง QR Code");
-                                }
-                              }
-                            }}
+                          <div
                             style={{
-                              flex: 1,
-                              padding: "8px",
-                              borderRadius: "10px",
-                              border: "none",
-                              background:
-                                "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-                              color: "#fff",
-                              fontWeight: 800,
-                              fontSize: "0.75rem",
-                              cursor: "pointer",
+                              background: "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)",
+                              padding: "14px 16px",
+                              borderBottom: `1px solid #a5f3fc`,
                               display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: "4px",
-                              boxShadow: "0 4px 10px rgba(99, 102, 241, 0.15)",
+                              flexDirection: "column",
+                              gap: "6px",
                             }}
                           >
-                            {" "}
-                            
-                            <QrCode size={12} /> QR Code
-                          </button>{" "}
-                          
-                          <button
-                            onClick={async () => {
-                              try {
-                                let token = wo.deliveryQrToken;
-                                if (!token) {
-                                  token = await generateDeliveryQrToken(
-                                    wo.id,
-                                    user?.employeeId || user?.id || "unknown",
-                                  );
-                                }
-                                setMockupWorkOrder(wo);
-                                setIsCustomerMockupOpen(true);
-                              } catch (err) {
-                                console.error(err);
-                                alert("เกิดข้อผิดพลาดในการจำลองหน้าลูกค้า");
-                              }
-                            }}
-                            style={{
-                              flex: 1.2,
-                              padding: "8px",
-                              borderRadius: "10px",
-                              border: "1.5px solid #22c55e",
-                              background: "#f0fdf4",
-                              color: "#166534",
-                              fontWeight: 800,
-                              fontSize: "0.75rem",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: "4px",
-                              transition: "all 0.2s",
-                            }}
-                          >
-                            {" "}
-                            
-                            <Sparkles
-                              size={12}
+                            <div
                               style={{
-                                color: "#22c55e",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
                               }}
-                            />{" "}
-                            จำลองตรวจรับ
-                          </button>
+                            >
+                              <span
+                                style={{
+                                  fontSize: "0.78rem",
+                                  fontWeight: 900,
+                                  color: "#0f172a",
+                                }}
+                              >
+                                {wo.id}
+                              </span>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: "0.62rem",
+                                    fontWeight: 900,
+                                    color: "#0891b2",
+                                    background: "#cffafe",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "2px",
+                                  }}
+                                >
+                                  ✓ เสร็จครบ 100%
+                                </span>
+
+                                {isWoOwner && (
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        let token = wo.deliveryQrToken;
+                                        if (!token) {
+                                          if (
+                                            window.confirm(
+                                              "คุณต้องการสร้าง QR Code สำหรับส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?"
+                                            )
+                                          ) {
+                                            token = await generateDeliveryQrToken(
+                                              wo.id,
+                                              user?.employeeId || user?.id || "unknown"
+                                            );
+                                            alert("สร้าง QR Code สำหรับส่งมอบเรียบร้อย!");
+                                          } else {
+                                            return;
+                                          }
+                                        }
+                                        setMockupWorkOrder(wo);
+                                        setIsCustomerMockupOpen(true);
+                                      } catch (err) {
+                                        console.error(err);
+                                        alert("เกิดข้อผิดพลาดในการเปิดการส่งมอบ");
+                                      }
+                                    }}
+                                    style={{
+                                      fontSize: "0.62rem",
+                                      fontWeight: 900,
+                                      color: "#ffffff",
+                                      background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                                      border: "none",
+                                      padding: "3px 8px",
+                                      borderRadius: "6px",
+                                      cursor: "pointer",
+                                      boxShadow: "0 2px 4px rgba(99, 102, 241, 0.2)",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "3px",
+                                      transition: "all 0.2s",
+                                    }}
+                                    onMouseOver={(el) => (el.currentTarget.style.transform = "scale(1.05)")}
+                                    onMouseOut={(el) => (el.currentTarget.style.transform = "scale(1)")}
+                                  >
+                                    <QrCode size={10} /> สร้าง QR Code
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                fontSize: "0.8rem",
+                                fontWeight: 800,
+                                color: "#475569",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              📍 {wo.locationName}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "6px",
+                                borderTop: "1px dashed #cbd5e1",
+                                paddingTop: "6px",
+                              }}
+                            >
+                              <GroupSLACountdown
+                                globalDeadline={globalDeadline}
+                                subtaskDeadline={subtaskDeadline}
+                                isCompleted={true}
+                              />
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              padding: "12px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "8px",
+                              }}
+                            >
+                              {globalTasks.map((task) => {
+                                const categoryId = wo.categories.find((c) =>
+                                  c.tasks.some((t) => t.id === task.id)
+                                )?.id;
+                                return renderTaskCard(task, wo, categoryId, true);
+                              })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {(() => {

@@ -509,7 +509,7 @@ const DailyReportContent: React.FC = () => {
             setMockupWorkOrder(null);
           }}
           workOrder={mockupWorkOrder}
-          onSubmitInspection={submitCustomerInspection}
+          onSubmitInspection={(approvals, survey) => submitCustomerInspection(mockupWorkOrder.id, approvals, survey)}
         />
       )}
     </div>

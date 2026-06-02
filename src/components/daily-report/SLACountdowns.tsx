@@ -100,14 +100,14 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
         background:
           "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.95) 100%)",
         backdropFilter: "blur(8px)",
-        padding: "10px 14px",
+        padding: "8px 12px",
         borderRadius: "16px",
         border: "1px solid rgba(226,232,240,0.9)",
         boxShadow: "0 4px 20px rgba(0,0,0,0.02)",
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        gap: "8px",
+        gap: "6px",
       }}
     >
       <div
@@ -141,7 +141,7 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
           การประเมินกำหนดส่งเป้าหมาย (SLA)
         </span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
         <div
           style={{
             display: "flex",
@@ -242,41 +242,33 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
             )
           </span>
         </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "0.72rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ color: "#0284c7", fontWeight: 900, flexShrink: 0 }}>
+            5. ส่งมอบลูกค้ารวม:
+          </span>
+          <span style={{ fontWeight: 800, color: "#1e293b" }}>
+            {groupDeadline
+              ? new Date(groupDeadline).toLocaleDateString("th-TH", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "-"}
+            {groupDeadline &&
+              groupDeadline > deadlineTime &&
+              !isCompleted &&
+              " (มีเวลาเผื่อ)"}
+          </span>
+        </div>
       </div>
-      {groupDeadline &&
-        groupDeadline > deadlineTime &&
-        !isCompleted &&
-        (() => {
-          const formattedGroupDate = new Date(groupDeadline).toLocaleDateString(
-            "th-TH",
-            { day: "numeric", month: "short", year: "numeric" },
-          );
-          return (
-            <div
-              style={{
-                marginTop: "8px",
-                padding: "6px 10px",
-                background: "#f8fafc",
-                border: "1px dashed #cbd5e1",
-                borderRadius: "10px",
-                fontSize: "0.68rem",
-                color: "#475569",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              <Info size={12} color="#0284c7" style={{ flexShrink: 0 }} />
-              <span>
-                เป้าหมายส่งมอบลูกค้ารวม:{" "}
-                <strong style={{ color: "#0f172a" }}>
-                  {formattedGroupDate}
-                </strong>{" "}
-                (มีเวลาเผื่อจากวันปิดงานย่อย)
-              </span>
-            </div>
-          );
-        })()}
     </div>
   );
 };

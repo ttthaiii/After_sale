@@ -968,27 +968,27 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         evaluationStatus: 'Approved',
                         updatedAt: now
                     });
-                    await updateDoc(subtaskRef, {
+                    await setDoc(subtaskRef, {
                         status: 'completed'
-                    });
+                    }, { merge: true });
                     
                     // Close the current active revision
                     const revisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
-                    await updateDoc(revisionRef, {
+                    await setDoc(revisionRef, {
                         status: 'closed_approved',
                         approvedAt: now
-                    });
+                    }, { merge: true });
                 } else if (decision.status === 'rejected') {
                     hasRejections = true;
                     
                     // Close current revision as rejected
                     const currentRevisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
-                    await updateDoc(currentRevisionRef, {
+                    await setDoc(currentRevisionRef, {
                         status: 'closed_rejected',
                         rejectReason: decision.reason || '',
                         defectCategories: decision.defectCategories || {},
                         rejectedAt: now
-                    });
+                    }, { merge: true });
                     
                     // Increment revision number
                     const revNum = parseInt(currentRev.replace('rev', '')) || 0;
@@ -1011,11 +1011,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         updatedAt: now
                     });
                     
-                    await updateDoc(subtaskRef, {
+                    await setDoc(subtaskRef, {
                         status: 'in-progress',
                         dailyProgress: 0,
                         currentRevision: nextRev
-                    });
+                    }, { merge: true });
                     
                     // Create new revision doc
                     const newRevisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', nextRev);
