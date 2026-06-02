@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, User, HardHat, Clock, Save, CheckCircle2 } from 'lucide-react';
+import { X, User, HardHat, Clock, Save, CheckCircle2, Calendar } from 'lucide-react';
 import { MasterTask, Staff, Contractor } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
@@ -18,6 +18,11 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>(task?.responsibleStaffIds || []);
     const [selectedContractorId, setSelectedContractorId] = useState<string>(task?.contractorId || '');
     const [slaCategory, setSlaCategory] = useState(task?.slaCategory || '24h');
+    const [startDate, setStartDate] = useState<string>(
+        task?.startDate 
+            ? new Date(task.startDate).toISOString().split('T')[0] 
+            : new Date().toISOString().split('T')[0]
+    );
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { sendNotification } = useNotifications();
     const { user } = useAuth();
@@ -36,7 +41,9 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                 responsibleStaffIds: selectedStaffIds,
                 contractorId: selectedContractorId || null,
                 slaCategory: slaCategory as any,
+                startDate: new Date(startDate).toISOString(),
                 status: 'Assigned',
+                evaluationStatus: 'Assigned',
             };
 
             // Only reset SLA timer if it's a new assignment OR the user changed the category
@@ -127,6 +134,30 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* วันเริ่มดำเนินการ (Start Date) */}
+                    <div style={{ marginBottom: '24px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: '#1e293b', marginBottom: '12px' }}>
+                            <Calendar size={18} color="#4f46e5" /> วันเริ่มดำเนินการ (Start Date)
+                        </label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '12px',
+                                borderRadius: '12px',
+                                border: '1px solid #e2e8f0',
+                                background: '#f8fafc',
+                                fontSize: '0.9rem',
+                                fontWeight: 700,
+                                color: '#1e293b',
+                                outline: 'none',
+                                boxSizing: 'border-box'
+                            }}
+                        />
                     </div>
 
                     {/* Staff Selection */}

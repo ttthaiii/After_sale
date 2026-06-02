@@ -13,6 +13,7 @@ import {
 import { useDailyReport } from "../../context/DailyReportContext";
 import { GroupSLACountdown } from "./SLACountdowns";
 import { WorkTask, WorkOrder } from "../../types/dailyReport.types";
+import { MOCK_STAFF } from "../../data/mockData";
 
 export const WorkOrderGroupList: React.FC = () => {
   const {
@@ -54,7 +55,14 @@ export const WorkOrderGroupList: React.FC = () => {
         : task.dailyProgress && task.dailyProgress > 0
           ? "#3b82f6"
           : "#e2e8f0";
-    const isCompleted100 = (task.dailyProgress || 0) >= 100;
+    // Calculate global completion status for this Work Order
+    const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
+    const globalIsAllCompleted =
+      globalTasks.length > 0 &&
+      globalTasks.every(
+        (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100,
+      );
+    const isCompleted100 = (task.dailyProgress || 0) >= 100 && globalIsAllCompleted;
 
     return (
       <div
@@ -893,53 +901,47 @@ Token: ${token}`);
                           subtaskDeadline,
                         }) => {
                           const isCollapsed = collapsedHelpers[wo.id] !== false;
-                          const totalTasks =
-                            myTasks.length + helperTasks.length;
-                          const isAllCompleted =
-                            totalTasks > 0 &&
-                            myTasks.every(
-                              (t: any) => t.task.dailyProgress === 100,
-                            ) &&
-                            helperTasks.every(
-                              (t: any) => t.task.dailyProgress === 100,
-                            );
-                          const hasInProgress =
-                            myTasks.some(
-                              (t: any) =>
-                                t.task.dailyProgress > 0 &&
-                                t.task.dailyProgress < 100,
-                            ) ||
-                            helperTasks.some(
-                              (t: any) =>
-                                t.task.dailyProgress > 0 &&
-                                t.task.dailyProgress < 100,
-                            );
-                          const hasNew =
-                            myTasks.some((t: any) => t.task.dailyProgress === 0) ||
-                            helperTasks.some((t: any) => t.task.dailyProgress === 0);
-                          let groupBorderColor = "#e2e8f0";
+                          
+                          // Calculate global completion status for this Work Order group
+                          const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
+                          const globalTotal = globalTasks.length;
+                          const globalCompleted = globalTasks.filter(
+                            (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
+                          ).length;
+                          const globalRemaining = globalTotal - globalCompleted;
+                          const isAllCompleted = globalTotal > 0 && globalCompleted === globalTotal;
+
+                          // Compute other tasks (tasks in WO not owned by this foreman, including helper tasks)
+                          const myTaskIds = new Set(myTasks.map(({ task }: any) => task.id));
+                          const helperTaskIds = new Set(helperTasks.map(({ task }: any) => task.id));
+                          const otherTasks = [
+                            ...helperTasks,
+                            ...wo.categories.flatMap((c: any) =>
+                              c.tasks
+                                .filter((t: any) => !myTaskIds.has(t.id) && !helperTaskIds.has(t.id))
+                                .map((t: any) => ({ task: t, categoryId: c.id }))
+                            ),
+                          ];
+                          const isOthersCollapsed = collapsedHelpers[`${wo.id}-others`] !== false;
+
+                          let groupBorderColor = "#cbd5e1";
                           let groupHeaderBg =
                             "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)";
-                          let statusBadge = (
-                             <span
-                              style={{
-                                fontSize: "0.62rem",
-                                fontWeight: 900,
-                                color: "#64748b",
-                                background: "#e2e8f0",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                              }}
-                            >
-                              รอดำเนินการ
-                            </span>
-                          );
+                          
                           if (isAllCompleted) {
                             groupBorderColor = "#a5f3fc";
                             groupHeaderBg =
                               "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)";
+                          } else if (globalCompleted > 0 || globalTasks.some((t: any) => (t.dailyProgress ?? t.progress ?? 0) > 0)) {
+                            groupBorderColor = "#fef08a";
+                            groupHeaderBg =
+                              "linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%)";
+                          }
+
+                          let statusBadge = null;
+                          if (isAllCompleted) {
                             statusBadge = (
-                               <span
+                              <span
                                 style={{
                                   fontSize: "0.62rem",
                                   fontWeight: 900,
@@ -947,31 +949,53 @@ Token: ${token}`);
                                   background: "#cffafe",
                                   padding: "2px 6px",
                                   borderRadius: "4px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "2px",
                                 }}
                               >
-                                เสร็จครบ 100%
+                                ✓ {globalTotal} เสร็จ
                               </span>
                             );
-                          } else if (hasInProgress) {
-                            groupBorderColor = "#fef08a";
-                            groupHeaderBg =
-                              "linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%)";
+                          } else {
                             statusBadge = (
-                               <span
-                                style={{
-                                  fontSize: "0.62rem",
-                                  fontWeight: 900,
-                                  color: "#854d0e",
-                                  background: "#fef9c3",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                }}
-                              >
-                                กำลังทำ
-                              </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                {globalRemaining > 0 && (
+                                  <span
+                                    style={{
+                                      fontSize: "0.62rem",
+                                      fontWeight: 900,
+                                      color: "#854d0e",
+                                      background: "#fef9c3",
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "2px",
+                                    }}
+                                  >
+                                    ⏳ {globalRemaining}
+                                  </span>
+                                )}
+                                {globalCompleted > 0 && (
+                                  <span
+                                    style={{
+                                      fontSize: "0.62rem",
+                                      fontWeight: 900,
+                                      color: "#0f766e",
+                                      background: "#ccfbf1",
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "2px",
+                                    }}
+                                  >
+                                    ✓ {globalCompleted}
+                                  </span>
+                                )}
+                              </div>
                             );
-                          } else if (hasNew) {
-                            groupBorderColor = "#cbd5e1";
                           }
                           return (
                              <div
@@ -1159,72 +1183,167 @@ Token: ${token}`);
                                     )}
                                   </div>
                                 )}
-                                {helperTasks.length > 0 && (
+                                {otherTasks.length > 0 && (
                                    <div
-                                    style={{
-                                      marginTop:
-                                        myTasks.length > 0 ? "12px" : "0px",
-                                      borderTop:
-                                        myTasks.length > 0
-                                          ? "1.5px dashed #f1f5f9"
-                                          : "none",
-                                      paddingTop:
-                                        myTasks.length > 0 ? "10px" : "0px",
-                                    }}
-                                  >
-                                    {" "}
-                                    
-                                    <button
-                                      onClick={() =>
-                                        setCollapsedHelpers((prev) => ({
-                                          ...prev,
-                                          [wo.id]: !isCollapsed,
-                                        }))
-                                      }
-                                      style={{
-                                        width: "100%",
-                                        background: "#f8fafc",
-                                        border: "1px solid #cbd5e1",
-                                        padding: "6px 12px",
-                                        borderRadius: "10px",
-                                        color: "#475569",
-                                        fontSize: "0.7rem",
-                                        fontWeight: 800,
-                                        cursor: "pointer",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        gap: "4px",
-                                        marginBottom: isCollapsed
-                                          ? "0px"
-                                          : "10px",
-                                      }}
-                                    >
-                                      {isCollapsed
-                                        ? `แสดงงานช่วยแถม (${helperTasks.length} รายการ)`
-                                        : `ซ่อนงานช่วยแถม`}
-                                    </button>
-                                    {!isCollapsed && (
+                                     style={{
+                                       marginTop:
+                                         myTasks.length > 0 ? "12px" : "0px",
+                                       borderTop:
+                                         myTasks.length > 0
+                                           ? "1.5px dashed #f1f5f9"
+                                           : "none",
+                                       paddingTop:
+                                         myTasks.length > 0 ? "10px" : "0px",
+                                     }}
+                                   >
+                                     <button
+                                       onClick={() =>
+                                         setCollapsedHelpers((prev) => ({
+                                           ...prev,
+                                           [`${wo.id}-others`]: !isOthersCollapsed,
+                                         }))
+                                       }
+                                       style={{
+                                         width: "100%",
+                                         background: "#f1f5f9",
+                                         border: "1px dashed #94a3b8",
+                                         padding: "6px 12px",
+                                         borderRadius: "10px",
+                                         color: "#475569",
+                                         fontSize: "0.7rem",
+                                         fontWeight: 800,
+                                         cursor: "pointer",
+                                         display: "flex",
+                                         alignItems: "center",
+                                         justifyContent: "center",
+                                         gap: "4px",
+                                         marginBottom: isOthersCollapsed ? "0px" : "10px",
+                                       }}
+                                     >
+                                       {isOthersCollapsed
+                                         ? `🔒 งานอื่นๆ ใน WO (${otherTasks.length} งาน)`
+                                         : `🔒 ซ่อนงานอื่นๆ`}
+                                     </button>
+                                     {!isOthersCollapsed && (
                                        <div
-                                        style={{
-                                          display: "flex",
-                                          flexDirection: "column",
-                                          gap: "8px",
-                                        }}
-                                      >
-                                        {helperTasks.map(
-                                          ({ task, categoryId }: any) =>
-                                            renderTaskCard(
-                                              task,
-                                              wo,
-                                              categoryId,
-                                              false,
-                                            ),
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                         style={{
+                                           display: "flex",
+                                           flexDirection: "column",
+                                           gap: "6px",
+                                         }}
+                                       >
+                                         {otherTasks.map(({ task }: any) => {
+                                           const prog = task.dailyProgress ?? task.progress ?? 0;
+                                           const isDone = prog === 100;
+                                           const isInProg = prog > 0 && prog < 100;
+                                           const sColor = isDone ? "#059669" : isInProg ? "#d97706" : "#94a3b8";
+                                           const sBg = isDone ? "#d1fae5" : isInProg ? "#fef9c3" : "#f1f5f9";
+                                           const sLabel = isDone ? "✓ เสร็จ" : isInProg ? `${prog}%` : "○ รอ";
+
+                                           // Resolve foreman name
+                                           let foremanName = "";
+                                           if (task.assignee) {
+                                             foremanName = task.assignee;
+                                           } else if (task.responsibleStaffIds && task.responsibleStaffIds.length > 0) {
+                                             const f = MOCK_STAFF.find((s) => s.id === task.responsibleStaffIds[0]);
+                                             if (f) {
+                                               foremanName = f.name;
+                                             }
+                                           } else if (task.subtaskOperatorId) {
+                                             const f = MOCK_STAFF.find((s) => s.id === task.subtaskOperatorId);
+                                             if (f) {
+                                               foremanName = f.name;
+                                             }
+                                           }
+                                           
+                                           if (foremanName && !foremanName.startsWith("คุณ")) {
+                                             foremanName = `คุณ${foremanName}`;
+                                           }
+
+                                           return (
+                                             <div
+                                               key={task.id}
+                                               style={{
+                                                 background: "#f8fafc",
+                                                 border: "1px solid #e2e8f0",
+                                                 borderRadius: "10px",
+                                                 padding: "8px 10px",
+                                                 display: "flex",
+                                                 alignItems: "center",
+                                                 gap: "10px",
+                                               }}
+                                             >
+                                               <div
+                                                 style={{
+                                                   width: "32px",
+                                                   height: "32px",
+                                                   borderRadius: "50%",
+                                                   background: sBg,
+                                                   border: `2px solid ${sColor}`,
+                                                   display: "flex",
+                                                   alignItems: "center",
+                                                   justifyContent: "center",
+                                                   fontSize: "0.6rem",
+                                                   fontWeight: 900,
+                                                   color: sColor,
+                                                   flexShrink: 0,
+                                                 }}
+                                               >
+                                                 {isDone ? "✓" : isInProg ? prog : "○"}
+                                               </div>
+                                               <div style={{ flex: 1, minWidth: 0 }}>
+                                                 <div
+                                                   style={{
+                                                     fontSize: "0.6rem",
+                                                     fontWeight: 800,
+                                                     color: "#94a3b8",
+                                                     marginBottom: "1px",
+                                                     display: "flex",
+                                                     alignItems: "center",
+                                                     gap: "6px",
+                                                     flexWrap: "wrap",
+                                                   }}
+                                                 >
+                                                   <span>{task.id || ""}</span>
+                                                   {foremanName && (
+                                                     <span style={{ color: "#6366f1", fontWeight: 700 }}>
+                                                       • 👤 {foremanName}
+                                                     </span>
+                                                   )}
+                                                 </div>
+                                                 <div
+                                                   style={{
+                                                     fontSize: "0.72rem",
+                                                     fontWeight: 700,
+                                                     color: "#475569",
+                                                     overflow: "hidden",
+                                                     textOverflow: "ellipsis",
+                                                     whiteSpace: "nowrap",
+                                                   }}
+                                                 >
+                                                   {task.name || task.taskName || task.description || "-"}
+                                                 </div>
+                                               </div>
+                                               <span
+                                                 style={{
+                                                   fontSize: "0.62rem",
+                                                   fontWeight: 900,
+                                                   color: sColor,
+                                                   background: sBg,
+                                                   padding: "2px 7px",
+                                                   borderRadius: "5px",
+                                                   flexShrink: 0,
+                                                 }}
+                                               >
+                                                 {sLabel}
+                                               </span>
+                                             </div>
+                                           );
+                                         })}
+                                       </div>
+                                     )}
+                                   </div>
+                                 )}
                               </div>
                             </div>
                           );

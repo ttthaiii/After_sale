@@ -291,14 +291,30 @@ const WorkOrderDetailModal = ({
                         );
                     })()}
 
-                    <WorkOrderCard
-                        wo={wo}
-                        variant="default"
-                        showStatusBadge={true}
-                        onTaskClick={onTaskClick}
-                        initialExpanded={true}
-                        taskDecisions={taskDecisions}
-                    />
+                    {(() => {
+                        const displayWo = wo.status === 'Rejected' 
+                            ? {
+                                ...wo,
+                                categories: wo.categories
+                                    .map(cat => ({
+                                        ...cat,
+                                        tasks: cat.tasks.filter((t: any) => t.evaluationStatus === 'Rejected' || t.status === 'Rejected' || (t.status === 'in-progress' && t.evaluationStatus === 'Rejected'))
+                                    }))
+                                    .filter(cat => cat.tasks.length > 0)
+                              }
+                            : wo;
+
+                        return (
+                            <WorkOrderCard
+                                wo={displayWo}
+                                variant="default"
+                                showStatusBadge={true}
+                                onTaskClick={onTaskClick}
+                                initialExpanded={true}
+                                taskDecisions={taskDecisions}
+                            />
+                        );
+                    })()}
                 </div>
             </div>
         </div >

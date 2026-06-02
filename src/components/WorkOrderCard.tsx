@@ -362,7 +362,7 @@ const WorkOrderCard = ({
 
                                     {isExpanded && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0' }}>
-                                            {wo.status === 'Evaluating' || cat.tasks.some(t => t.status === 'Pending') ? (
+                                            {wo.status === 'Evaluating' || wo.status === 'Rejected' || cat.tasks.some(t => t.status === 'Pending') ? (
                                                 /* TABLE VIEW FOR INSPECTION (PENDING) */
                                                 <div style={{
                                                     background: '#ffffff',
@@ -427,11 +427,11 @@ const WorkOrderCard = ({
                                                                                 )}
                                                                             </div>
                                                                             {task.position && <div style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>จุดที่พบ: {task.position}</div>}
-                                                                            {task.currentRevision && task.currentRevision !== 'rev00' && task.status === 'Rejected' && (
-                                                                                <div style={{ fontSize: '0.72rem', color: '#be123c', background: '#fff1f2', padding: '4px 8px', borderRadius: '6px', marginTop: '6px', border: '1px solid #ffe4e6', width: 'fit-content' }}>
-                                                                                    <strong>เหตุผลการตีกลับ:</strong> {task.revisionName || 'ไม่ระบุสาเหตุ'}
-                                                                                </div>
-                                                                            )}
+                                                                            {task.currentRevision && task.currentRevision !== 'rev00' && (task.status === 'Rejected' || (task.status === 'in-progress' && task.evaluationStatus === 'Rejected')) && (
+                                                                                 <div style={{ fontSize: '0.72rem', color: '#be123c', background: '#fff1f2', padding: '4px 8px', borderRadius: '6px', marginTop: '6px', border: '1px solid #ffe4e6', width: 'fit-content' }}>
+                                                                                     <strong>เหตุผลการตีกลับ:</strong> {task.rejectReason || task.revisionName || 'ไม่ระบุสาเหตุ'}
+                                                                                 </div>
+                                                                             )}
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'center', fontWeight: 700, color: '#334155' }}>{task.amount || '-'}</td>
                                                                         <td style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>{task.unit || '-'}</td>
@@ -479,7 +479,45 @@ const WorkOrderCard = ({
                                                                             )}
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'right' }}>
-                                                                            {isDecided ? (
+                                                                             {wo.status === 'Rejected' && task.evaluationStatus === 'Rejected' ? (
+                                                                                 <button
+                                                                                     onClick={(e) => {
+                                                                                         e.stopPropagation();
+                                                                                         if (onTaskClick) onTaskClick(task, cat.id, wo.id, cat.name);
+                                                                                     }}
+                                                                                     style={{
+                                                                                         padding: '10px 20px',
+                                                                                         background: '#fffbeb',
+                                                                                         border: '1px solid #fef3c7',
+                                                                                         borderRadius: '12px',
+                                                                                         color: '#d97706',
+                                                                                         fontSize: '0.85rem',
+                                                                                         fontWeight: 800,
+                                                                                         cursor: 'pointer',
+                                                                                         display: 'inline-flex',
+                                                                                         alignItems: 'center',
+                                                                                         gap: '8px',
+                                                                                         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                                                         boxShadow: '0 2px 4px rgba(217, 119, 6, 0.05)'
+                                                                                     }}
+                                                                                     onMouseOver={e => {
+                                                                                         e.currentTarget.style.background = '#fef3c7';
+                                                                                         e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                                         e.currentTarget.style.boxShadow = '0 4px 12px rgba(217, 119, 6, 0.15)';
+                                                                                         e.currentTarget.style.borderColor = '#fbbf24';
+                                                                                     }}
+                                                                                     onMouseOut={e => {
+                                                                                         e.currentTarget.style.background = '#fffbeb';
+                                                                                         e.currentTarget.style.transform = 'translateY(0)';
+                                                                                         e.currentTarget.style.boxShadow = '0 2px 4px rgba(217, 119, 6, 0.05)';
+                                                                                         e.currentTarget.style.borderColor = '#fef3c7';
+                                                                                     }}
+                                                                                 >
+                                                                                     <Edit2 size={14} strokeWidth={2.5} />
+                                                                                     <span>มอบหมายงานใหม่</span>
+                                                                                     <ChevronRight size={14} strokeWidth={2.5} />
+                                                                                 </button>
+                                                                             ) : isDecided ? (
                                                                                 <button
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();

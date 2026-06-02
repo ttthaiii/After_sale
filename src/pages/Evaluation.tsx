@@ -8,10 +8,11 @@ import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
+import AdminAssignModal from '../components/AdminAssignModal';
 
 const Evaluation = () => {
     const { user } = useAuth();
-    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed } = useWorkOrders();
+    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -21,6 +22,7 @@ const Evaluation = () => {
     const [endDate, setEndDate] = useState('');
     const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
     const [currentTask, setCurrentTask] = useState<MasterTask | null>(null);
+    const [assigningTask, setAssigningTask] = useState<MasterTask | null>(null);
     const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Approved' | 'Assigned' | 'Rejected'>>({});
@@ -39,7 +41,7 @@ const Evaluation = () => {
         if (workOrderId && workOrders.length > 0) {
             const wo = workOrders.find(w => w.id === workOrderId);
             if (wo) {
-                if (wo.status === 'Evaluating') {
+                if (wo.status === 'Evaluating' || wo.status === 'Rejected') {
                     setHighlightedId(workOrderId);
                     setSelectedWorkOrder(wo);
                     setIsDetailModalOpen(true);
@@ -103,7 +105,7 @@ const Evaluation = () => {
     const handleCardClick = (wo: WorkOrder) => {
         setSelectedWorkOrder(wo);
         setIsDetailModalOpen(true);
-        markWorkOrderAsReviewed(wo.id); // Mark as reviewed by admin
+        markWorkOrderAsReviewed(wo.id);
     };
 
     // ✅ Real-time Sync selectedWorkOrder & taskDecisions with Firestore Context
@@ -127,7 +129,7 @@ const Evaluation = () => {
 
     const pendingWorkOrders = workOrders
         .filter(wo => {
-            const isPending = wo.status === 'Evaluating';
+            const isPending = wo.status === 'Evaluating' || wo.status === 'Rejected';
             const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
@@ -159,8 +161,12 @@ const Evaluation = () => {
     }, [user]);
 
     const handleTaskReviewClick = (task: MasterTask) => {
-        setCurrentTask(task);
-        setIsEvalModalOpen(true);
+        if (selectedWorkOrder?.status === 'Rejected') {
+            setAssigningTask(task);
+        } else {
+            setCurrentTask(task);
+            setIsEvalModalOpen(true);
+        }
     };
 
     const handleModalConfirm = async (updates: Partial<MasterTask>) => {
@@ -254,6 +260,40 @@ const Evaluation = () => {
                 />
             )}
 
+            {assigningTask && selectedWorkOrder && (
+                <AdminAssignModal
+                    isOpen={!!assigningTask}
+                    onClose={() => setAssigningTask(null)}
+                    task={assigningTask}
+                    workOrderId={selectedWorkOrder.id}
+                    staffList={staff}
+                    contractors={contractors}
+                    onAssign={async (woId, taskId, updates) => {
+                        const category = selectedWorkOrder.categories.find(c => c.tasks.some(t => t.id === taskId));
+                        if (category) {
+                            await updateTask(woId, category.id, taskId, updates);
+                            
+                            setModalAlert({
+                                isOpen: true,
+                                title: 'มอบหมายงานใหม่สำเร็จ',
+                                message: `มอบหมายงาน ${assigningTask.name} เรียบร้อยแล้ว (วันเริ่มดำเนินการ: ${new Date(updates.startDate || '').toLocaleDateString('th-TH')})`,
+                                type: 'success'
+                            });
+                            
+                            const remainingRejected = selectedWorkOrder.categories
+                                .flatMap(c => c.tasks)
+                                .filter(t => t.id !== taskId && t.evaluationStatus === 'Rejected');
+                                
+                            if (remainingRejected.length === 0) {
+                                setIsDetailModalOpen(false);
+                                setSelectedWorkOrder(null);
+                            }
+                        }
+                        setAssigningTask(null);
+                    }}
+                />
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 <div style={{ background: '#f5f3ff', padding: '16px', borderRadius: '20px', color: '#7c3aed', border: '1px solid #ede9fe', boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.1)' }}>
                     <CheckSquare size={36} />
@@ -292,7 +332,7 @@ const Evaluation = () => {
                         >
                             <option value="">-- ทุกโครงการ --</option>
                             {projects
-                                .filter(p => workOrders.some(wo => wo.projectId === p.id && wo.status === 'Evaluating'))
+                                .filter(p => workOrders.some(wo => wo.projectId === p.id && (wo.status === 'Evaluating' || wo.status === 'Rejected')))
                                 .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                         <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
