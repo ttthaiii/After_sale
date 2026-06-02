@@ -1241,26 +1241,33 @@ Token: ${token}`);
                                            const sLabel = isDone ? "✓ เสร็จ" : isInProg ? `${prog}%` : "○ รอ";
 
                                            // Resolve foreman name
-                                           let foremanName = "";
-                                           if (task.assignee) {
-                                             foremanName = task.assignee;
-                                           } else if (task.responsibleStaffIds && task.responsibleStaffIds.length > 0) {
-                                             const f = MOCK_STAFF.find((s) => s.id === task.responsibleStaffIds[0]);
-                                             if (f) {
-                                               foremanName = f.name;
-                                             }
-                                           } else if (task.subtaskOperatorId) {
-                                             const f = MOCK_STAFF.find((s) => s.id === task.subtaskOperatorId);
-                                             if (f) {
-                                               foremanName = f.name;
-                                             }
-                                           }
-                                           
-                                           if (foremanName && !foremanName.startsWith("คุณ")) {
-                                             foremanName = `คุณ${foremanName}`;
-                                           }
-
-                                           return (
+                                            let foremanName = "";
+                                            if (task.assignees && task.assignees.length > 0) {
+                                              foremanName = task.assignees.map((a: any) => a.name).join(", ");
+                                            } else if (task.assignee) {
+                                              foremanName = task.assignee;
+                                            } else if (task.responsibleStaffIds && task.responsibleStaffIds.length > 0) {
+                                              const staffId = task.responsibleStaffIds[0];
+                                              const f = MOCK_STAFF.find((s) => s.id === staffId || s.name.toLowerCase().includes(staffId.toLowerCase()));
+                                              if (f) {
+                                                foremanName = f.name;
+                                              } else {
+                                                foremanName = staffId;
+                                              }
+                                            } else if (task.subtaskOperatorId) {
+                                              const f = MOCK_STAFF.find((s) => s.id === task.subtaskOperatorId || s.name.toLowerCase().includes(task.subtaskOperatorId.toLowerCase()));
+                                              if (f) {
+                                                foremanName = f.name;
+                                              } else {
+                                                foremanName = task.subtaskOperatorId;
+                                              }
+                                            }
+                                            
+                                            if (foremanName && !foremanName.startsWith("คุณ")) {
+                                              foremanName = `คุณ${foremanName}`;
+                                            }
+                                            
+                                            return (
                                              <div
                                                key={task.id}
                                                style={{
