@@ -999,7 +999,6 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     const originalBaseName = (taskData.taskName || taskData.name || '').replace(/\s*\(REV\.\s*\d+\)/gi, '');
                     const newDisplayName = `${originalBaseName} ${revSuffix}`;
                     
-                    // Spin off new revision with reset progress and wiped labor check-in
                     await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId), {
                         status: 'in-progress', // LB in-progress
                         evaluationStatus: 'Rejected',
@@ -1008,6 +1007,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         taskName: newDisplayName,
                         name: newDisplayName,
                         rejectReason: decision.reason || '',
+                        revisionCreatedAt: now,
                         updatedAt: now
                     });
                     
