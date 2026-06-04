@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Package,
   LayoutDashboard,
+  AlertTriangle,
 } from "lucide-react";
 import { useDailyReport } from "../../context/DailyReportContext";
 import { GroupSLACountdown } from "./SLACountdowns";
@@ -63,7 +64,7 @@ export const WorkOrderGroupList: React.FC = () => {
       );
     const isCompleted100 = (task.dailyProgress || 0) >= 100 && globalIsAllCompleted;
     const isWoRejectedAwaitingAdmin = wo.status === 'Rejected' && !wo.reviewedByAdmin;
-    const isTaskDisabledInRejectedWo = isWoRejectedAwaitingAdmin && task.evaluationStatus !== 'Rejected';
+    const isTaskDisabledInRejectedWo = isWoRejectedAwaitingAdmin;
 
     return (
       <div
@@ -381,6 +382,34 @@ export const WorkOrderGroupList: React.FC = () => {
                 </div>
               );
             })()}
+          {wo.status === "Rejected" && !wo.reviewedByAdmin && task.evaluationStatus === "Rejected" && (
+            <div
+              style={{
+                marginTop: "4px",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <span
+                style={{
+                  color: "#dc2626",
+                  background: "#fee2e2",
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  fontWeight: 900,
+                  fontSize: "0.68rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "3px",
+                  border: "1px solid #fca5a5",
+                }}
+              >
+                <AlertTriangle size={10} style={{ color: "#ef4444" }} />
+                รอแอดมินประเมิน/จัดตารางใหม่
+              </span>
+            </div>
+          )}
         </div>
         <div
           style={{
@@ -702,6 +731,9 @@ export const WorkOrderGroupList: React.FC = () => {
                           onClick={() => {
                             if (wo.status === 'Completed' || wo.status === 'pending_delivery') {
                               return; // Do nothing for fully completed/pending delivery WOs
+                            }
+                            if (wo.status === 'Rejected' && !wo.reviewedByAdmin) {
+                              return; // Do not auto-select any task if awaiting admin
                             }
                             if (globalTasks.length > 0) {
                               // Select the first rejected task, or first unfinished task, or first task
