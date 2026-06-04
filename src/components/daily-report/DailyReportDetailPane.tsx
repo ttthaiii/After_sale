@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   XCircle,
   Clock,
-  MapPin,
   Trash2,
   Paperclip,
   Eye,
@@ -93,15 +92,10 @@ export const DailyReportDetailPane: React.FC = () => {
     setActiveModal,
   } = useDailyReport();
 
-  // Completion details extraction for completed tasks (100% progress)
-  const completionEntry = React.useMemo(() => {
-    if (!selectedTaskInfo) return null;
-    const history = selectedTaskInfo.task.history || [];
-    return (
-      history.find((h) => h.progress === 100) ||
-      history[history.length - 1] ||
-      null
-    );
+
+
+  const isAwaitingAdmin = React.useMemo(() => {
+    return selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin;
   }, [selectedTaskInfo]);
 
   const displayLabor = labor;
@@ -1084,7 +1078,94 @@ export const DailyReportDetailPane: React.FC = () => {
                 padding: "2rem",
               }}
             >
-              {isReportDatePast3Days && (
+              {isAwaitingAdmin ? (
+                <div
+                  style={{
+                    background: "#fff5f5",
+                    border: "1.5px solid #fecaca",
+                    borderRadius: "20px",
+                    padding: "24px",
+                    boxShadow: "0 10px 15px -3px rgba(220, 38, 38, 0.05)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div
+                      style={{
+                        background: "#fee2e2",
+                        padding: "10px",
+                        borderRadius: "12px",
+                        color: "#dc2626",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <AlertTriangle size={24} />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 900, color: "#991b1b" }}>
+                        ⚠️ อยู่ระหว่างรอแอดมินมอบหมายตารางเวลาใหม่
+                      </h3>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "0.85rem", color: "#b91c1c", fontWeight: 600 }}>
+                        ใบงานนี้ถูกระงับการกรอกรายงานผลชั่วคราว เพื่อรอให้แอดมินจัดสรรรอบเวลาการแก้ไขงานใหม่
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderTop: "1px dashed #fca5a5",
+                      paddingTop: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#7f1d1d", textTransform: "uppercase" }}>
+                      เหตุผลที่โดนปฏิเสธ (Rejection Reason)
+                    </div>
+                    <div
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #fee2e2",
+                        borderRadius: "12px",
+                        padding: "16px",
+                        color: "#3f0712",
+                        fontSize: "0.9rem",
+                        fontWeight: 600,
+                        lineHeight: 1.6,
+                        whiteSpace: "pre-wrap",
+                        boxShadow: "inset 0 2px 4px rgba(0, 0, 0, 0.02)",
+                      }}
+                    >
+                      {selectedTaskInfo?.task?.rejectReason || selectedTaskInfo?.task?.reason || "ไม่ได้ระบุเหตุผลการปฏิเสธ"}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#fffbeb",
+                      border: "1px solid #fef3c7",
+                      borderRadius: "12px",
+                      padding: "12px 16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "0.78rem",
+                      color: "#b45309",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Info size={16} />
+                    <span>ท่านจะเริ่มบันทึกและกรอกรายละเอียดความคืบหน้าได้อีกครั้ง เมื่อแอดมินจัดส่งตารางงานแก้ไขกลับมาให้เรียบร้อยแล้ว</span>
+                  </div>
+                </div>
+              ) : (
+                <Fragment>
+                  {isReportDatePast3Days && (
                  <div
                   style={{
                     background: "#fff7ed",
@@ -3669,6 +3750,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     </div>
                   </div>
                 )}
+                </Fragment>
+              )}
             </div>{" "}
             
             <div
@@ -3733,7 +3816,8 @@ export const DailyReportDetailPane: React.FC = () => {
                 </svg>
               </button>
               {(!hasHistoryForSelectedDate || isEditingExisting) &&
-                !isTaskFinished && (
+                !isTaskFinished &&
+                !isAwaitingAdmin && (
                    <Fragment>
                     {" "}
                     

@@ -1040,6 +1040,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         
         if (hasRejections) {
             woUpdates.status = 'Rejected';
+            woUpdates.reviewedByAdmin = false;
         } else {
             woUpdates.status = 'Completed';
             woUpdates.completedAt = now;

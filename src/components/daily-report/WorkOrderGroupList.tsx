@@ -7,7 +7,6 @@ import {
   QrCode,
   CheckCircle2,
   Package,
-  Sparkles,
   LayoutDashboard,
 } from "lucide-react";
 import { useDailyReport } from "../../context/DailyReportContext";
@@ -63,11 +62,16 @@ export const WorkOrderGroupList: React.FC = () => {
         (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100,
       );
     const isCompleted100 = (task.dailyProgress || 0) >= 100 && globalIsAllCompleted;
+    const isWoRejectedAwaitingAdmin = wo.status === 'Rejected' && !wo.reviewedByAdmin;
+    const isTaskDisabledInRejectedWo = isWoRejectedAwaitingAdmin && task.evaluationStatus !== 'Rejected';
 
     return (
       <div
         key={task.id}
         onClick={() => {
+          if (isTaskDisabledInRejectedWo) {
+            return;
+          }
           if ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified') {
             return;
           }
@@ -113,11 +117,13 @@ export const WorkOrderGroupList: React.FC = () => {
                   : isNew
                     ? "#fffbeb"
                     : "#fff",
-          cursor: ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+          cursor: isTaskDisabledInRejectedWo
             ? "default"
-            : isReadOnly
-              ? "not-allowed"
-              : "pointer",
+            : ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+              ? "default"
+              : isReadOnly
+                ? "not-allowed"
+                : "pointer",
           transition: "all 0.2s",
           boxShadow: isSelected && isCompleted100
             ? "0 10px 15px -3px rgba(16, 185, 129, 0.2), 0 4px 6px -4px rgba(16, 185, 129, 0.2)"
@@ -128,11 +134,13 @@ export const WorkOrderGroupList: React.FC = () => {
                 : "0 2px 4px -1px rgba(0,0,0,0.05)",
           transform: isHighlighted && !isSelected ? "scale(1.02)" : "none",
           position: "relative",
-          opacity: ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+          opacity: isTaskDisabledInRejectedWo
             ? 0.55
-            : isReadOnly
-              ? 0.75
-              : 1,
+            : ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+              ? 0.55
+              : isReadOnly
+                ? 0.75
+                : 1,
           display: "flex",
           alignItems: "center",
           gap: "12px",
@@ -628,6 +636,11 @@ export const WorkOrderGroupList: React.FC = () => {
                           (user?.employeeId && wo.reporterId === user.employeeId));
 
                       const globalTasks = wo.categories.flatMap((c) => c.tasks);
+                      const globalIsAllCompleted =
+                        globalTasks.length > 0 &&
+                        globalTasks.every(
+                          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100,
+                        );
                       
                       // Calculate global deadlines
                       let maxDl = 0;
@@ -691,8 +704,11 @@ export const WorkOrderGroupList: React.FC = () => {
                               return; // Do nothing for fully completed/pending delivery WOs
                             }
                             if (globalTasks.length > 0) {
-                              // Select the first rejected/in-progress task
-                              const activeTask = globalTasks.find((t) => (t.dailyProgress || 0) < 100) || globalTasks[0];
+                              // Select the first rejected task, or first unfinished task, or first task
+                              const activeTask =
+                                globalTasks.find((t) => t.evaluationStatus === 'Rejected') ||
+                                globalTasks.find((t) => (t.dailyProgress || 0) < 100) ||
+                                globalTasks[0];
                               const catId = wo.categories.find((c) =>
                                 c.tasks.some((t) => t.id === activeTask.id)
                               )?.id || wo.categories[0]?.id;
@@ -767,7 +783,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                       : "✓ เสร็จครบ 100%"}
                                 </span>
 
-                                {isWoOwner && (
+                                 {isWoOwner && globalIsAllCompleted && (
                                   <button
                                     onClick={async (e) => {
                                       e.stopPropagation();
@@ -1001,7 +1017,7 @@ export const WorkOrderGroupList: React.FC = () => {
                           globalDeadline,
                           subtaskDeadline,
                         }) => {
-                          const isCollapsed = collapsedHelpers[wo.id] !== false;
+
                           
                           // Calculate global completion status for this Work Order group
                           const globalTasks = wo.categories.flatMap((c: any) => c.tasks);

@@ -70,10 +70,15 @@ export interface WorkTask {
   afterPhotoUrl?: string;
   images?: string[];
   attachments?: { url: string }[];
+  evaluationStatus?: string;
+  rejectReason?: string;
+  reason?: string;
+  taskName?: string;
 }
 
 export interface WorkOrderCategory {
   id: string;
+  name?: string;
   tasks: WorkTask[];
 }
 
@@ -89,6 +94,10 @@ export interface WorkOrder {
   appointmentDate?: string;
   categories: WorkOrderCategory[];
   deliveryQrToken?: string;
+  reviewedByAdmin?: boolean;
+  building?: string;
+  floor?: string;
+  room?: string;
 }
 
 export interface HistoryLaborEntry {

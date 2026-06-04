@@ -779,7 +779,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [reportDate, selectedTaskInfo?.task.unlockedDates]);
 
   const isProgressNotePhotosEditable =
-    isEditingExisting && !isReportDatePast3Days && !isTaskFinished;
+    isEditingExisting &&
+    !isReportDatePast3Days &&
+    !isTaskFinished &&
+    !(selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin);
 
   const hasHistoryForSelectedDate = useMemo(() => {
     if (!selectedTaskInfo) return false;

@@ -265,6 +265,7 @@ export interface WorkOrder {
     // Reject & Revision Cloning Loop fields
     woOwnerId?: string; // Foreman employeeId who owns the overall Work Order
     deliveryQrToken?: string; // Secure token for Customer Inspection Link
+    reviewedByAdmin?: boolean;
     inspectionTimeline?: {
         allTasksCompletedAt?: string;
         qrGeneratedAt?: string;
