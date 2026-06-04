@@ -68,6 +68,9 @@ export const WorkOrderGroupList: React.FC = () => {
       <div
         key={task.id}
         onClick={() => {
+          if ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified') {
+            return;
+          }
           if (isReadOnly) {
             alert(
               "คุณเห็นงานนี้ในฐานะผู้ดูแลภาพรวมใบงาน (Owner) เท่านั้น ไม่สามารถแก้ไขหรือบันทึกรายงานได้ (เฉพาะช่างผู้มาช่วยเท่านั้นที่อัปเดตได้)",
@@ -110,7 +113,11 @@ export const WorkOrderGroupList: React.FC = () => {
                   : isNew
                     ? "#fffbeb"
                     : "#fff",
-          cursor: isReadOnly ? "not-allowed" : "pointer",
+          cursor: ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+            ? "default"
+            : isReadOnly
+              ? "not-allowed"
+              : "pointer",
           transition: "all 0.2s",
           boxShadow: isSelected && isCompleted100
             ? "0 10px 15px -3px rgba(16, 185, 129, 0.2), 0 4px 6px -4px rgba(16, 185, 129, 0.2)"
@@ -121,7 +128,11 @@ export const WorkOrderGroupList: React.FC = () => {
                 : "0 2px 4px -1px rgba(0,0,0,0.05)",
           transform: isHighlighted && !isSelected ? "scale(1.02)" : "none",
           position: "relative",
-          opacity: isReadOnly ? 0.75 : 1,
+          opacity: ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+            ? 0.55
+            : isReadOnly
+              ? 0.75
+              : 1,
           display: "flex",
           alignItems: "center",
           gap: "12px",
@@ -661,7 +672,11 @@ export const WorkOrderGroupList: React.FC = () => {
                         <div
                           style={{
                             background: "#fff",
-                            border: isSelected ? "2.5px solid #3b82f6" : "2px solid #a5f3fc",
+                            border: isSelected
+                              ? "2.5px solid #3b82f6"
+                              : wo.status === "Rejected"
+                                ? "2px solid #fca5a5"
+                                : "2px solid #a5f3fc",
                             borderRadius: "20px",
                             boxShadow: isSelected
                               ? "0 10px 15px -3px rgba(59, 130, 246, 0.15)"
@@ -672,21 +687,29 @@ export const WorkOrderGroupList: React.FC = () => {
                             transition: "all 0.2s",
                           }}
                           onClick={() => {
+                            if (wo.status === 'Completed' || wo.status === 'pending_delivery') {
+                              return; // Do nothing for fully completed/pending delivery WOs
+                            }
                             if (globalTasks.length > 0) {
-                              const firstTask = globalTasks[0];
+                              // Select the first rejected/in-progress task
+                              const activeTask = globalTasks.find((t) => (t.dailyProgress || 0) < 100) || globalTasks[0];
                               const catId = wo.categories.find((c) =>
-                                c.tasks.some((t) => t.id === firstTask.id)
+                                c.tasks.some((t) => t.id === activeTask.id)
                               )?.id || wo.categories[0]?.id;
-                              handleSelectTask(firstTask, wo, catId);
+                              handleSelectTask(activeTask, wo, catId);
                             }
                           }}
                           key={wo.id}
                         >
                           <div
                             style={{
-                              background: "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)",
+                              background: wo.status === "Rejected"
+                                ? "linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%)"
+                                : "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)",
                               padding: "14px 16px",
-                              borderBottom: `1px solid #a5f3fc`,
+                              borderBottom: wo.status === "Rejected"
+                                ? "1px solid #fca5a5"
+                                : "1px solid #a5f3fc",
                               display: "flex",
                               flexDirection: "column",
                               gap: "6px",
@@ -720,8 +743,16 @@ export const WorkOrderGroupList: React.FC = () => {
                                   style={{
                                     fontSize: "0.62rem",
                                     fontWeight: 900,
-                                    color: "#0891b2",
-                                    background: "#cffafe",
+                                    color: wo.status === "Completed"
+                                      ? "#059669"
+                                      : wo.status === "Rejected"
+                                        ? "#dc2626"
+                                        : "#0891b2",
+                                    background: wo.status === "Completed"
+                                      ? "#d1fae5"
+                                      : wo.status === "Rejected"
+                                        ? "#fee2e2"
+                                        : "#cffafe",
                                     padding: "2px 6px",
                                     borderRadius: "4px",
                                     display: "inline-flex",
@@ -729,7 +760,11 @@ export const WorkOrderGroupList: React.FC = () => {
                                     gap: "2px",
                                   }}
                                 >
-                                  ✓ เสร็จครบ 100%
+                                  {wo.status === "Completed"
+                                    ? "✓ เสร็จสมบูรณ์"
+                                    : wo.status === "Rejected"
+                                      ? "⚠️ รอแก้ไข"
+                                      : "✓ เสร็จครบ 100%"}
                                 </span>
 
                                 {isWoOwner && (
@@ -828,7 +863,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                 const categoryId = wo.categories.find((c) =>
                                   c.tasks.some((t) => t.id === task.id)
                                 )?.id;
-                                return renderTaskCard(task, wo, categoryId, true);
+                                return renderTaskCard(task, wo, categoryId, false);
                               })}
                             </div>
                           </div>

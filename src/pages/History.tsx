@@ -162,7 +162,9 @@ const History = () => {
             const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
             const isTaskClosed = 
                 (item.task.status as string) === 'Verified' || 
+                (item.task.status as string) === 'completed' || 
                 item.wo.status === 'Verified' || 
+                item.wo.status === 'Completed' || 
                 item.wo.status === 'Cancelled' || 
                 ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
                 (item.wo.status === 'Rejected' && !foremanId);
@@ -176,7 +178,9 @@ const History = () => {
             const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
             const isTaskClosed = 
                 (item.task.status as string) === 'Verified' || 
+                (item.task.status as string) === 'completed' || 
                 item.wo.status === 'Verified' || 
+                item.wo.status === 'Completed' || 
                 item.wo.status === 'Cancelled' || 
                 ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
                 (item.wo.status === 'Rejected' && !foremanId);
@@ -191,7 +195,9 @@ const History = () => {
             const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
             const isTaskClosed = 
                 (item.task.status as string) === 'Verified' || 
+                (item.task.status as string) === 'completed' || 
                 item.wo.status === 'Verified' || 
+                item.wo.status === 'Completed' || 
                 item.wo.status === 'Cancelled' || 
                 ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
                 (item.wo.status === 'Rejected' && !foremanId);
@@ -436,6 +442,24 @@ const History = () => {
                                 const taskStaffId = task.responsibleStaffIds?.[0];
                                 const staffMember = staff.find(s => s.id === taskStaffId) || staff.find(s => s.id === foremanId);
 
+                                const isMyTask = task.responsibleStaffIds?.includes(CURRENT_USER_ID) || 
+                                                 (user?.employeeId && task.responsibleStaffIds?.includes(user.employeeId));
+
+                                // Collect other foremen who worked on the same WO
+                                const otherStaffIds = Array.from(
+                                    new Set(
+                                        allTasks
+                                            .flatMap(t => t.responsibleStaffIds || [])
+                                            .filter(id => !task.responsibleStaffIds?.includes(id))
+                                    )
+                                );
+                                const otherStaffNames = otherStaffIds
+                                    .map(id => staff.find(s => s.id === id)?.name)
+                                    .filter(Boolean)
+                                    .map(name => name.startsWith('คุณ') ? name : `คุณ${name}`);
+
+                                const revNum = task.currentRevision ? (parseInt(task.currentRevision.replace('rev', '')) || 0) : 0;
+
                                 // Calculate task progress dynamically
                                 let taskProgress = task.dailyProgress || 0;
                                 if (task.status?.toLowerCase() === 'completed' || task.status === 'Verified') {
@@ -471,7 +495,12 @@ const History = () => {
                                             setSelectedWO(wo);
                                             setSelectedTaskId(task.id);
                                         }}
-                                        style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: 'background 0.2s' }}
+                                        style={{ 
+                                             borderBottom: '1px solid #f1f5f9', 
+                                             cursor: 'pointer', 
+                                             transition: 'background 0.2s',
+                                             borderLeft: isMyTask ? '4px solid #4f46e5' : 'none'
+                                         }}
                                         onMouseOver={e => e.currentTarget.style.background = '#fcfcfd'}
                                         onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                                     >
@@ -479,7 +508,14 @@ const History = () => {
                                         <td style={{ padding: '16px 24px' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                 <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.9rem' }}>{wo.id}</span>
-                                                <span style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 600 }}>{task.name || 'ไม่ระบุชื่อรายการ'}</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                                     <span style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 600 }}>{task.name || 'ไม่ระบุชื่อรายการ'}</span>
+                                                     {revNum > 0 && (
+                                                         <span style={{ fontSize: '0.62rem', fontWeight: 900, color: '#be123c', background: '#fff1f2', padding: '1px 5px', borderRadius: '4px', border: '1px solid #ffe4e6' }}>
+                                                             ตีกลับแก้ {revNum} ครั้ง
+                                                         </span>
+                                                     )}
+                                                 </div>
                                             </div>
                                         </td>
 
@@ -512,18 +548,30 @@ const History = () => {
                                         </td>
 
                                         {/* Responsible Staff / Foreman */}
-                                        <td style={{ padding: '16px 24px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontWeight: 600, fontSize: '0.85rem' }}>
-                                                <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', background: '#eef2ff', border: '1px solid #e0e7ff', flexShrink: 0 }}>
-                                                    {staffMember?.profileImage ? (
-                                                        <img loading="lazy" src={staffMember.profileImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                    ) : (
-                                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}><User2 size={12} /></div>
-                                                    )}
-                                                </div>
-                                                {staffMember ? (staffMember.name.startsWith('คุณ') ? staffMember.name : `คุณ${staffMember.name}`) : 'ไม่ได้ระบุ'}
-                                            </div>
-                                        </td>
+                                         <td style={{ padding: '16px 24px' }}>
+                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontWeight: 600, fontSize: '0.85rem' }}>
+                                                     <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', background: '#eef2ff', border: '1px solid #e0e7ff', flexShrink: 0 }}>
+                                                         {staffMember?.profileImage ? (
+                                                             <img loading="lazy" src={staffMember.profileImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                         ) : (
+                                                             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}><User2 size={12} /></div>
+                                                         )}
+                                                     </div>
+                                                     <span>{staffMember ? (staffMember.name.startsWith('คุณ') ? staffMember.name : `คุณ${staffMember.name}`) : 'ไม่ได้ระบุ'}</span>
+                                                     {isMyTask && (
+                                                         <span style={{ fontSize: '0.55rem', fontWeight: 900, color: '#ffffff', background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', padding: '2px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                                                             ฉัน
+                                                         </span>
+                                                     )}
+                                                 </div>
+                                                 {otherStaffNames.length > 0 && (
+                                                     <div style={{ fontSize: '0.7rem', color: '#94a3b8', paddingLeft: '32px', fontWeight: 600 }}>
+                                                         ผู้ร่วมงาน: {otherStaffNames.join(', ')}
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         </td>
 
                                         {/* Progress or Rating */}
                                         {activeSubTab === 'Active' ? (
@@ -583,11 +631,15 @@ const History = () => {
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#7c3aed', background: '#f5f3ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #ddd6fe' }}>
                                                     <User2 size={14} /> รอมอบหมาย [แอดมิน]
                                                 </div>
-                                            ) : (
-                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #bfdbfe' }}>
-                                                    <Clock size={14} /> กำลังดำเนินการ
-                                                </div>
-                                            )}
+) : (task.status as string) === 'in-progress' && revNum > 0 ? (
+                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#b45309', background: '#fef3c7', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fde68a' }}>
+                                                     <Clock size={14} /> กำลังรอแก้ไขครั้งที่ {revNum}
+                                                 </div>
+                                             ) : (
+                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #bfdbfe' }}>
+                                                     <Clock size={14} /> กำลังดำเนินการ
+                                                 </div>
+                                             )}
                                         </td>
                                         <td style={{ padding: '16px 24px', textAlign: 'right', color: '#cbd5e1' }}>
                                             <ChevronRight size={20} />

@@ -478,7 +478,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const _pendingInspectionTasks: TaskListItem[] = [];
     const _pendingDeliveryWOs: PendingDeliveryItem[] = [];
     workOrders.forEach((wo) => {
-      if (["Draft", "Completed", "Cancelled"].includes(wo.status))
+      if (["Draft", "Cancelled"].includes(wo.status))
         return;
       let totalActiveTasks = 0;
       let completedActiveTasks = 0;
@@ -557,12 +557,13 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         (user?.employeeId && wo.woOwnerId === user.employeeId) ||
         wo.reporterId === user?.id ||
         (user?.employeeId && wo.reporterId === user.employeeId);
-      if (
-        totalActiveTasks > 0 &&
-        completedActiveTasks === totalActiveTasks &&
-        isWoOwner &&
-        wo.status !== "pending_delivery"
-      ) {
+      const isGroupedDelivery =
+        ["pending_delivery", "Completed", "Rejected"].includes(wo.status) ||
+        (totalActiveTasks > 0 && completedActiveTasks === totalActiveTasks);
+      
+      const isOwnerOrHelper = isWoOwner || totalActiveTasks > 0;
+
+      if (isOwnerOrHelper && isGroupedDelivery) {
         _pendingDeliveryWOs.push({ wo });
       } else {
         woTasksList.forEach((item) => {
