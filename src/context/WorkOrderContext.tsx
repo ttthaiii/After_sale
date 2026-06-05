@@ -903,12 +903,20 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             else if (updates.status === 'Rejected') lbStatus = 'in-progress'; // Rejected moves to in-progress under LB standard
         }
 
+        // Resolve assignees if staff changed
+        const resolvedAssignees = updates.responsibleStaffIds
+            ? await resolveAssignees(updates.responsibleStaffIds)
+            : undefined;
+
         // Apply updates to task document
         const mappedUpdates: any = { ...updates };
         if (updates.name) mappedUpdates.taskName = updates.name;
         if (updates.status) mappedUpdates.status = lbStatus;
         if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
             mappedUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
+            if (resolvedAssignees) {
+                mappedUpdates.assignees = resolvedAssignees;
+            }
         }
 
         await updateDoc(taskRef, mappedUpdates);
@@ -923,6 +931,9 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         if (updates.currentRevision) subtaskUpdates.currentRevision = updates.currentRevision;
         if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
             subtaskUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
+            if (resolvedAssignees) {
+                subtaskUpdates.assignees = resolvedAssignees;
+            }
         }
 
         const subtaskDocSnap = await getDoc(subtaskRef);
