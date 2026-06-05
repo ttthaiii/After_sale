@@ -685,9 +685,16 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             t.responsibleStaffIds?.includes(foremanId)
           )
         );
+      const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
+      const globalIsAllCompleted =
+        globalTasks.length > 0 &&
+        globalTasks.every(
+          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
+        );
+
       const isGroupedDelivery =
         ["pending_delivery", "Completed", "Rejected"].includes(wo.status) ||
-        (totalActiveTasks > 0 && completedActiveTasks === totalActiveTasks);
+        globalIsAllCompleted;
 
       if (isParticipant && isGroupedDelivery) {
         _pendingDeliveryWOs.push({ wo });
