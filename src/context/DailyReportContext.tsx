@@ -1559,6 +1559,60 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       );
       return;
     }
+
+    // 🚨 Cross-task labor overlap validation to prevent double-billing of worker wages
+    const duplicateWorkers: string[] = [];
+    labor.forEach((l) => {
+      const idToCheck = l.staffId || l.contractorId;
+      if (!idToCheck) return;
+
+      workOrders.forEach((wo) => {
+        wo.categories.forEach((cat: any) => {
+          cat.tasks.forEach((t: any) => {
+            // Skip checking the current task itself
+            if (t.id === selectedTaskInfo.task.id) return;
+
+            // Find history entry for this task on the same date
+            const reportedOnDate = t.history?.find(
+              (h: any) => h.date?.split("T")[0] === reportDate
+            );
+
+            if (reportedOnDate && reportedOnDate.labor) {
+              const matchingWorker = reportedOnDate.labor.find(
+                (w: any) => w.workerId === idToCheck || w.staffId === idToCheck || w.contractorId === idToCheck
+              );
+
+              if (matchingWorker) {
+                // Check if any shift times overlap
+                const hasNormalOverlap = l.shifts?.normal && matchingWorker.shifts?.normal;
+                const hasOtMorningOverlap = l.shifts?.otMorning && matchingWorker.shifts?.otMorning;
+                const hasOtNoonOverlap = l.shifts?.otNoon && matchingWorker.shifts?.otNoon;
+                const hasOtEveningOverlap = l.shifts?.otEvening && matchingWorker.shifts?.otEvening;
+
+                if (hasNormalOverlap || hasOtMorningOverlap || hasOtNoonOverlap || hasOtEveningOverlap) {
+                  const workerName = l.staffName || l.name || l.affiliation || idToCheck;
+                  const taskNameClean = (t.name || t.taskName || t.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim();
+                  
+                  const overlappingShifts: string[] = [];
+                  if (hasNormalOverlap) overlappingShifts.push("กะปกติ");
+                  if (hasOtMorningOverlap) overlappingShifts.push("OT เช้า");
+                  if (hasOtNoonOverlap) overlappingShifts.push("OT เที่ยง");
+                  if (hasOtEveningOverlap) overlappingShifts.push("OT เย็น");
+
+                  duplicateWorkers.push(`${workerName} ในงาน "${taskNameClean}" (${overlappingShifts.join(", ")})`);
+                }
+              }
+            }
+          });
+        });
+      });
+    });
+
+    if (duplicateWorkers.length > 0) {
+      alert(`ไม่สามารถบันทึกรายงานได้ เนื่องจากมีคนงานปฏิบัติงานซ้ำซ้อนในวันและกะเวลาเดียวกัน:\n- ${duplicateWorkers.join('\n- ')}`);
+      return;
+    }
+
     setShowSummaryModal(true);
   };
 
