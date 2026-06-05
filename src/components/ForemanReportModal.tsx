@@ -10,6 +10,7 @@ import { compressImage } from '../utils/imageCompression';
 import { logService } from '../services/logService';
 import { Project, WorkOrder, Category, WorkOrderType, MasterTask } from '../types';
 import LoadingOverlay from './LoadingOverlay';
+import CustomDateInput from './CustomDateInput';
 
 // Helper to get all categories for dropdown
 const CATEGORIES_LIST = [
@@ -30,6 +31,16 @@ const CATEGORIES_LIST = [
     'งานระบบความปลอดภัย',
     'งานพื้น/พื้นไม้ลามิเนต',
 ];
+
+const checkGroupHasReadOnlyItems = (group: { items: any[] }) => {
+    return group.items.some(item => 
+        item.evaluationStatus === 'Approved' || 
+        item.evaluationStatus === 'Assigned' || 
+        item.status === 'completed' || 
+        item.status === 'in-progress' || 
+        item.status === 'for-checking'
+    );
+};
 
 interface ForemanReportModalProps {
     isOpen: boolean;
@@ -156,14 +167,16 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         detail: task.name,
                         amount: task.amount || 1,
                         unit: task.unit || 'จุด',
-                        images: task.images && task.images.length > 0
-                            ? task.images
-                            : [
-                                task.beforePhotoUrl,
-                                task.latestPhotoUrl,
-                                task.afterPhotoUrl,
-                                ...(task.attachments?.map(a => a.url) || [])
-                            ].filter(url => url && typeof url === 'string') as string[]
+                        images: Array.from(new Set((
+                            task.images && task.images.length > 0
+                                ? task.images
+                                : [
+                                    task.beforePhotoUrl,
+                                    task.latestPhotoUrl,
+                                    task.afterPhotoUrl,
+                                    ...(task.attachments?.map(a => a.url) || [])
+                                ]
+                        ).filter(url => url && typeof url === 'string') as string[]))
                     }))
                 })));
             } else {
@@ -404,10 +417,16 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             name: group.category,
             tasks: group.items.map(item => {
                 const { id: itemId, detail, position, amount, unit, images, ...rest } = item;
+                const isItemReadOnly = 
+                    item.evaluationStatus === 'Approved' || 
+                    item.evaluationStatus === 'Assigned' || 
+                    item.status === 'completed' || 
+                    item.status === 'in-progress' || 
+                    item.status === 'for-checking';
 
-                // ✅ Reset status and rootCause for fresh evaluation if submitting (not draft)
-                const finalStatus = isDraft ? (item.status || 'Pending') : 'Pending';
-                const finalRootCause = isDraft ? (item.rootCause || '') : '';
+                // ✅ Reset status and rootCause for fresh evaluation ONLY if submitting and NOT read-only
+                const finalStatus = isItemReadOnly ? (item.status || 'Pending') : (isDraft ? (item.status || 'Pending') : 'Pending');
+                const finalRootCause = isItemReadOnly ? (item.rootCause || '') : (isDraft ? (item.rootCause || '') : '');
 
                 return {
                     ...rest,
@@ -420,6 +439,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                     amount: amount,
                     unit: unit,
                     estimatedSla: (item as any).estimatedSla,
+                    images: Array.from(new Set(images)),
                     beforePhotoUrl: images.length > 0 ? images[0] : (item.beforePhotoUrl || null),
                     latestPhotoUrl: images.length > 0 ? images[0] : (item.latestPhotoUrl || null),
                     dailyProgress: item.dailyProgress || 0,
@@ -742,11 +762,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                         </div>
                                         <div>
                                             <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>วันที่แจ้ง (Report Date)</label>
-                                            <input
-                                                type="date"
-                                                style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '1rem', outline: 'none' }}
+                                            <CustomDateInput
                                                 value={formState.reportDate}
                                                 onChange={(e) => setFormState({ ...formState, reportDate: e.target.value })}
+                                                style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '1rem', outline: 'none' }}
                                             />
                                         </div>
                                     </div>
@@ -843,18 +862,39 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             <div style={{ padding: '16px 24px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ flex: 1, paddingRight: '16px' }}>
                                                     <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '4px', fontWeight: 600 }}>หมวดงาน (CATEGORY)</label>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', maxWidth: '300px', background: '#ffffff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '12px', 
+                                                        maxWidth: '300px', 
+                                                        background: checkGroupHasReadOnlyItems(group) ? '#f1f5f9' : '#ffffff', 
+                                                        padding: '8px 12px', 
+                                                        borderRadius: '8px', 
+                                                        border: '1px solid #e5e7eb',
+                                                        cursor: checkGroupHasReadOnlyItems(group) ? 'not-allowed' : 'default'
+                                                    }}>
                                                         <select
-                                                            style={{ width: '100%', background: 'transparent', border: 'none', color: '#111827', fontSize: '0.95rem', fontWeight: 500, cursor: 'pointer', outline: 'none', padding: 0 }}
+                                                            style={{ 
+                                                                width: '100%', 
+                                                                background: 'transparent', 
+                                                                border: 'none', 
+                                                                color: checkGroupHasReadOnlyItems(group) ? '#94a3b8' : '#111827', 
+                                                                fontSize: '0.95rem', 
+                                                                fontWeight: 500, 
+                                                                cursor: checkGroupHasReadOnlyItems(group) ? 'not-allowed' : 'pointer', 
+                                                                outline: 'none', 
+                                                                padding: 0 
+                                                            }}
                                                             value={group.category}
                                                             onChange={(e) => updateGroupCategory(group.id, e.target.value)}
+                                                            disabled={checkGroupHasReadOnlyItems(group)}
                                                         >
                                                             {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
                                                         </select>
-                                                        <Wrench size={16} color="#6366f1" />
+                                                        <Wrench size={16} color={checkGroupHasReadOnlyItems(group) ? '#94a3b8' : '#6366f1'} />
                                                     </div>
                                                 </div>
-                                                {groups.length > 1 && (
+                                                {groups.length > 1 && !checkGroupHasReadOnlyItems(group) && (
                                                     <button
                                                         onClick={() => removeGroup(group.id)}
                                                         style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 500 }}
@@ -866,35 +906,63 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                             {/* Items Container */}
                                             <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                                                {group.items.map((item, idx) => (
-                                                    <div key={item.id} style={{
-                                                        position: 'relative',
-                                                        borderBottom: idx !== group.items.length - 1 ? '1px dashed #e2e8f0' : 'none',
-                                                        paddingBottom: idx !== group.items.length - 1 ? '32px' : '0'
-                                                    }}>
-                                                        {group.items.length > 1 && (
-                                                            <button
-                                                                onClick={() => removeItemFromGroup(group.id, item.id)}
-                                                                style={{ 
-                                                                    position: 'absolute', 
-                                                                    top: '0', 
-                                                                    right: '0', 
-                                                                    color: '#ef4444', 
-                                                                    background: 'none', 
-                                                                    border: 'none', 
-                                                                    cursor: 'pointer', 
-                                                                    display: 'flex', 
-                                                                    alignItems: 'center', 
-                                                                    justifyContent: 'center',
-                                                                    padding: '4px',
+                                                {group.items.map((item, idx) => {
+                                                    const isItemReadOnly = 
+                                                        item.evaluationStatus === 'Approved' || 
+                                                        item.evaluationStatus === 'Assigned' || 
+                                                        item.status === 'completed' || 
+                                                        item.status === 'in-progress' || 
+                                                        item.status === 'for-checking';
+                                                    return (
+                                                        <div key={item.id} style={{
+                                                            position: 'relative',
+                                                            borderBottom: idx !== group.items.length - 1 ? '1px dashed #e2e8f0' : 'none',
+                                                            paddingBottom: idx !== group.items.length - 1 ? '32px' : '0'
+                                                        }}>
+                                                            {isItemReadOnly && (
+                                                                <div style={{
+                                                                    position: 'absolute',
+                                                                    top: '0',
+                                                                    right: '0',
+                                                                    background: item.evaluationStatus === 'Approved' ? '#dcfce7' : '#e0e7ff',
+                                                                    color: item.evaluationStatus === 'Approved' ? '#166534' : '#3730a3',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 700,
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: '8px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                                                                     zIndex: 10
-                                                                }}
-                                                                title="ลบรายการ"
-                                                            >
-                                                                <Trash2 size={18} />
-                                                            </button>
-                                                        )}
-                                                        {/* SYMMETRICAL GRID: Updated for 5 columns */}
+                                                                }}>
+                                                                    <ClipboardCheck size={14} /> 
+                                                                    {item.evaluationStatus === 'Approved' ? 'อนุมัติแล้ว' : 'มอบหมายงานแล้ว'}
+                                                                </div>
+                                                            )}
+                                                            {group.items.length > 1 && !isItemReadOnly && (
+                                                                <button
+                                                                    onClick={() => removeItemFromGroup(group.id, item.id)}
+                                                                    style={{ 
+                                                                        position: 'absolute', 
+                                                                        top: '0', 
+                                                                        right: '0', 
+                                                                        color: '#ef4444', 
+                                                                        background: 'none', 
+                                                                        border: 'none', 
+                                                                        cursor: 'pointer', 
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center', 
+                                                                        justifyContent: 'center',
+                                                                        padding: '4px',
+                                                                        zIndex: 10
+                                                                    }}
+                                                                    title="ลบรายการ"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            )}
+                                                            {/* SYMMETRICAL GRID: Updated for 5 columns */}
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr', gap: '16px', marginBottom: '20px' }}>
                                                             <div>
                                                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จุดที่พบ (Position)</label>
@@ -903,9 +971,20 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     value={item.position}
                                                                     onChange={(e) => updateItem(group.id, item.id, 'position', e.target.value)}
                                                                     placeholder="เช่น หัวเตียง, ผนัง..."
-                                                                    style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', outline: 'none', fontSize: '0.9rem' }}
-                                                                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                                    disabled={isItemReadOnly}
+                                                                    style={{ 
+                                                                        width: '100%', 
+                                                                        padding: '10px 14px', 
+                                                                        background: isItemReadOnly ? '#f1f5f9' : '#ffffff', 
+                                                                        border: '1px solid #d1d5db', 
+                                                                        borderRadius: '8px', 
+                                                                        color: isItemReadOnly ? '#94a3b8' : '#111827', 
+                                                                        outline: 'none', 
+                                                                        fontSize: '0.9rem',
+                                                                        cursor: isItemReadOnly ? 'not-allowed' : 'text'
+                                                                    }}
+                                                                    onFocus={(e) => !isItemReadOnly && (e.target.style.borderColor = '#6366f1')}
+                                                                    onBlur={(e) => !isItemReadOnly && (e.target.style.borderColor = '#d1d5db')}
                                                                 />
                                                             </div>
                                                             <div>
@@ -915,9 +994,20 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     value={item.detail}
                                                                     onChange={(e) => updateItem(group.id, item.id, 'detail', e.target.value)}
                                                                     placeholder="ระบุปัญหา..."
-                                                                    style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', outline: 'none', fontSize: '0.9rem' }}
-                                                                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                                    disabled={isItemReadOnly}
+                                                                    style={{ 
+                                                                        width: '100%', 
+                                                                        padding: '10px 14px', 
+                                                                        background: isItemReadOnly ? '#f1f5f9' : '#ffffff', 
+                                                                        border: '1px solid #d1d5db', 
+                                                                        borderRadius: '8px', 
+                                                                        color: isItemReadOnly ? '#94a3b8' : '#111827', 
+                                                                        outline: 'none', 
+                                                                        fontSize: '0.9rem',
+                                                                        cursor: isItemReadOnly ? 'not-allowed' : 'text'
+                                                                    }}
+                                                                    onFocus={(e) => !isItemReadOnly && (e.target.style.borderColor = '#6366f1')}
+                                                                    onBlur={(e) => !isItemReadOnly && (e.target.style.borderColor = '#d1d5db')}
                                                                 />
                                                             </div>
                                                             <div>
@@ -926,9 +1016,20 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     type="number"
                                                                     value={item.amount}
                                                                     onChange={(e) => updateItem(group.id, item.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                                    style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', outline: 'none', fontSize: '0.9rem' }}
-                                                                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                                    disabled={isItemReadOnly}
+                                                                    style={{ 
+                                                                        width: '100%', 
+                                                                        padding: '10px 14px', 
+                                                                        background: isItemReadOnly ? '#f1f5f9' : '#ffffff', 
+                                                                        border: '1px solid #d1d5db', 
+                                                                        borderRadius: '8px', 
+                                                                        color: isItemReadOnly ? '#94a3b8' : '#111827', 
+                                                                        outline: 'none', 
+                                                                        fontSize: '0.9rem',
+                                                                        cursor: isItemReadOnly ? 'not-allowed' : 'text'
+                                                                    }}
+                                                                    onFocus={(e) => !isItemReadOnly && (e.target.style.borderColor = '#6366f1')}
+                                                                    onBlur={(e) => !isItemReadOnly && (e.target.style.borderColor = '#d1d5db')}
                                                                 />
                                                             </div>
                                                             <div>
@@ -936,9 +1037,21 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 <select
                                                                     value={item.unit}
                                                                     onChange={(e) => updateItem(group.id, item.id, 'unit', e.target.value)}
-                                                                    style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', outline: 'none', fontSize: '0.9rem', appearance: 'none' }}
-                                                                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                                    disabled={isItemReadOnly}
+                                                                    style={{ 
+                                                                        width: '100%', 
+                                                                        padding: '10px 14px', 
+                                                                        background: isItemReadOnly ? '#f1f5f9' : '#ffffff', 
+                                                                        border: '1px solid #d1d5db', 
+                                                                        borderRadius: '8px', 
+                                                                        color: isItemReadOnly ? '#94a3b8' : '#111827', 
+                                                                        outline: 'none', 
+                                                                        fontSize: '0.9rem', 
+                                                                        appearance: 'none',
+                                                                        cursor: isItemReadOnly ? 'not-allowed' : 'pointer'
+                                                                    }}
+                                                                    onFocus={(e) => !isItemReadOnly && (e.target.style.borderColor = '#6366f1')}
+                                                                    onBlur={(e) => !isItemReadOnly && (e.target.style.borderColor = '#d1d5db')}
                                                                 >
                                                                     {['จุด', 'ตำแหน่ง', 'ชั้น', 'ตรม.', 'แผ่น', 'บาน', 'เครื่อง', 'เมตร', 'เซนติเมตร'].map(u => <option key={u} value={u}>{u}</option>)}
                                                                 </select>
@@ -948,9 +1061,20 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 <select
                                                                     value={(item as any).estimatedSla || '24h'}
                                                                     onChange={(e) => updateItem(group.id, item.id, 'estimatedSla', e.target.value)}
-                                                                    style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', outline: 'none', fontSize: '0.9rem' }}
-                                                                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                                    disabled={isItemReadOnly}
+                                                                    style={{ 
+                                                                        width: '100%', 
+                                                                        padding: '10px 14px', 
+                                                                        background: isItemReadOnly ? '#f1f5f9' : '#ffffff', 
+                                                                        border: '1px solid #d1d5db', 
+                                                                        borderRadius: '8px', 
+                                                                        color: isItemReadOnly ? '#94a3b8' : '#111827', 
+                                                                        outline: 'none', 
+                                                                        fontSize: '0.9rem',
+                                                                        cursor: isItemReadOnly ? 'not-allowed' : 'pointer'
+                                                                    }}
+                                                                    onFocus={(e) => !isItemReadOnly && (e.target.style.borderColor = '#6366f1')}
+                                                                    onBlur={(e) => !isItemReadOnly && (e.target.style.borderColor = '#d1d5db')}
                                                                 >
                                                                     <option value="Immediately">ด่วนที่สุด (ทันที)</option>
                                                                     <option value="24h">ภายใน 24 ชม. (ด่วน)</option>
@@ -971,45 +1095,50 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 {item.images.map((img, imgIdx) => (
                                                                     <div key={imgIdx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                                                                         <img src={img} alt="Evidence" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                                        <button
-                                                                            onClick={() => removeImage(group.id, item.id, imgIdx)}
-                                                                            style={{
-                                                                                position: 'absolute',
-                                                                                top: 4,
-                                                                                right: 4,
-                                                                                background: 'rgba(239, 68, 68, 0.9)',
-                                                                                color: '#ffffff',
-                                                                                border: 'none',
-                                                                                borderRadius: '50%',
-                                                                                width: '24px',
-                                                                                height: '24px',
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                justifyContent: 'center',
-                                                                                cursor: 'pointer',
-                                                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                                                                                zIndex: 10,
-                                                                                padding: 0
-                                                                            }}
-                                                                        >
-                                                                            <X size={14} strokeWidth={3} />
-                                                                        </button>
+                                                                        {!isItemReadOnly && (
+                                                                            <button
+                                                                                onClick={() => removeImage(group.id, item.id, imgIdx)}
+                                                                                style={{
+                                                                                    position: 'absolute',
+                                                                                    top: 4,
+                                                                                    right: 4,
+                                                                                    background: 'rgba(239, 68, 68, 0.9)',
+                                                                                    color: '#ffffff',
+                                                                                    border: 'none',
+                                                                                    borderRadius: '50%',
+                                                                                    width: '24px',
+                                                                                    height: '24px',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'center',
+                                                                                    cursor: 'pointer',
+                                                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                                                                    zIndex: 10,
+                                                                                    padding: 0
+                                                                                }}
+                                                                            >
+                                                                                <X size={14} strokeWidth={3} />
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 ))}
-                                                                <button
-                                                                    onClick={() => triggerUpload(group.id, item.id)}
-                                                                    disabled={isUploading}
-                                                                    style={{ width: '90px', height: '90px', borderRadius: '8px', border: '1px dashed #6366f1', background: '#e0e7ff', color: '#4f46e5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', transition: 'all 0.2s', opacity: isUploading ? 0.6 : 1 }}
-                                                                    onMouseOver={(e) => !isUploading && (e.currentTarget.style.background = '#c7d2fe')}
-                                                                    onMouseOut={(e) => !isUploading && (e.currentTarget.style.background = '#e0e7ff')}
-                                                                >
-                                                                    {isUploading && uploadTarget?.itemId === item.id ? <Loader2 className="animate-spin" size={24} /> : <Plus size={24} />}
-                                                                    <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{isUploading && uploadTarget?.itemId === item.id ? 'Uploading...' : 'Add'}</span>
-                                                                </button>
+                                                                {!isItemReadOnly && (
+                                                                    <button
+                                                                        onClick={() => triggerUpload(group.id, item.id)}
+                                                                        disabled={isUploading}
+                                                                        style={{ width: '90px', height: '90px', borderRadius: '8px', border: '1px dashed #6366f1', background: '#e0e7ff', color: '#4f46e5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', transition: 'all 0.2s', opacity: isUploading ? 0.6 : 1 }}
+                                                                        onMouseOver={(e) => !isUploading && (e.currentTarget.style.background = '#c7d2fe')}
+                                                                        onMouseOut={(e) => !isUploading && (e.currentTarget.style.background = '#e0e7ff')}
+                                                                    >
+                                                                        {isUploading && uploadTarget?.itemId === item.id ? <Loader2 className="animate-spin" size={24} /> : <Plus size={24} />}
+                                                                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{isUploading && uploadTarget?.itemId === item.id ? 'Uploading...' : 'Add'}</span>
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
-                                                ))}
+                                                );
+                                            })}
 
                                                 <button
                                                     onClick={() => addItemToGroup(group.id)}

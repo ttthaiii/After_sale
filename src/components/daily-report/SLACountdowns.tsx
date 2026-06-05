@@ -1,24 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Clock, Info } from "lucide-react";
+import { Clock } from "lucide-react";
 import { TimeLeft, SLACountdownProps, GroupSLACountdownProps } from "../../types/dailyReport.types";
+import { formatDate, formatDateTime } from "../../utils/date";
 
 // Helper: format deadline date
 export const formatDeadline = (timestamp: number | string | undefined) => {
   if (!timestamp) return "-";
-  try {
-    const d = new Date(timestamp);
-    if (isNaN(d.getTime())) return "-";
-    return d.toLocaleDateString("th-TH", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }) + " " + d.toLocaleTimeString("th-TH", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }) + " น.";
-  } catch (e) {
-    return "-";
-  }
+  return formatDateTime(timestamp);
 };
 
 export const SLACountdown: React.FC<SLACountdownProps> = ({
@@ -69,17 +57,13 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
   const durationDays = durationHours / 24;
   const formattedDurationDays = `${durationDays} วัน`;
   const formattedAppDate = appointmentDate
-    ? new Date(appointmentDate).toLocaleDateString("th-TH", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
+    ? formatDate(appointmentDate)
     : "ไม่ระบุ";
 
   const todayStr = new Date().toISOString().split("T")[0];
   const isAppTodayOrPast = appointmentDate ? appointmentDate <= todayStr : true;
   const step2Text = actualStartDate
-    ? `เริ่มจริงเมื่อ ${new Date(actualStartDate).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+    ? `เริ่มจริงเมื่อ ${formatDate(actualStartDate)}`
     : isAppTodayOrPast
       ? "เริ่มได้แล้ววันนี้"
       : `เริ่มได้เมื่อ ${formattedAppDate}`;
@@ -235,10 +219,7 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
             }}
           >
             (เดดไลน์{" "}
-            {new Date(deadlineTime).toLocaleDateString("th-TH", {
-              day: "numeric",
-              month: "short",
-            })}
+            {formatDate(deadlineTime)}
             )
           </span>
         </div>
@@ -256,11 +237,7 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
           </span>
           <span style={{ fontWeight: 800, color: "#1e293b" }}>
             {groupDeadline
-              ? new Date(groupDeadline).toLocaleDateString("th-TH", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })
+              ? formatDate(groupDeadline)
               : "-"}
             {groupDeadline &&
               groupDeadline > deadlineTime &&
@@ -281,6 +258,8 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
   globalDeadline,
   subtaskDeadline,
   isCompleted,
+  originalDeadline,
+  isRevision = false,
 }) => {
   const [timeLeftGlobal, setTimeLeftGlobal] = useState<TimeLeft | null>(null);
   const [timeLeftSub, setTimeLeftSub] = useState<TimeLeft | null>(null);
@@ -341,19 +320,26 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
       </span>
     );
 
-  const formattedGlobalDate = new Date(globalDeadline).toLocaleDateString(
-    "th-TH",
-    { day: "numeric", month: "short", year: "numeric" },
-  );
-  const formattedGlobalTime =
-    new Date(globalDeadline).toLocaleTimeString("th-TH", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }) + " น.";
-  const formattedSubDate = new Date(subtaskDeadline).toLocaleDateString(
-    "th-TH",
-    { day: "numeric", month: "short", year: "numeric" },
-  );
+  const formattedGlobalDate = formatDate(globalDeadline);
+  const formattedGlobalTime = (() => {
+    const d = new Date(globalDeadline);
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  })();
+  const formattedSubDate = formatDate(subtaskDeadline);
+  
+  const formattedOriginalDate = originalDeadline
+    ? formatDate(originalDeadline)
+    : formattedGlobalDate;
+  const formattedOriginalTime = originalDeadline
+    ? (() => {
+        const d = new Date(originalDeadline);
+        const hours = String(d.getHours()).padStart(2, "0");
+        const minutes = String(d.getMinutes()).padStart(2, "0");
+        return `${hours}:${minutes}`;
+      })()
+    : formattedGlobalTime;
 
   let globalBadgeColor = "#ef4444";
   let globalBadgeBg = "#fef2f2";
@@ -396,22 +382,61 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
         width: "100%",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <span
-          style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}
+      {/* แสดงขีดฆ่าเดดไลน์เก่า เฉพาะกรณี revision >= 1 AND deadline ใหม่นานกว่าเดิม */}
+      {isRevision && originalDeadline && globalDeadline > originalDeadline ? (
+        <>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{ fontSize: "0.65rem", fontWeight: 800, color: "#64748b" }}
+            >
+              กำหนดส่งมอบ (ลูกค้าเดิม):
+            </span>
+            <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "#64748b", textDecoration: "line-through" }}>
+              {formattedOriginalDate} ({formattedOriginalTime})
+            </span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: "2px",
+            }}
+          >
+            <span
+              style={{ fontSize: "0.65rem", fontWeight: 900, color: "#ef4444" }}
+            >
+              กำหนดส่งมอบล่าสุด (REV):
+            </span>
+            <span style={{ fontSize: "0.7rem", fontWeight: 900, color: "#ef4444" }}>
+              {formattedGlobalDate} ({formattedGlobalTime})
+            </span>
+          </div>
+        </>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
         >
-          กำหนดส่งมอบ (ลูกค้า):
-        </span>
-        <span style={{ fontSize: "0.7rem", fontWeight: 900, color: "#1e293b" }}>
-          {formattedGlobalDate} ({formattedGlobalTime})
-        </span>
-      </div>
+          <span
+            style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}
+          >
+            กำหนดส่งมอบ (ลูกค้า):
+          </span>
+          <span style={{ fontSize: "0.7rem", fontWeight: 900, color: "#1e293b" }}>
+            {formattedGlobalDate} ({formattedGlobalTime})
+          </span>
+        </div>
+      )}
       <div
         style={{
           display: "flex",

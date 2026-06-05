@@ -5,6 +5,7 @@ import ForemanReportModal from '../components/ForemanReportModal';
 import TaskUpdateModal from '../components/TaskUpdateModal';
 import { WorkOrderType, MasterTask } from '../types';
 import { MapPin, ChevronDown, ChevronRight, Plus, Activity, Phone } from 'lucide-react';
+import { formatDate } from '../utils/date';
 
 const WorkOrders = () => {
     const { workOrders } = useWorkOrders();
@@ -59,7 +60,7 @@ const WorkOrders = () => {
                             </div>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{wo.locationName}</h3>
-                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>ID: {wo.id} • แจ้งเมื่อ: {new Date(wo.createdAt).toLocaleDateString('th-TH')}</div>
+                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>ID: {wo.id} • แจ้งเมื่อ: {formatDate(wo.createdAt)}</div>
                                 {(wo.reporterName || wo.reporterPhone) && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4CAF50', fontSize: '0.85rem', marginTop: '6px' }}>
                                         <Phone size={14} />

@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import ForemanReportModal from '../components/ForemanReportModal';
 import { WorkOrder, WorkOrderType } from '../types';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { formatDate, formatDateTime } from '../utils/date';
 
 const Entry = () => {
     const { user } = useAuth();
@@ -308,7 +309,7 @@ const Entry = () => {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
                         <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
-                            {new Date(wo.submittedAt || wo.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            {formatDateTime(wo.submittedAt || wo.createdAt)}
                         </span>
                         {!isDraft && <StatusBadge status={wo.status} />}
                         
@@ -349,7 +350,7 @@ const Entry = () => {
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#1e293b' }}>ส่งแล้ว</span>
-                                    <span style={{ fontSize: '0.6rem', color: '#64748b' }}>{new Date(wo.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>
+                                    <span style={{ fontSize: '0.6rem', color: '#64748b' }}>{formatDate(wo.createdAt)}</span>
                                 </div>
                             </div>
 
@@ -368,7 +369,7 @@ const Entry = () => {
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <span style={{ fontSize: '0.65rem', fontWeight: 800, color: wo.adminReviewedAt ? '#1e293b' : '#94a3b8' }}>แอดมินเปิดดู</span>
-                                    {wo.adminReviewedAt && <span style={{ fontSize: '0.6rem', color: '#64748b' }}>{new Date(wo.adminReviewedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>}
+                                    {wo.adminReviewedAt && <span style={{ fontSize: '0.6rem', color: '#64748b' }}>{formatDate(wo.adminReviewedAt)}</span>}
                                 </div>
                             </div>
 

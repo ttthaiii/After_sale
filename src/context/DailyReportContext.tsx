@@ -6,6 +6,7 @@ import { useAuth } from "./AuthContext";
 import { useNotifications } from "./NotificationContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/imageCompression";
+import { formatDate } from "../utils/date";
 import { useNavigate, useLocation } from "react-router-dom";
 import { logService } from "../services/logService";
 import {
@@ -175,6 +176,15 @@ interface DailyReportContextType {
 
 const DailyReportContext = createContext<DailyReportContextType | undefined>(undefined);
 
+export const filterHistoryByRevision = (history: any[], revisionCreatedAt: string | null | undefined): any[] => {
+  if (!history) return [];
+  if (!revisionCreatedAt) return history;
+  return history.filter((h: any) => {
+    const hTime = h.createdAt || h.serverTimestamp || h.date;
+    return hTime && hTime > revisionCreatedAt;
+  });
+};
+
 export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
     workOrders: _workOrders,
@@ -196,6 +206,58 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [selectedTaskInfo, setSelectedTaskInfo] =
     useState<SelectedTaskInfo | null>(null);
 
+  // Sync selectedTaskInfo with live updates from workOrders (e.g. from Admin Evaluation)
+  useEffect(() => {
+    if (!selectedTaskInfo) return;
+    const latestWo = workOrders.find((w) => w.id === selectedTaskInfo.wo.id);
+    if (!latestWo) return;
+    const latestTask = latestWo.categories
+      .flatMap((c: any) => c.tasks)
+      .find((t: any) => t.id === selectedTaskInfo.task.id);
+    if (!latestTask) return;
+
+    const hasTaskChanged =
+      latestTask.status !== selectedTaskInfo.task.status ||
+      latestTask.dailyProgress !== selectedTaskInfo.task.dailyProgress ||
+      latestTask.currentRevision !== selectedTaskInfo.task.currentRevision ||
+      latestTask.slaCategory !== selectedTaskInfo.task.slaCategory ||
+      latestTask.startDate !== selectedTaskInfo.task.startDate ||
+      latestTask.revisionCreatedAt !== selectedTaskInfo.task.revisionCreatedAt ||
+      latestTask.history?.length !== selectedTaskInfo.task.history?.length ||
+      JSON.stringify(latestTask.responsibleStaffIds) !== JSON.stringify(selectedTaskInfo.task.responsibleStaffIds);
+
+    const hasWoChanged =
+      latestWo.status !== selectedTaskInfo.wo.status ||
+      latestWo.reviewedByAdmin !== selectedTaskInfo.wo.reviewedByAdmin;
+
+    const isReadOnlyMissing = selectedTaskInfo.task.isReadOnly === undefined;
+
+    if (hasTaskChanged || hasWoChanged || isReadOnlyMissing) {
+      const categoryId = latestWo.categories.find((c: any) =>
+        c.tasks.some((t: any) => t.id === latestTask.id)
+      )?.id || selectedTaskInfo.categoryId;
+
+      const isSubtaskOperator =
+        latestTask.subtaskOperatorId === user?.id ||
+        (user?.employeeId && latestTask.subtaskOperatorId === user.employeeId) ||
+        latestTask.responsibleStaffIds?.includes(foremanId);
+      const isWoRejectedAwaitingAdmin1 = 
+        latestWo.pendingAdminReassign === true ||
+        (latestWo.pendingAdminReassign === undefined && latestWo.reviewedByAdmin === false && latestWo.status === 'Rejected');
+      const isReadOnly =
+        isWoRejectedAwaitingAdmin1 ||
+        (!isSubtaskOperator &&
+          user?.role !== "Admin" &&
+          user?.role !== "Manager");
+
+      setSelectedTaskInfo({
+        task: { ...latestTask, isReadOnly },
+        wo: latestWo,
+        categoryId
+      });
+    }
+  }, [workOrders, selectedTaskInfo, user, foremanId]);
+
   const isTaskFinished = useMemo(() => {
     if (!selectedTaskInfo) return false;
     const currentWo = workOrders.find((w) => w.id === selectedTaskInfo.wo.id);
@@ -205,8 +267,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         .find((t: any) => t.id === selectedTaskInfo.task.id) ||
       selectedTaskInfo.task;
     const history = currentTask.history || [];
+    const filteredHistory = filterHistoryByRevision(history, currentTask.revisionCreatedAt);
     const historyMax =
-      history.reduce((max: number, h: any) => Math.max(max, h.progress), 0) || 0;
+      filteredHistory.reduce((max: number, h: any) => Math.max(max, h.progress), 0) || 0;
     const actualProgress = Math.max(currentTask.dailyProgress || 0, historyMax);
     return (
       actualProgress >= 100 ||
@@ -285,6 +348,65 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     null,
   );
 
+  const hasUnsavedChanges = useMemo(() => {
+    if (!selectedTaskInfo) return false;
+    const { task } = selectedTaskInfo;
+    const history = task.history || [];
+    const todayStr = new Date().toISOString().split("T")[0];
+    const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt);
+    const historyBeforeToday = filteredHistory
+      .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    const minP =
+      historyBeforeToday.length > 0 ? historyBeforeToday[0].progress : 0;
+    const currentP = task.dailyProgress || 0;
+    const initialProgress = currentP < minP ? minP : currentP;
+
+    const progressChanged = progress !== initialProgress;
+    const noteChanged = note.trim() !== "";
+    const laborChanged = labor.length > 0;
+    const photosChanged =
+      sitePhotos.length > 0 ||
+      laborRegularPhotos.length > 0 ||
+      laborOtMorningPhotos.length > 0 ||
+      laborOtNoonPhotos.length > 0 ||
+      laborOtEveningPhotos.length > 0;
+
+    return progressChanged || noteChanged || laborChanged || photosChanged;
+  }, [
+    selectedTaskInfo,
+    progress,
+    note,
+    labor,
+    sitePhotos,
+    laborRegularPhotos,
+    laborOtMorningPhotos,
+    laborOtNoonPhotos,
+    laborOtEveningPhotos,
+  ]);
+
+  // Alert on tab close/reload if there are unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "คุณมีข้อมูลรายงานความคืบหน้าที่ยังไม่ได้บันทึกค้างอยู่ หากออกจากหน้านี้ ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  // Sync hasUnsavedChanges with window global for Sidebar navigation intercept
+  useEffect(() => {
+    (window as any).hasUnsavedChanges = hasUnsavedChanges;
+    return () => {
+      (window as any).hasUnsavedChanges = false;
+    };
+  }, [hasUnsavedChanges]);
+
   useEffect(() => {
     const unsubContractors = onSnapshot(
       collection(db, "contractors"),
@@ -325,9 +447,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   useEffect(() => {
     if (!selectedTaskInfo) return;
-    const existingReport = selectedTaskInfo.task.history?.find(
-      (h) => h.date?.split("T")[0] === reportDate,
-    );
+    const existingReport = selectedTaskInfo.task.history?.find((h) => {
+      const hTime = h.createdAt || h.serverTimestamp || h.date;
+      return h.date?.split("T")[0] === reportDate &&
+             (!selectedTaskInfo.task.revisionCreatedAt || hTime > selectedTaskInfo.task.revisionCreatedAt);
+    });
     if (existingReport) {
       setProgress(existingReport.progress);
       setNote(existingReport.note || "");
@@ -432,11 +556,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsEditingExisting(false);
     } else {
       const history = selectedTaskInfo.task.history || [];
-      const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
-        ? history.filter(
-            (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
-          )
-        : history;
+      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
       let min = 0;
       filteredHistory.forEach((h) => {
         const hDate = h.date?.split("T")[0] || "";
@@ -509,11 +629,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               (!task.responsibleStaffIds ||
                 task.responsibleStaffIds.length === 0));
           if (isAssigned) {
-            const filteredHistory = task.revisionCreatedAt
-              ? (task.history || []).filter(
-                  (h: any) => h.date && h.date > task.revisionCreatedAt!,
-                )
-              : task.history || [];
+            const filteredHistory = filterHistoryByRevision(task.history || [], task.revisionCreatedAt);
             const historyMax =
               filteredHistory.reduce(
                 (max: number, h: any) => Math.max(max, h.progress),
@@ -523,11 +639,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               task.dailyProgress || 0,
               historyMax,
             );
+            const isWoRejectedAwaitingAdmin2 =
+              wo.pendingAdminReassign === true ||
+              (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false && wo.status === 'Rejected');
             const isReadOnly =
-              !isSubtaskOperator &&
-              !!isWoOwner2 &&
-              user?.role !== "Admin" &&
-              user?.role !== "Manager";
+              isWoRejectedAwaitingAdmin2 ||
+              (!isSubtaskOperator &&
+                user?.role !== "Admin" &&
+                user?.role !== "Manager");
             const item: TaskListItem = {
               task: { ...task, dailyProgress: actualProgress, isReadOnly },
               wo,
@@ -608,8 +727,20 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         inProgressTasks.find((i) => i.wo.id === workOrderId) ||
         pendingInspectionTasks.find((p) => p.wo.id === workOrderId);
       if (item) {
-        setHighlightedId(workOrderId);
-        handleSelectTask(item.task, item.wo, item.categoryId);
+        const isWoRejectedAwaitingAdmin =
+          item.wo.pendingAdminReassign === true ||
+          (item.wo.pendingAdminReassign === undefined && item.wo.reviewedByAdmin === false && item.wo.status === 'Rejected');
+        if (isWoRejectedAwaitingAdmin) {
+          setModalAlert({
+            isOpen: true,
+            title: "อยู่ระหว่างรอแอดมินมอบหมายตารางเวลาใหม่",
+            message: "ใบสั่งงานนี้ถูกระงับการดำเนินงานชั่วคราว เพื่อรอให้แอดมินจัดสรรรอบเวลาการแก้ไขงานใหม่",
+            type: "warning",
+          });
+        } else {
+          setHighlightedId(workOrderId);
+          handleSelectTask(item.task, item.wo, item.categoryId);
+        }
       } else {
         const wo = workOrders.find((w) => w.id === workOrderId);
         if (wo) {
@@ -626,10 +757,31 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             title = "ใบสั่งงานถูกยกเลิก";
             type = "error";
           } else if (wo.status === "Rejected") {
-            message =
-              "ใบสั่งงานนี้ถูกปฏิเสธโดยแอดมิน กรุณาเข้าหน้า 'ใบงานและติดตามผล' เพื่อทำการแก้ไขและส่งใหม่";
-            title = "ใบสั่งงานถูกปฏิเสธการประเมิน";
-            type = "warning";
+            if (wo.pendingAdminReassign === true ||
+                (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)) {
+              message =
+                "ใบสั่งงานนี้ถูกระงับการดำเนินงานชั่วคราว เพื่อรอให้แอดมินจัดสรรรอบเวลาการแก้ไขงานใหม่";
+              title = "อยู่ระหว่างรอแอดมินมอบหมายตารางเวลาใหม่";
+              type = "warning";
+            } else {
+              const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
+              const activeTask =
+                globalTasks.find((t: any) => t.evaluationStatus === "Rejected") ||
+                globalTasks.find((t: any) => (t.dailyProgress || t.progress || 0) < 100) ||
+                globalTasks[0];
+              if (activeTask) {
+                const catId =
+                  wo.categories.find((c: any) =>
+                    c.tasks.some((t: any) => t.id === activeTask.id)
+                  )?.id || wo.categories[0]?.id;
+                setHighlightedId(workOrderId);
+                handleSelectTask(activeTask, wo, catId);
+                return;
+              }
+              message = "งานในใบสั่งงานแก้ไขนี้ได้รับการดำเนินการครบถ้วนแล้ว";
+              title = "งานแก้ไขเสร็จสิ้น";
+              type = "success";
+            }
           } else if (wo.status === "Draft") {
             message =
               "ใบสั่งงานนี้ยังคงอยู่ในสถานะแบบร่าง กรุณาส่งใบงานเพื่อรับการประเมินจากแอดมิน";
@@ -689,18 +841,45 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     wo: WorkOrder,
     categoryId: string,
   ) => {
+    // 1. If clicking the SAME task, ignore it entirely to prevent state reset
+    if (selectedTaskInfo?.task?.id === task.id) {
+      return;
+    }
+
+    // 2. If clicking a DIFFERENT task and there are unsaved changes, ask for confirmation
+    if (hasUnsavedChanges) {
+      const confirmLeave = window.confirm(
+        "คุณมีข้อมูลรายงานความคืบหน้าที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนงาน ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนงานหรือไม่?"
+      );
+      if (!confirmLeave) {
+        return;
+      }
+    }
+
     const history = task.history || [];
     const todayStr = new Date().toISOString().split("T")[0];
-    const filteredHistory = task.revisionCreatedAt
-      ? history.filter((h) => h.date && h.date > task.revisionCreatedAt!)
-      : history;
+    const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt);
     const historyBeforeToday = filteredHistory
       .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     const minP =
       historyBeforeToday.length > 0 ? historyBeforeToday[0].progress : 0;
     const currentP = task.dailyProgress || 0;
-    setSelectedTaskInfo({ task, wo, categoryId });
+
+    const isSubtaskOperator =
+      task.subtaskOperatorId === user?.id ||
+      (user?.employeeId && task.subtaskOperatorId === user.employeeId) ||
+      task.responsibleStaffIds?.includes(foremanId);
+    const isWoRejectedAwaitingAdmin3 =
+      wo.pendingAdminReassign === true ||
+      (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false && wo.status === 'Rejected');
+    const isReadOnly =
+      isWoRejectedAwaitingAdmin3 ||
+      (!isSubtaskOperator &&
+        user?.role !== "Admin" &&
+        user?.role !== "Manager");
+
+    setSelectedTaskInfo({ task: { ...task, isReadOnly }, wo, categoryId });
     setProgress(currentP < minP ? minP : currentP);
     setNote("");
     setLabor([]);
@@ -748,11 +927,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const progressBounds = useMemo(() => {
     if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
-      ? history.filter(
-          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
-        )
-      : history;
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
     const targetDate = reportDate;
     let min = 0;
     let max = 100;
@@ -789,7 +964,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     isEditingExisting &&
     !isReportDatePast3Days &&
     !isTaskFinished &&
-    !(selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin);
+    !selectedTaskInfo?.task?.isReadOnly &&
+    !(selectedTaskInfo?.wo?.pendingAdminReassign === true ||
+      (selectedTaskInfo?.wo?.pendingAdminReassign === undefined && selectedTaskInfo?.wo?.reviewedByAdmin === false && selectedTaskInfo?.wo?.status === 'Rejected'));
 
   const hasHistoryForSelectedDate = useMemo(() => {
     if (!selectedTaskInfo) return false;
@@ -1365,17 +1542,13 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
-      ? history.filter(
-          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
-        )
-      : history;
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
     const existingHistory = filteredHistory.find(
       (h) => h.date?.split("T")[0] === reportDate,
     );
     if (existingHistory && !isEditingExisting) {
       alert(
-        `คุณเคยส่งรายงานของวันที่ ${new Date(reportDate).toLocaleDateString("th-TH")} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`,
+        `คุณเคยส่งรายงานของวันที่ ${formatDate(reportDate)} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`,
       );
       return;
     }
@@ -1389,11 +1562,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsSubmitting(true);
     try {
       const history = selectedTaskInfo.task.history || [];
-      const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
-        ? history.filter(
-            (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
-          )
-        : history;
+      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
       const existingHistory = filteredHistory.find(
         (h) => h.date?.split("T")[0] === reportDate,
       );
@@ -1577,11 +1746,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     );
     if (!confirmCancel) return;
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
-      ? history.filter(
-          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
-        )
-      : history;
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
     const existingReport = filteredHistory.find(
       (h) => h.date?.split("T")[0] === reportDate,
     );
@@ -1690,43 +1855,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsEditingExisting(false);
   };
 
-  const hasUnsavedChanges = () => {
-    if (!selectedTaskInfo) return false;
-    const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = selectedTaskInfo.task.revisionCreatedAt
-      ? history.filter(
-          (h) => h.date && h.date > selectedTaskInfo.task.revisionCreatedAt!,
-        )
-      : history;
-    const existingReport = filteredHistory.find(
-      (h) => h.date?.split("T")[0] === reportDate,
-    );
-    if (existingReport) {
-      return isEditingExisting;
-    } else {
-      const isLaborDirty = labor.length > 0;
-      const isPhotosDirty =
-        sitePhotos.some(Boolean) ||
-        laborRegularPhotos.some(Boolean) ||
-        laborOtMorningPhotos.some(Boolean) ||
-        laborOtNoonPhotos.some(Boolean) ||
-        laborOtEveningPhotos.some(Boolean);
-      const isNoteDirty = note.trim() !== "";
-      let minProgress = 0;
-      filteredHistory.forEach((h) => {
-        const hDate = h.date?.split("T")[0] || "";
-        if (hDate && hDate < reportDate && h.progress > minProgress) {
-          minProgress = h.progress;
-        }
-      });
-      const isProgressDirty = progress !== minProgress;
-      return isLaborDirty || isPhotosDirty || isNoteDirty || isProgressDirty;
-    }
-  };
-
   const handleDateChange = (newDateStr: string) => {
     if (newDateStr === reportDate) return;
-    if (hasUnsavedChanges()) {
+    if (hasUnsavedChanges) {
       const discard = window.confirm(
         "คุณมีรายการที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนวันที่ การเปลี่ยนแปลงทั้งหมดในหน้านี้จะสูญหาย คุณต้องการเปลี่ยนวันโดยละทิ้งการแก้ไขใช่หรือไม่?",
       );

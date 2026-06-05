@@ -24,9 +24,20 @@ import {
   Package,
   User,
 } from "lucide-react";
-import { useDailyReport } from "../../context/DailyReportContext";
+import { useDailyReport, filterHistoryByRevision } from "../../context/DailyReportContext";
 import { SLACountdown } from "./SLACountdowns";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
+import { formatDate } from "../../utils/date";
+
+const formatSubtaskId = (id: string | undefined): string => {
+  if (!id) return "";
+  const cleanId = id.startsWith('LR-') ? id.substring(3) : id;
+  const parts = cleanId.split('-');
+  if (parts.length === 5) {
+    return parts.slice(0, 4).join('-');
+  }
+  return cleanId;
+};
 
 export const DailyReportDetailPane: React.FC = () => {
   const {
@@ -539,9 +550,16 @@ export const DailyReportDetailPane: React.FC = () => {
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
-                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสรายการ:</span>
+                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสใบงาน:</span>
                             <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
-                              {selectedTaskInfo.task.id || selectedTaskInfo.task.taskCode || "-"}
+                              {selectedTaskInfo.wo.id || "-"}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสงาน:</span>
+                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
+                              {formatSubtaskId(selectedTaskInfo.task.subtaskId || selectedTaskInfo.task.id) || "-"}
                             </span>
                           </div>
 
@@ -606,19 +624,20 @@ export const DailyReportDetailPane: React.FC = () => {
                         const woId = selectedTaskInfo.wo.id;
                         const fullWo = workOrders.find((w) => w.id === woId);
                         if (fullWo) {
+                          const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
                           let maxDl = 0;
                           fullWo.categories.forEach((cat: any) => {
                             cat.tasks.forEach((t: any) => {
+                              if (isWoaWop && !t.slaCategory) return;
                               const tSla =
                                 t.slaCategory ||
                                 t.baselineSla ||
                                 t.estimatedSla ||
                                 "24h";
                               const tDurHours = slaHoursMap[tSla] || 24;
-                              let tStart = t.slaStartTime;
-                              if (!tStart && t.startDate) {
-                                tStart = `${t.startDate}T08:00:00`;
-                              }
+                              let tStart = t.startDate 
+                                ? `${t.startDate.split('T')[0]}T08:00:00` 
+                                : t.slaStartTime;
                               if (!tStart) {
                                 tStart =
                                   fullWo.createdAt ||
@@ -646,9 +665,9 @@ export const DailyReportDetailPane: React.FC = () => {
                           selectedTaskInfo.task.history &&
                           selectedTaskInfo.task.history.length > 0
                         ) {
-                          const sortedHistory = [
-                            ...selectedTaskInfo.task.history,
-                          ]
+                          const history = selectedTaskInfo.task.history || [];
+                          const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+                          const sortedHistory = [...filteredHistory]
                             .filter((h) => h.date)
                             .sort(
                               (a, b) =>
@@ -669,10 +688,9 @@ export const DailyReportDetailPane: React.FC = () => {
                             
                             <SLACountdown
                               startTime={
-                                selectedTaskInfo.task.slaStartTime ||
                                 (selectedTaskInfo.task.startDate
-                                  ? `${selectedTaskInfo.task.startDate}T08:00:00`
-                                  : null) ||
+                                  ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00`
+                                  : selectedTaskInfo.task.slaStartTime) ||
                                  new Date().toISOString()
                               }
                               durationHours={slaDuration}
@@ -730,11 +748,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           
                           <Calendar size={14} /> 
                           <span>
-                            {new Date(reportDate).toLocaleDateString("th-TH", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
+                            {formatDate(reportDate)}
                           </span>
                         </div>
                         {showCalendarDropdown && (
@@ -813,7 +827,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     "ธันวาคม",
                                   ][calendarMonth]
                                 }{" "}
-                                {calendarYear + 543}
+                                {calendarYear}
                               </span>{" "}
                               
                               <button
@@ -1165,6 +1179,43 @@ export const DailyReportDetailPane: React.FC = () => {
                 </div>
               ) : (
                 <Fragment>
+                  {selectedTaskInfo?.task?.isReadOnly && (
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        border: "1.5px solid #cbd5e1",
+                        borderRadius: "20px",
+                        padding: "16px 20px",
+                        marginBottom: "1.5rem",
+                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "#e2e8f0",
+                          padding: "8px",
+                          borderRadius: "10px",
+                          color: "#475569",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Lock size={18} />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: "0.85rem", fontWeight: 900, color: "#334155" }}>
+                          โหมดดูข้อมูลอย่างเดียว (Read-Only Mode)
+                        </h4>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>
+                          คุณไม่ได้เป็นผู้รับผิดชอบงานย่อยนี้ในรอบการแก้งานปัจจุบัน จึงสามารถดูข้อมูลได้อย่างเดียวเท่านั้น
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {isReportDatePast3Days && (
                  <div
                   style={{
@@ -1236,6 +1287,7 @@ export const DailyReportDetailPane: React.FC = () => {
                 selectedTaskInfo.task.slaCategory &&
                 selectedTaskInfo.task.estimatedSla !==
                   selectedTaskInfo.task.slaCategory &&
+                (!selectedTaskInfo.task.currentRevision || selectedTaskInfo.task.currentRevision === 'rev00') &&
                 (selectedTaskInfo.task.dailyProgress || 0) === 0 && (
                    <div
                     style={{
@@ -1389,7 +1441,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     }}
                   >
                     {selectedTaskInfo.task.history?.some(
-                      (h) => h.date?.split("T")[0] === reportDate,
+                      (h) => h.date?.split("T")[0] === reportDate &&
+                             (!selectedTaskInfo.task.revisionCreatedAt || (h.createdAt || h.serverTimestamp || h.date) > selectedTaskInfo.task.revisionCreatedAt),
                     ) &&
                       !isTaskFinished &&
                       (isEditingExisting ? (
@@ -3536,8 +3589,11 @@ export const DailyReportDetailPane: React.FC = () => {
                   onChange={(e) => setNote(e.target.value)}
                 />
               </div>
-              {selectedTaskInfo.task.history &&
-                selectedTaskInfo.task.history.length > 0 && (
+              {(() => {
+                const history = selectedTaskInfo.task.history || [];
+                const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+                if (filteredHistory.length === 0) return null;
+                return (
                    <div
                     style={{
                       marginTop: "2.5rem",
@@ -3569,7 +3625,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         gap: "12px",
                       }}
                     >
-                      {[...(selectedTaskInfo.task.history || [])]
+                      {[...filteredHistory]
                         .sort(
                           (a, b) =>
                             new Date(b.date).getTime() -
@@ -3641,14 +3697,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     }}
                                   >
                                     {h.type === "Problem" && "🚨 "}
-                                    {new Date(h.date).toLocaleDateString(
-                                      "th-TH",
-                                      {
-                                        day: "numeric",
-                                        month: "short",
-                                        year: "numeric",
-                                      },
-                                    )}
+                                    {formatDate(h.date)}
                                   </div>{" "}
                                   
                                   <div
@@ -3749,7 +3798,8 @@ export const DailyReportDetailPane: React.FC = () => {
                         })}
                     </div>
                   </div>
-                )}
+                );
+              })()}
                 </Fragment>
               )}
             </div>{" "}
@@ -3817,7 +3867,8 @@ export const DailyReportDetailPane: React.FC = () => {
               </button>
               {(!hasHistoryForSelectedDate || isEditingExisting) &&
                 !isTaskFinished &&
-                !isAwaitingAdmin && (
+                !isAwaitingAdmin &&
+                !selectedTaskInfo?.task?.isReadOnly && (
                    <Fragment>
                     {" "}
                     

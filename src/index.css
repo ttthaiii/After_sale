@@ -34,3 +34,19 @@ button {
   cursor: pointer;
   transition: border-color 0.25s;
 }
+
+/* Custom Date Input native overlay styling to force transparency of browser-rendered text & calendar icon */
+.custom-date-input-native {
+  color: transparent !important;
+  background: transparent !important;
+}
+
+.custom-date-input-native::-webkit-datetime-edit {
+  color: transparent !important;
+}
+
+.custom-date-input-native::-webkit-calendar-picker-indicator {
+  background: transparent !important;
+  color: transparent !important;
+  opacity: 0 !important;
+}

@@ -6,6 +6,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import ImageOverlay from './ImageOverlay';
+import CustomDateInput from './CustomDateInput';
 
 interface TaskEvaluationModalProps {
     isOpen: boolean;
@@ -110,6 +111,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                 costType: formData.costType as any,
                 rootCause: formData.rootCause,
                 responsibleStaffIds: [formData.assigneeId],
+                subtaskOperatorId: formData.assigneeId,
                 status: 'Assigned',
                 startDate: formData.startDate,
                 slaStartTime: slaStart
@@ -358,21 +360,24 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
 
                     {/* Form Fields */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                        {/* Start Date */}
+                        <div>
+                            <label style={labelStyle}>
+                                <Clock size={16} color="#6b7280" /> วันเริ่มดำเนินการ
+                            </label>
+                            <CustomDateInput
+                                value={formData.startDate}
+                                onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                                style={inputStyle}
+                            />
+                        </div>
+
                         {/* SLA Priority */}
                         <div>
                             <label style={labelStyle}>
-                                <Clock size={16} color="#6b7280" /> SLA / ความเร่งด่วน
+                                <Clock size={16} color="#6366f1" /> ระดับความสำคัญ (SLA Category)
                             </label>
-                            {task.estimatedSla && (
-                                <div style={{ marginBottom: '8px', fontSize: '0.8rem', color: '#d97706', background: '#fffbeb', padding: '6px 12px', borderRadius: '6px', border: '1px solid #fcd34d', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                                    <Clock size={14} /> SLA คาดการณ์จากโฟร์แมน: 
-                                    {task.estimatedSla === 'Immediately' ? 'ด่วนที่สุด (ทันที)' : 
-                                     task.estimatedSla === '24h' ? 'ภายใน 24 ชม. (ด่วน)' : 
-                                     task.estimatedSla === '1-3d' ? '1-3 วัน (ปานกลาง)' : 
-                                     task.estimatedSla === '3-7d' ? '3-7 วัน (ทั่วไป)' : 
-                                     task.estimatedSla === '7-14d' ? '7-14 วัน' : '14-30 วัน (งานใหญ่)'}
-                                </div>
-                            )}
                             <select
                                 style={inputStyle}
                                 value={formData.sla}
@@ -383,21 +388,21 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                                 <option value="1-3d">1 - 3 วัน (ปกติ)</option>
                                 <option value="3-7d">3 - 7 วัน</option>
                                 <option value="7-14d">7 - 14 วัน</option>
-                                <option value="14-30d">14 - 30 วัน (งานใหญ่)</option>
+                                <option value="14-30d">14 - 30 วัน</option>
                             </select>
-                        </div>
 
-                        {/* Start Date */}
-                        <div>
-                            <label style={labelStyle}>
-                                <Clock size={16} color="#6b7280" /> วันเริ่มดำเนินการ
-                            </label>
-                            <input
-                                type="date"
-                                style={inputStyle}
-                                value={formData.startDate}
-                                onChange={e => setFormData({ ...formData, startDate: e.target.value })}
-                            />
+                            {task?.estimatedSla && (
+                                <div style={{ marginTop: '8px', fontSize: '0.8rem', color: '#4b5563', display: 'flex', alignItems: 'center', gap: '6px', background: '#f3f4f6', padding: '6px 12px', borderRadius: '8px' }}>
+                                    <span style={{ fontWeight: 600 }}>SLA คาดการณ์ (โฟร์แมน):</span>
+                                    <span style={{ fontWeight: 800, color: '#4f46e5' }}>
+                                        {task.estimatedSla === 'Immediately' ? 'ด่วนที่สุด (ทันที)' :
+                                         task.estimatedSla === '24h' ? 'ภายใน 24 ชม. (ด่วน)' :
+                                         task.estimatedSla === '1-3d' ? '1 - 3 วัน (ปกติ)' :
+                                         task.estimatedSla === '3-7d' ? '3 - 7 วัน' :
+                                         task.estimatedSla === '7-14d' ? '7 - 14 วัน' : '14 - 30 วัน'}
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Assignee Selection */}
@@ -452,12 +457,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
 
                 {/* Footer */}
                 <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid #f3f4f6', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                    <button
-                        onClick={onClose}
-                        style={{ padding: '10px 20px', borderRadius: '10px', background: '#ffffff', border: '1px solid #e5e7eb', color: '#374151', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                        ยกเลิก
-                    </button>
+
                     <button
                         onClick={handleReject}
                         style={{ padding: '10px 20px', borderRadius: '10px', background: '#fee2e2', border: '1px solid #fecaca', color: '#dc2626', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}

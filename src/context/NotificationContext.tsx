@@ -7,7 +7,8 @@ import {
     addDoc,
     updateDoc,
     doc,
-    serverTimestamp
+    serverTimestamp,
+    orderBy
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
@@ -49,10 +50,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             return;
         }
 
-        // ✅ Query for notifications targeting EITHER this user's ID OR their Role
         const q = query(
             collection(db, 'notifications'),
-            limit(50) 
+            orderBy('createdAt', 'desc'),
+            limit(100)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {

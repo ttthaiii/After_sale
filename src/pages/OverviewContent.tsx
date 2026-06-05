@@ -574,7 +574,7 @@ const OverviewContent = ({
                                             labelFormatter={(value) => {
                                                 const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
                                                 const [yr, mn] = selectedMonth.split('-');
-                                                return `${value} ${monthNames[parseInt(mn) - 1]} ${parseInt(yr) + 543}`;
+                                                return `${value} ${monthNames[parseInt(mn) - 1]} ${yr}`;
                                             }}
                                         />
                                         <Legend verticalAlign="top" align="right" />

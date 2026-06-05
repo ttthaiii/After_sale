@@ -196,7 +196,12 @@ const Sidebar = () => {
                                             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginBottom: '2px' }}>{n.title}</div>
                                             <div style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.4 }}>{n.message}</div>
                                             <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '4px' }}>
-                                                จาก {n.senderName} • {n.createdAt?.seconds ? new Date(n.createdAt.seconds * 1000).toLocaleTimeString('th-TH') : 'เมื่อครู่'}
+                                                จาก {n.senderName} • {n.createdAt?.seconds ? (() => {
+                                                    const d = new Date(n.createdAt.seconds * 1000);
+                                                    const hours = String(d.getHours()).padStart(2, '0');
+                                                    const minutes = String(d.getMinutes()).padStart(2, '0');
+                                                    return `${hours}:${minutes}`;
+                                                })() : 'เมื่อครู่'}
                                             </div>
                                         </div>
                                     )})
@@ -213,6 +218,16 @@ const Sidebar = () => {
                         <li key={item.path} style={{ marginBottom: '0.5rem' }}>
                             <Link
                                 to={item.path}
+                                onClick={(e) => {
+                                    if ((window as any).hasUnsavedChanges) {
+                                        const confirmLeave = window.confirm(
+                                            "คุณมีข้อมูลรายงานความคืบหน้าที่ยังไม่ได้บันทึกค้างอยู่ หากสลับไปหน้าอื่น ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนหน้าหรือไม่?"
+                                        );
+                                        if (!confirmLeave) {
+                                            e.preventDefault();
+                                        }
+                                    }
+                                }}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -249,7 +264,18 @@ const Sidebar = () => {
 
             <div style={{ padding: '1rem', borderTop: '1px solid #f3f4f6' }}>
                 <button
-                    onClick={logout}
+                    onClick={(e) => {
+                        if ((window as any).hasUnsavedChanges) {
+                            const confirmLeave = window.confirm(
+                                "คุณมีข้อมูลรายงานความคืบหน้าที่ยังไม่ได้บันทึกค้างอยู่ หากออกจากระบบ ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการออกจากระบบหรือไม่?"
+                            );
+                            if (!confirmLeave) {
+                                e.preventDefault();
+                                return;
+                            }
+                        }
+                        logout();
+                    }}
                     style={{
                         display: 'flex',
                         alignItems: 'center',

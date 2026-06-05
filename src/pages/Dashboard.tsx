@@ -19,6 +19,7 @@ import {
     FileText,
     MapPin
 } from 'lucide-react';
+import { formatDate, formatDateTime } from '../utils/date';
 import {
     XAxis,
     YAxis,
@@ -426,7 +427,7 @@ const WOSummaryModal = ({ isOpen, onClose, data, onViewDetail, selectedMonth, ge
     const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
     const [yr, mn] = selectedMonth.split('-');
     const displayMonth = monthNames[parseInt(mn) - 1];
-    const displayYear = parseInt(yr) + 543;
+    const displayYear = yr;
     return (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
             <div style={{ background: '#fff', width: '100%', maxWidth: '700px', borderRadius: '32px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', animation: 'modalSlideUp 0.3s ease-out' }} onClick={(e) => e.stopPropagation()}>
@@ -539,7 +540,7 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                     <div key={idx} style={{ padding: '20px', background: '#f8fafc', borderRadius: '24px', border: '1px solid #e2e8f0' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                             <div style={{ fontSize: '1rem', fontWeight: 900, color: log.type === 'Problem' ? '#ef4444' : '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                {logDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} {logDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
+                                                {formatDateTime(logDate)}
                                                 {log.type === 'Problem' && <AlertCircle size={18} color="#ef4444" />}
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px' }}>
@@ -685,7 +686,9 @@ const Dashboard = () => {
             c.tasks.forEach((t: any) => {
                 if (t.status === 'Completed' || t.status === 'Verified' || t.status === 'Rejected') return;
                 const limit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                const start = t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime();
+                const start = t.startDate
+                    ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                    : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
                 const hoursLeft = limit - (now - start) / (3600 * 1000);
                 if (hoursLeft < minHoursLeft) {
                     minHoursLeft = hoursLeft;
@@ -941,7 +944,9 @@ const Dashboard = () => {
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
                     const limit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                    const start = t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime();
+                    const start = t.startDate
+                    ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                    : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
 
                     if (t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified') {
                         if (isFocusMatch) {
@@ -986,7 +991,9 @@ const Dashboard = () => {
                     const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                     const currentSlaType = t.slaCategory || '24h';
                     const limit = slaHoursMap[currentSlaType] || 24;
-                    const start = t.slaStartTime ? new Date(t.slaStartTime).getTime() : woSlaStart;
+                    const start = t.startDate
+                        ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                        : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woSlaStart);
                     let isSlaMet = false;
                     let duration = 0;
                     if (t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified') {
@@ -1409,7 +1416,7 @@ const Dashboard = () => {
 
             dataPoints.push({ 
                 day: d, 
-                name: `${d} ${new Date(year, monthNum - 1).toLocaleDateString('th-TH', { month: 'short' })}`, 
+                name: `${String(d).padStart(2, '0')}/${String(monthNum).padStart(2, '0')}`, 
                 openedCount: openedTasksCount, 
                 closedCount: closedTasksCount,
                 isHighlighted: isRelatedDay 
@@ -2222,7 +2229,7 @@ const Dashboard = () => {
                                                     labelFormatter={(value) => {
                                                         const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
                                                         const [yr, mn] = selectedMonth.split('-');
-                                                        return `${value} ${monthNames[parseInt(mn) - 1]} ${parseInt(yr) + 543}`;
+                                                        return `${value} ${monthNames[parseInt(mn) - 1]} ${yr}`;
                                                     }}
                                                 />
                                                 <Legend verticalAlign="top" align="right" />
@@ -2736,7 +2743,7 @@ const Dashboard = () => {
                             <div>
                                 <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>รายละเอียดแรงงาน: {selectedLaborDetail.projectName}</h3>
                                 <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0', fontWeight: 600 }}>
-                                    {selectedLaborDetail.date ? `วันที่ ${new Date(selectedLaborDetail.date).toLocaleDateString('th-TH', { dateStyle: 'long' })}` : 'สรุปภาพรวมทั้งหมด'}
+                                    {selectedLaborDetail.date ? `วันที่ ${formatDate(selectedLaborDetail.date)}` : 'สรุปภาพรวมทั้งหมด'}
                                 </p>
                             </div>
                             <button onClick={() => setSelectedLaborDetail(null)} style={{ background: '#fff', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0f172a', fontSize: '24px', fontWeight: 900 }} title="ปิดหน้าต่าง">×</button>

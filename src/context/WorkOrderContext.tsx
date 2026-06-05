@@ -24,7 +24,13 @@ interface WorkOrderContextType {
     generateDeliveryQrToken: (woId: string, ownerId: string) => Promise<string>;
     submitCustomerInspection: (
         woId: string, 
-        approvals: Record<string, { status: 'approved' | 'rejected'; reason?: string; defectCategories?: Record<string, boolean> }>,
+        approvals: Record<string, { 
+            status: 'approved' | 'rejected'; 
+            reason?: string; 
+            defectCategories?: Record<string, boolean>;
+            contactName?: string;
+            contactPhone?: string;
+        }>,
         survey?: {
             workQuality: number;
             siteCleanliness: number;
@@ -34,6 +40,7 @@ interface WorkOrderContextType {
         }
     ) => Promise<void>;
     logCustomerQrView: (woId: string) => Promise<void>;
+    markWorkOrderAsOpenedByAdmin: (id: string) => Promise<void>;
 }
 
 const WorkOrderContext = createContext<WorkOrderContextType | undefined>(undefined);
@@ -85,6 +92,9 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
     const jobCode     = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA'; // "WOA"
     const woSeq       = parts.length >= 1 ? parts[parts.length - 1] : '0001';
 
+    // Pad woSeq to 4 digits for standard display (e.g. 0001)
+    const formattedWoSeq = String(parseInt(woSeq) || 0).padStart(4, '0');
+
     let taskCounter = 0;
 
     return categories.map((cat, catIndex) => {
@@ -93,22 +103,23 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
 
         // 1-indexed category type position; fallback to array position if name not found
         const position = listIndex >= 0 ? listIndex + 1 : catIndex + 1;
+        const formattedPosition = String(position).padStart(4, '0');
 
-        // Category ID: JobCode-CatTypeSeq4digits (no project code prefix to match LB)
-        // e.g. WOA-0004 or DBD-0001
-        const computedCatId = `${jobCode}-${String(position).padStart(4, '0')}`;
+        // Category ID: LR-[ProjectCode]-[CategorySeq]-[WOSeq] (e.g. LR-WOA-0003-0001)
+        const computedCatId = `LR-${jobCode}-${formattedPosition}-${formattedWoSeq}`;
 
-        // Task ID: [JobCode]-[WOSeq]-[taskSeq3digits] (matches parent WO sequence "0001" instead of category type position "0002")
-        // e.g. WOA-0001-001 (matches LB style)
+        // Task ID: LR-[ProjectCode]-[CategorySeq]-[WOSeq]-[TaskCount 4 digits] (e.g. LR-WOA-0003-0001-0001)
         const tasks = cat.tasks ? cat.tasks.map((task: any) => {
             taskCounter++;
-            const taskSeq = String(taskCounter).padStart(3, '0');
-            const computedTaskId = `${jobCode}-${woSeq}-${taskSeq}`;
+            const taskSeq = String(taskCounter).padStart(4, '0');
+            const computedTaskId = `LR-${jobCode}-${formattedPosition}-${formattedWoSeq}-${taskSeq}`;
+            const computedSubtaskId = `${jobCode}-${formattedPosition}-${formattedWoSeq}-${taskSeq}`;
             return {
                 ...task,
                 id: computedTaskId,
                 taskCode: computedTaskId,
-                catId: computedCatId
+                catId: computedCatId,
+                subtaskId: computedSubtaskId
             };
         }) : [];
 
@@ -121,6 +132,15 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
             tasks
         };
     });
+};
+
+// Helper function to resolve subtask ID from task ID
+const getSubtaskId = (taskId: string): string => {
+    // Strip "LR-" prefix if present → e.g. "LR-WOA-0003-0001-0001" → "WOA-0003-0001-0001"
+    if (taskId && taskId.startsWith('LR-')) {
+        return taskId.substring(3);
+    }
+    return taskId;
 };
 
 // ✅ Resolve task assignee details from the users collection for LB schema compatibility
@@ -187,15 +207,32 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 // Fetch daily reports from subtasks -> revisions -> dailyReports (new LB structure) or dailyreport (legacy)
                 const subtasksSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks'));
                 let dailyreports: DailyReport[] = [];
+                let currentRevision = 'rev00';
+                let revisionCreatedAt: string | null = null;
                 
                 if (!subtasksSnap.empty) {
                     for (const subtaskDoc of subtasksSnap.docs) {
                         const revisionsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions'));
                         
                         if (!revisionsSnap.empty) {
-                            // Normal case: revision documents exist
-                            for (const revDoc of revisionsSnap.docs) {
-                                const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
+                            // Find the active revision document, or fallback to the latest one
+                            const activeRevDoc = revisionsSnap.docs.find(d => d.data().status === 'active') || 
+                                                 revisionsSnap.docs.sort((a, b) => b.id.localeCompare(a.id))[0];
+                            
+                            if (activeRevDoc) {
+                                currentRevision = activeRevDoc.id;
+                                const revData = activeRevDoc.data();
+                                if (revData.createdAt) {
+                                    if (typeof revData.createdAt === 'object' && revData.createdAt.seconds !== undefined) {
+                                        revisionCreatedAt = new Date(revData.createdAt.seconds * 1000).toISOString();
+                                    } else if (typeof revData.createdAt.toDate === 'function') {
+                                        revisionCreatedAt = revData.createdAt.toDate().toISOString();
+                                    } else {
+                                        revisionCreatedAt = revData.createdAt;
+                                    }
+                                }
+                                
+                                const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', activeRevDoc.id, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
                                     dailyreports.push({
                                         ...reportDoc.data(),
@@ -207,8 +244,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                             // ✅ Fallback: phantom rev00 — revision document was never explicitly created
                             // but dailyReports subcollection may still exist under rev00
                             const subtaskData = subtaskDoc.data();
-                            const phantomRevId = subtaskData.currentRevision || 'rev00';
-                            const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', phantomRevId, 'dailyReports'));
+                            currentRevision = subtaskData.currentRevision || 'rev00';
+                            const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', currentRevision, 'dailyReports'));
                             for (const reportDoc of reportsSnap.docs) {
                                 dailyreports.push({
                                     ...reportDoc.data(),
@@ -267,6 +304,18 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     status = 'Rejected';
                 }
 
+                // Fallback for revisionCreatedAt from taskData if not retrieved from revisions
+                let finalRevisionCreatedAt = revisionCreatedAt;
+                if (!finalRevisionCreatedAt && taskData.revisionCreatedAt) {
+                    if (typeof taskData.revisionCreatedAt === 'object' && taskData.revisionCreatedAt.seconds !== undefined) {
+                        finalRevisionCreatedAt = new Date(taskData.revisionCreatedAt.seconds * 1000).toISOString();
+                    } else if (typeof taskData.revisionCreatedAt.toDate === 'function') {
+                        finalRevisionCreatedAt = taskData.revisionCreatedAt.toDate().toISOString();
+                    } else {
+                        finalRevisionCreatedAt = taskData.revisionCreatedAt;
+                    }
+                }
+
                 tasks.push({ 
                     ...taskData, 
                     id: taskDoc.id, 
@@ -275,6 +324,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     responsibleStaffIds,
                     status,
                     taskCode,
+                    currentRevision,
+                    revisionCreatedAt: finalRevisionCreatedAt,
                     dailyreports: mappedDailyReports,
                     history: mappedDailyReports // ✅ Backward compatibility for legacy UI components
                 } as unknown as MasterTask);
@@ -495,7 +546,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         });
 
                         // Subtask ID: [taskId]-0001
-                        const subtaskId = `${task.id}-0001`;
+                        const subtaskId = getSubtaskId(task.id);
                         const subtaskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', task.id, 'subtasks', subtaskId);
                         batch.set(subtaskRef, {
                             subtaskId,
@@ -577,34 +628,43 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const parts = id.split('-');
         const workOrderCode = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA';
         
-        // Clean up any existing categories/tasks for this work order to prevent orphans
+        // Clean up any categories/tasks that were actually deleted in the new list to prevent orphans
         try {
             const oldCategoriesSnap = await getDocs(collection(db, 'workOrders', id, 'categories'));
             if (!oldCategoriesSnap.empty) {
                 const deleteBatch = writeBatch(db);
+                const newCatIds = new Set((categories || []).map(c => c.id));
+                const newExecutionTaskIds = new Set((categories || []).flatMap(c => (c.tasks || []).map((t: any) => t.id)));
+
                 for (const catDoc of oldCategoriesSnap.docs) {
                     const oldTasksSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks'));
                     for (const taskDoc of oldTasksSnap.docs) {
-                        // Deep delete subtasks, revisions, dailyReports
-                        const oldSubtasksSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks'));
-                        for (const subtaskDoc of oldSubtasksSnap.docs) {
-                            const oldRevisionsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions'));
-                            for (const revDoc of oldRevisionsSnap.docs) {
-                                const oldReportsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
-                                for (const reportDoc of oldReportsSnap.docs) {
-                                    deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports', reportDoc.id));
+                        const taskId = taskDoc.id;
+                        
+                        // Only delete subcollections & task doc if it is NOT in the new list
+                        if (!newExecutionTaskIds.has(taskId)) {
+                            const oldSubtasksSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks'));
+                            for (const subtaskDoc of oldSubtasksSnap.docs) {
+                                const oldRevisionsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions'));
+                                for (const revDoc of oldRevisionsSnap.docs) {
+                                    const oldReportsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
+                                    for (const reportDoc of oldReportsSnap.docs) {
+                                        deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports', reportDoc.id));
+                                    }
+                                    deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id));
                                 }
-                                deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id));
+                                deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id));
                             }
-                            deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id));
+                            const oldReportsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'dailyreport'));
+                            for (const reportDoc of oldReportsSnap.docs) {
+                                deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'dailyreport', reportDoc.id));
+                            }
+                            deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId));
                         }
-                        const oldReportsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport'));
-                        for (const reportDoc of oldReportsSnap.docs) {
-                            deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport', reportDoc.id));
-                        }
-                        deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskDoc.id));
                     }
-                    deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id));
+                    if (!newCatIds.has(catDoc.id)) {
+                        deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id));
+                    }
                 }
                 await deleteBatch.commit();
             }
@@ -612,13 +672,44 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             console.error("Error cleaning up legacy subcollections in saveEvaluation:", error);
         }
 
+        // Check if there are any remaining rejected tasks in the new list
+        let hasRejectedTasks = false;
+        for (const cat of formattedCategories) {
+            if (cat.tasks) {
+                for (const t of cat.tasks) {
+                    if (t.status === 'Rejected' || t.evaluationStatus === 'Rejected') {
+                        hasRejectedTasks = true;
+                    }
+                }
+            }
+        }
+
         const batch = writeBatch(db);
-        batch.update(doc(db, 'workOrders', id), { 
+        
+        // Define root WO updates
+        const woUpdates: any = { 
             status, 
             lastUpdate: new Date().toISOString(),
             workOrderCode,
             workOrderId: id
-        });
+        };
+
+        // Only update reviewedByAdmin if the WO is NOT in customer-Rejected state.
+        // When a customer rejects, submitCustomerInspection sets reviewedByAdmin=false.
+        // saveEvaluation (admin evaluation flow) must NOT override that flag until
+        // the admin explicitly re-assigns via updateTask which handles the transition.
+        const isCurrentlyCustomerRejected = parentWO?.status === 'Rejected';
+        if (!isCurrentlyCustomerRejected) {
+            if (!hasRejectedTasks) {
+                woUpdates.reviewedByAdmin = true;
+                woUpdates.adminReviewedAt = new Date().toISOString();
+            } else {
+                woUpdates.reviewedByAdmin = false;
+            }
+        }
+
+
+        batch.update(doc(db, 'workOrders', id), woUpdates);
 
         for (const cat of formattedCategories) {
             const catRef = doc(db, 'workOrders', id, 'categories', cat.id);
@@ -645,12 +736,19 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     else if (task.status === 'Verified' || task.status === 'Approved' || task.status === 'completed') lbStatus = 'completed';
                     else if (task.status === 'Rejected') lbStatus = 'in-progress';
 
+                    // Ensure that rescheduled/upcoming tasks have their progress value forced to 0%
+                    let progressVal = task.dailyProgress || 0;
+                    if (lbStatus === 'upcoming') {
+                        progressVal = 0;
+                    }
+
                     const taskRef = doc(db, 'workOrders', id, 'categories', cat.id, 'tasks', task.id);
                     batch.set(taskRef, {
                         ...taskRest,
                         taskName: task.name || task.taskName || '',
                         assignees,
                         status: lbStatus,
+                        dailyProgress: progressVal, // Force progress reset if rescheduling
                         evaluationStatus: task.status, // Keep track of the actual evaluation decision ('Assigned' | 'Approved' | 'Rejected')
                         taskId: task.id,
                         workOrderId: id,
@@ -663,14 +761,15 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     });
 
                     // Subtask ID: [taskId]-0001
-                    const subtaskId = `${task.id}-0001`;
+                    const subtaskId = getSubtaskId(task.id);
                     const subtaskRef = doc(db, 'workOrders', id, 'categories', cat.id, 'tasks', task.id, 'subtasks', subtaskId);
                     batch.set(subtaskRef, {
                         subtaskId,
                         subtaskName: task.name || task.taskName || '',
                         status: lbStatus,
-                        dailyProgress: task.dailyProgress || 0,
+                        dailyProgress: progressVal,
                         assignees,
+                        subtaskOperatorId: task.subtaskOperatorId || (task.responsibleStaffIds && task.responsibleStaffIds[0]) || "",
                         currentRevision: task.currentRevision || 'rev00',
                         isActive: true
                     });
@@ -685,26 +784,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         createdAt: task.revisionCreatedAt || new Date().toISOString()
                     });
 
-                    const reportsToSave = dailyreports || dailyReport || history || [];
-                    for (const report of reportsToSave) {
-                        // Document ID is report date YYYY-MM-DD for LB compatibility
-                        const reportDate = report.date.includes('T') ? report.date.split('T')[0] : report.date;
-                        const reportRef = doc(db, 'workOrders', id, 'categories', cat.id, 'tasks', task.id, 'subtasks', subtaskId, 'revisions', revId, 'dailyReports', reportDate);
-                        
-                        // Map labor fields in reports for LB compatibility on write
-                        let mappedReport = { ...report };
-                        if (report.labor) {
-                            const mappedLabor = report.labor.map((l: any) => ({
-                                ...l,
-                                workerId: l.workerId || l.staffId,
-                                workerName: l.workerName || l.staffName,
-                                staffId: l.staffId || l.workerId,
-                                staffName: l.staffName || l.workerName
-                            }));
-                            mappedReport.labor = mappedLabor;
-                        }
-                        batch.set(reportRef, mappedReport);
-                    }
+                    // Skip writing/recreating daily reports during saveEvaluation.
+                    // This prevents cloning old reports to the new revision context.
                 }
             }
         }
@@ -724,7 +805,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const isWoaWop = workOrderId.toUpperCase().includes('WOA') || workOrderId.toUpperCase().includes('WOP');
         const taskDoc = allWorkOrders.find(w => w?.id === workOrderId)?.categories?.find(c => c?.id === categoryId)?.tasks?.find(t => t?.id === taskId);
         const currentRev = taskDoc?.currentRevision || 'rev00';
-        const subtaskId = `${taskId}-0001`;
+        const subtaskId = getSubtaskId(taskId);
 
         if (isWoaWop) {
             // ✅ Ensure revision document exists (prevents phantom doc bug where getDocs returns empty)
@@ -826,17 +907,23 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const mappedUpdates: any = { ...updates };
         if (updates.name) mappedUpdates.taskName = updates.name;
         if (updates.status) mappedUpdates.status = lbStatus;
+        if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
+            mappedUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
+        }
 
         await updateDoc(taskRef, mappedUpdates);
 
         // Update Subtask
-        const subtaskId = `${taskId}-0001`;
+        const subtaskId = getSubtaskId(taskId);
         const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
         
         const subtaskUpdates: any = {};
         if (updates.status) subtaskUpdates.status = lbStatus;
         if (updates.dailyProgress !== undefined) subtaskUpdates.dailyProgress = updates.dailyProgress;
         if (updates.currentRevision) subtaskUpdates.currentRevision = updates.currentRevision;
+        if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
+            subtaskUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
+        }
 
         const subtaskDocSnap = await getDoc(subtaskRef);
         if (subtaskDocSnap.exists()) {
@@ -850,6 +937,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 status: lbStatus,
                 dailyProgress: updates.dailyProgress !== undefined ? updates.dailyProgress : (taskData.dailyProgress || 0),
                 assignees,
+                subtaskOperatorId: updates.responsibleStaffIds?.[0] || taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || "",
                 currentRevision: updates.currentRevision || taskData.currentRevision || 'rev00',
                 isActive: true
             });
@@ -866,6 +954,46 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             createdAt: updates.revisionCreatedAt || taskData.revisionCreatedAt || new Date().toISOString()
         };
         await setDoc(revisionRef, revisionData, { merge: true });
+
+        // Auto-transition Rejected Work Orders to In Progress if all tasks are resolved (re-assigned)
+        try {
+            const woRef = doc(db, 'workOrders', workOrderId);
+            const woSnap = await getDoc(woRef);
+            if (woSnap.exists()) {
+                const woData = woSnap.data();
+                if (woData.status === 'Rejected') {
+                    const categoriesSnap = await getDocs(collection(db, 'workOrders', workOrderId, 'categories'));
+                    let hasOtherRejected = false;
+                    for (const catDoc of categoriesSnap.docs) {
+                        const tasksSnap = await getDocs(collection(db, 'workOrders', workOrderId, 'categories', catDoc.id, 'tasks'));
+                        for (const taskDoc of tasksSnap.docs) {
+                            if (taskDoc.id === taskId) {
+                                if (updates.evaluationStatus === 'Rejected' || updates.status === 'Rejected') {
+                                    hasOtherRejected = true;
+                                }
+                            } else {
+                                const tData = taskDoc.data();
+                                if (tData.evaluationStatus === 'Rejected' || tData.status === 'Rejected') {
+                                    hasOtherRejected = true;
+                                }
+                            }
+                        }
+                    }
+                    if (!hasOtherRejected) {
+                        await updateDoc(woRef, {
+                            status: 'In Progress',
+                            reviewedByAdmin: true,
+                            pendingAdminReassign: false, // admin has re-assigned, foremen unlocked
+                            reviewedAt: new Date().toISOString(),
+                            adminReviewedAt: new Date().toISOString(),
+                            lastUpdate: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to transition Work Order status in updateTask:", err);
+        }
     };
 
     const updateWorkOrderStatus = async (id: string, status: string) => {
@@ -929,7 +1057,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
     const submitCustomerInspection = async (
         woId: string, 
-        approvals: Record<string, { status: 'approved' | 'rejected'; reason?: string; defectCategories?: Record<string, boolean> }>,
+        approvals: Record<string, { 
+            status: 'approved' | 'rejected'; 
+            reason?: string; 
+            defectCategories?: Record<string, boolean>;
+            contactName?: string;
+            contactPhone?: string;
+        }>,
         survey?: {
             workQuality: number;
             siteCleanliness: number;
@@ -941,6 +1075,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const woRef = doc(db, 'workOrders', woId);
         const woSnap = await getDoc(woRef);
         if (!woSnap.exists()) throw new Error('Work Order not found');
+        const woData = woSnap.data() || {};
 
         const now = new Date().toISOString();
         
@@ -957,7 +1092,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 
                 if (!decision) continue; // Skip if no decision for this task
 
-                const subtaskId = `${taskId}-0001`;
+                const subtaskId = getSubtaskId(taskId);
                 const subtaskRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId);
                 const currentRev = taskData.currentRevision || 'rev00';
                 
@@ -987,34 +1122,45 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         status: 'closed_rejected',
                         rejectReason: decision.reason || '',
                         defectCategories: decision.defectCategories || {},
+                        contactName: decision.contactName || '',
+                        contactPhone: decision.contactPhone || '',
                         rejectedAt: now
                     }, { merge: true });
                     
                     // Increment revision number
                     const revNum = parseInt(currentRev.replace('rev', '')) || 0;
                     const nextRev = `rev${String(revNum + 1).padStart(2, '0')}`;
-                    const revSuffix = `(REV. ${revNum + 1})`;
                     
-                    // Modify task name to append (REV. X) suffix
-                    const originalBaseName = (taskData.taskName || taskData.name || '').replace(/\s*\(REV\.\s*\d+\)/gi, '');
-                    const newDisplayName = `${originalBaseName} ${revSuffix}`;
+                    // Clean task name of any existing (REV. X) suffix
+                    const cleanName = (taskData.taskName || taskData.name || '').replace(/\s*\(REV\.\s*\d+\)/gi, '').trim();
                     
+                    // Default assignee is the Work Order Owner Foreman!
+                    const ownerId = woData.woOwnerId || woData.reporterId || 'unknown';
+                    const assignees = await resolveAssignees([ownerId]);
+
                     await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId), {
                         status: 'in-progress', // LB in-progress
                         evaluationStatus: 'Rejected',
                         dailyProgress: 0,
                         currentRevision: nextRev,
-                        taskName: newDisplayName,
-                        name: newDisplayName,
+                        taskName: cleanName,
+                        name: cleanName,
                         rejectReason: decision.reason || '',
+                        contactName: decision.contactName || '',
+                        contactPhone: decision.contactPhone || '',
                         revisionCreatedAt: now,
+                        responsibleStaffIds: [ownerId],
+                        assignees: assignees,
+                        subtaskOperatorId: ownerId,
                         updatedAt: now
                     });
                     
                     await setDoc(subtaskRef, {
                         status: 'in-progress',
                         dailyProgress: 0,
-                        currentRevision: nextRev
+                        currentRevision: nextRev,
+                        assignees: assignees,
+                        subtaskOperatorId: ownerId
                     }, { merge: true });
                     
                     // Create new revision doc
@@ -1041,6 +1187,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         if (hasRejections) {
             woUpdates.status = 'Rejected';
             woUpdates.reviewedByAdmin = false;
+            woUpdates.pendingAdminReassign = true; // gate: foremen locked until admin re-assigns
         } else {
             woUpdates.status = 'Completed';
             woUpdates.completedAt = now;
@@ -1067,11 +1214,30 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         try {
             await updateDoc(doc(db, 'workOrders', id), { 
                 reviewedByAdmin: true,
+                pendingAdminReassign: false,
                 reviewedAt: new Date().toISOString(),
                 adminReviewedAt: new Date().toISOString()
             });
         } catch (err) {
             console.error("Failed to mark as reviewed:", err);
+        }
+    };
+
+    const markWorkOrderAsOpenedByAdmin = async (id: string) => {
+        try {
+            const woRef = doc(db, 'workOrders', id);
+            const woSnap = await getDoc(woRef);
+            if (woSnap.exists()) {
+                const data = woSnap.data();
+                if (!data.adminReviewedAt) {
+                    await updateDoc(woRef, {
+                        adminReviewedAt: new Date().toISOString(),
+                        lastUpdate: new Date().toISOString()
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("Failed to mark work order as opened by admin:", err);
         }
     };
 
@@ -1094,7 +1260,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             requestRetroactiveUnlock,
             generateDeliveryQrToken,
             submitCustomerInspection,
-            logCustomerQrView
+            logCustomerQrView,
+            markWorkOrderAsOpenedByAdmin
         }}>
             {children}
         </WorkOrderContext.Provider>

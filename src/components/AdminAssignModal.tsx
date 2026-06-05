@@ -3,6 +3,7 @@ import { X, User, HardHat, Clock, Save, CheckCircle2, Calendar } from 'lucide-re
 import { MasterTask, Staff, Contractor } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
+import CustomDateInput from './CustomDateInput';
 
 interface AdminAssignModalProps {
     isOpen: boolean;
@@ -141,8 +142,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: '#1e293b', marginBottom: '12px' }}>
                             <Calendar size={18} color="#4f46e5" /> วันเริ่มดำเนินการ (Start Date)
                         </label>
-                        <input
-                            type="date"
+                        <CustomDateInput
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
                             style={{

@@ -1,5 +1,6 @@
 import { FileText, Download, Camera, User, UserCheck, CheckCircle, Clock, Activity, ChevronDown, Printer, Star, RotateCcw } from 'lucide-react';
 import { WorkOrder, MasterTask, Project, Staff, Contractor } from '../types';
+import { formatDate, formatDateTime } from '../utils/date';
 
 interface HistoryDetailModalProps {
     isOpen: boolean;
@@ -51,7 +52,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                 });
             }
         });
-        endDateStr = new Date(latestDate).toLocaleDateString('th-TH');
+        endDateStr = formatDate(latestDate);
     } else {
         endDateStr = 'ยังไม่จบโครงการ';
     }
@@ -627,7 +628,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
                             <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px' }}>วันที่เริ่ม - วันที่ปิดงาน</div>
                             <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem' }}>
-                                {new Date(workOrder.createdAt).toLocaleDateString('th-TH')} - {endDateStr}
+                                {formatDate(workOrder.createdAt)} - {endDateStr}
                             </div>
                         </div>
                     </div>
@@ -938,7 +939,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                 <summary style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', listStyle: 'none' }}>
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                                                                         <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>
-                                                                            {new Date(h.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} {new Date(h.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                                                                                {formatDateTime(h.date)}
                                                                         </div>
                                                                         <div style={{ fontSize: '0.75rem', color: '#6366f1', background: '#eef2ff', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                                             Progress: {h.progress}%

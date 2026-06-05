@@ -141,6 +141,7 @@ export interface MasterTask {
     
     sourceSystem?: string;
     taskCode?: string;
+    subtaskId?: string;
 
     contractorId?: string | null;
     responsibleStaffIds?: string[];
@@ -174,6 +175,9 @@ export interface MasterTask {
     updatedAt?: string;
     evaluationChecklist?: Record<string, number | boolean>;
     overallSatisfaction?: number;
+    rejectReason?: string;
+    contactName?: string;
+    contactPhone?: string;
 }
 
 export interface Attachment {
@@ -266,6 +270,7 @@ export interface WorkOrder {
     woOwnerId?: string; // Foreman employeeId who owns the overall Work Order
     deliveryQrToken?: string; // Secure token for Customer Inspection Link
     reviewedByAdmin?: boolean;
+    pendingAdminReassign?: boolean; // true = customer rejected, waiting for admin to re-assign before foremen can work
     inspectionTimeline?: {
         allTasksCompletedAt?: string;
         qrGeneratedAt?: string;

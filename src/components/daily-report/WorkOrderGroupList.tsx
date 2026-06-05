@@ -15,6 +15,16 @@ import { GroupSLACountdown } from "./SLACountdowns";
 import { WorkTask, WorkOrder } from "../../types/dailyReport.types";
 import { MOCK_STAFF } from "../../data/mockData";
 
+const formatSubtaskId = (id: string | undefined): string => {
+  if (!id) return "";
+  const cleanId = id.startsWith('LR-') ? id.substring(3) : id;
+  const parts = cleanId.split('-');
+  if (parts.length === 5) {
+    return parts.slice(0, 4).join('-');
+  }
+  return cleanId;
+};
+
 export const WorkOrderGroupList: React.FC = () => {
   const {
     workOrders,
@@ -36,6 +46,7 @@ export const WorkOrderGroupList: React.FC = () => {
     setIsCustomerMockupOpen,
     setMockupWorkOrder,
     generateDeliveryQrToken,
+    setModalAlert,
   } = useDailyReport();
 
   // Helper render function with lexical scope access
@@ -69,17 +80,35 @@ export const WorkOrderGroupList: React.FC = () => {
     return (
       <div
         key={task.id}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           if (isTaskDisabledInRejectedWo) {
+            setModalAlert({
+              isOpen: true,
+              title: "อยู่ระหว่างรอแอดมินมอบหมายตารางเวลาใหม่",
+              message: "ใบสั่งงานนี้ถูกระงับการดำเนินงานชั่วคราว เพื่อรอให้แอดมินจัดสรรรอบเวลาการแก้ไขงานใหม่",
+              type: "warning",
+            });
             return;
           }
           if ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified') {
             return;
           }
           if (isReadOnly) {
-            alert(
-              "คุณเห็นงานนี้ในฐานะผู้ดูแลภาพรวมใบงาน (Owner) เท่านั้น ไม่สามารถแก้ไขหรือบันทึกรายงานได้ (เฉพาะช่างผู้มาช่วยเท่านั้นที่อัปเดตได้)",
-            );
+            const isWoOwner =
+              wo.woOwnerId === user?.id ||
+              (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+              wo.reporterId === user?.id ||
+              (user?.employeeId && wo.reporterId === user.employeeId);
+            if (isWoOwner) {
+              alert(
+                "คุณเห็นงานนี้ในฐานะผู้ดูแลภาพรวมใบงาน (Owner) เท่านั้น ไม่สามารถแก้ไขหรือบันทึกรายงานได้ (เฉพาะช่างผู้มาช่วยเท่านั้นที่อัปเดตได้)",
+              );
+            } else {
+              alert(
+                "คุณไม่ได้เป็นผู้รับผิดชอบงานย่อยนี้ในรอบการแก้งานปัจจุบัน จึงสามารถดูข้อมูลได้อย่างเดียวเท่านั้น",
+              );
+            }
             return;
           }
           handleSelectTask(task, wo, categoryId);
@@ -98,23 +127,23 @@ export const WorkOrderGroupList: React.FC = () => {
                 : "6px solid #e2e8f0",
           borderColor: isSelected
             ? (isCompleted100 ? "#10b981" : "#3b82f6")
-            : isHighlighted
-              ? "#3b82f6"
-              : isReadOnly
-                ? "#cbd5e1"
-                : isCompleted100
-                  ? "#a7f3d0"
+            : isCompleted100
+              ? "#a7f3d0"
+              : isHighlighted
+                ? "#3b82f6"
+                : isReadOnly
+                  ? "#cbd5e1"
                   : isNew
                     ? "#fcd34d"
                     : "#f1f5f9",
           background: isSelected
             ? (isCompleted100 ? "#ecfdf5" : "#eff6ff")
-            : isHighlighted
-              ? "#eff6ff"
-              : isReadOnly
-                ? "#f8fafc"
-                : isCompleted100
-                  ? "#f0fdf4"
+            : isCompleted100
+              ? "#f0fdf4"
+              : isHighlighted
+                ? "#eff6ff"
+                : isReadOnly
+                  ? "#f8fafc"
                   : isNew
                     ? "#fffbeb"
                     : "#fff",
@@ -249,16 +278,34 @@ export const WorkOrderGroupList: React.FC = () => {
               style={{
                 fontSize: "0.65rem",
                 fontWeight: 800,
-                color: "#3b82f6",
+                color: "#0f766e",
                 textTransform: "uppercase",
-                background: "#dbeafe",
+                background: "#ccfbf1",
                 padding: "2px 5px",
                 borderRadius: "4px",
                 whiteSpace: "nowrap",
               }}
+              title="รหัสงาน"
             >
-              {task.id || task.taskCode}
+              {formatSubtaskId(task.subtaskId || task.id)}
             </div>
+            {task.currentRevision && task.currentRevision !== "rev00" && (
+              <div
+                style={{
+                  fontSize: "0.65rem",
+                  fontWeight: 800,
+                  color: "#ef4444",
+                  textTransform: "uppercase",
+                  background: "#fee2e2",
+                  padding: "2px 5px",
+                  borderRadius: "4px",
+                  whiteSpace: "nowrap",
+                  border: "1px solid #fca5a5",
+                }}
+              >
+                REV. {parseInt(task.currentRevision.replace("rev", ""))}
+              </div>
+            )}
             {isReadOnly && (
               <div
                 style={{
@@ -305,23 +352,6 @@ export const WorkOrderGroupList: React.FC = () => {
             }}
           >
             {task.name}
-            {task.currentRevision && task.currentRevision !== "rev00" && (
-              <span
-                style={{
-                  color: "#ef4444",
-                  marginLeft: "6px",
-                  fontWeight: 900,
-                  background: "#fef2f2",
-                  padding: "1px 5px",
-                  borderRadius: "4px",
-                  border: "1px solid #fca5a5",
-                  fontSize: "0.62rem",
-                  display: "inline-block",
-                }}
-              >
-                REV. {parseInt(task.currentRevision.replace("rev", ""))}
-              </span>
-            )}
           </div>
           <div
             style={{
@@ -394,18 +424,18 @@ export const WorkOrderGroupList: React.FC = () => {
               <span
                 style={{
                   color: "#dc2626",
-                  background: "#fee2e2",
-                  padding: "3px 8px",
+                  background: "rgba(220, 38, 38, 0.08)",
+                  padding: "4px 8px",
                   borderRadius: "6px",
                   fontWeight: 900,
                   fontSize: "0.68rem",
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "3px",
-                  border: "1px solid #fca5a5",
+                  gap: "4px",
+                  border: "1px solid rgba(220, 38, 38, 0.25)",
                 }}
               >
-                <AlertTriangle size={10} style={{ color: "#ef4444" }} />
+                <AlertTriangle size={12} style={{ color: "#dc2626" }} />
                 รอแอดมินประเมิน/จัดตารางใหม่
               </span>
             </div>
@@ -672,10 +702,13 @@ export const WorkOrderGroupList: React.FC = () => {
                         );
                       
                       // Calculate global deadlines
+                      const isWoaWop = wo.id.toUpperCase().includes('WOA') || wo.id.toUpperCase().includes('WOP');
                       let maxDl = 0;
+                      let maxDlOriginal = 0;
                       let minSubDl = Infinity;
                       wo.categories.forEach((cat) => {
                         cat.tasks.forEach((t) => {
+                          if (isWoaWop && !t.slaCategory) return;
                           const slaHoursMap = {
                             Immediately: 4,
                             "24h": 24,
@@ -685,11 +718,10 @@ export const WorkOrderGroupList: React.FC = () => {
                             "14-30d": 720,
                           };
                           const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
-                          const tDurHours = slaHoursMap[tSla] || 24;
-                          let tStart = t.slaStartTime;
-                          if (!tStart && t.startDate) {
-                            tStart = `${t.startDate}T08:00:00`;
-                          }
+                          const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
+                          let tStart = t.startDate 
+                             ? `${t.startDate.split('T')[0]}T08:00:00` 
+                             : t.slaStartTime;
                           if (!tStart) {
                             tStart = wo.createdAt || new Date().toISOString();
                           }
@@ -697,6 +729,16 @@ export const WorkOrderGroupList: React.FC = () => {
                           if (tDeadline > maxDl) {
                             maxDl = tDeadline;
                           }
+
+                          // Original Deadline Calculation
+                          const originalSla = t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
+                          const tDurHoursOriginal = slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24;
+                          let tStartOriginal = t.slaStartTime || wo.createdAt || new Date().toISOString();
+                          const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
+                          if (tDeadlineOriginal > maxDlOriginal) {
+                            maxDlOriginal = tDeadlineOriginal;
+                          }
+
                           if (t.deadline) {
                             const subDl = new Date(t.deadline).getTime();
                             if (subDl < minSubDl) {
@@ -733,6 +775,12 @@ export const WorkOrderGroupList: React.FC = () => {
                               return; // Do nothing for fully completed/pending delivery WOs
                             }
                             if (wo.status === 'Rejected' && !wo.reviewedByAdmin) {
+                              setModalAlert({
+                                isOpen: true,
+                                title: "อยู่ระหว่างรอแอดมินมอบหมายตารางเวลาใหม่",
+                                message: "ใบสั่งงานนี้ถูกระงับการดำเนินงานชั่วคราว เพื่อรอให้แอดมินจัดสรรรอบเวลาการแก้ไขงานใหม่",
+                                type: "warning",
+                              });
                               return; // Do not auto-select any task if awaiting admin
                             }
                             if (globalTasks.length > 0) {
@@ -890,7 +938,9 @@ export const WorkOrderGroupList: React.FC = () => {
                               <GroupSLACountdown
                                 globalDeadline={globalDeadline}
                                 subtaskDeadline={subtaskDeadline}
-                                isCompleted={true}
+                                isCompleted={globalIsAllCompleted}
+                                originalDeadline={maxDlOriginal}
+                                isRevision={!!wo.categories.flatMap((c: any) => c.tasks).find((t: any) => t.currentRevision && t.currentRevision !== 'rev00')}
                               />
                             </div>
                           </div>
@@ -930,6 +980,7 @@ export const WorkOrderGroupList: React.FC = () => {
                   const groups: Record<string, any> = {};
                   allActiveItems.forEach((item) => {
                     const woId = item.wo.id;
+                    const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
                     const slaHoursMap: Record<string, number> = {
                       Immediately: 4,
                       "24h": 24,
@@ -943,11 +994,10 @@ export const WorkOrderGroupList: React.FC = () => {
                       item.task.baselineSla ||
                       item.task.estimatedSla ||
                       "24h";
-                    const durationHours = slaHoursMap[taskSla] || 24;
-                    let startTime = item.task.slaStartTime;
-                    if (!startTime && item.task.startDate) {
-                      startTime = `${item.task.startDate}T08:00:00`;
-                    }
+                    const durationHours = slaHoursMap[taskSla as keyof typeof slaHoursMap] || 24;
+                    let startTime = item.task.startDate 
+                      ? `${item.task.startDate.split('T')[0]}T08:00:00` 
+                      : item.task.slaStartTime;
                     if (!startTime) {
                       startTime =
                         item.wo.createdAt ||
@@ -957,21 +1007,29 @@ export const WorkOrderGroupList: React.FC = () => {
                       new Date(startTime).getTime() +
                       durationHours * 60 * 60 * 1e3;
                     let globalDeadlineTime = deadlineTime;
+                    
+                    // Original start time & deadline calculation
+                    let originalSla = item.task.baselineSla || item.task.estimatedSla || item.task.slaCategory || "24h";
+                    let tStartOriginal = item.task.slaStartTime || item.wo.createdAt || new Date().toISOString();
+                    let deadlineTimeOriginal = new Date(tStartOriginal).getTime() + (slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24) * 60 * 60 * 1e3;
+                    let globalDeadlineTimeOriginal = deadlineTimeOriginal;
+
                     const fullWo = (workOrders as any[]).find((w) => w.id === woId);
                     if (fullWo) {
                       let maxDl = 0;
+                      let maxDlOriginal = 0;
                       fullWo.categories.forEach((cat: any) => {
                         cat.tasks.forEach((t: any) => {
+                          if (isWoaWop && !t.slaCategory) return;
                           const tSla =
                             t.slaCategory ||
                             t.baselineSla ||
                             t.estimatedSla ||
                             "24h";
-                          const tDurHours = slaHoursMap[tSla] || 24;
-                          let tStart = t.slaStartTime;
-                          if (!tStart && t.startDate) {
-                            tStart = `${t.startDate}T08:00:00`;
-                          }
+                          const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
+                          let tStart = t.startDate 
+                             ? `${t.startDate.split('T')[0]}T08:00:00` 
+                             : t.slaStartTime;
                           if (!tStart) {
                             tStart =
                               fullWo.createdAt ||
@@ -983,10 +1041,22 @@ export const WorkOrderGroupList: React.FC = () => {
                           if (tDeadline > maxDl) {
                             maxDl = tDeadline;
                           }
+
+                          // Original Deadline Calculation
+                          const oSla = t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
+                          const tDurHoursOriginal = slaHoursMap[oSla as keyof typeof slaHoursMap] || 24;
+                          let tStartOriginal = t.slaStartTime || fullWo.createdAt || new Date().toISOString();
+                          const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
+                          if (tDeadlineOriginal > maxDlOriginal) {
+                            maxDlOriginal = tDeadlineOriginal;
+                          }
                         });
                       });
                       if (maxDl > 0) {
                         globalDeadlineTime = maxDl;
+                      }
+                      if (maxDlOriginal > 0) {
+                        globalDeadlineTimeOriginal = maxDlOriginal;
                       }
                     }
                     if (!groups[woId]) {
@@ -997,6 +1067,7 @@ export const WorkOrderGroupList: React.FC = () => {
                         maxSla: taskSla,
                         globalDeadline: globalDeadlineTime,
                         subtaskDeadline: deadlineTime,
+                        originalDeadline: globalDeadlineTimeOriginal,
                       };
                     } else {
                       if (globalDeadlineTime > groups[woId].globalDeadline) {
@@ -1004,6 +1075,9 @@ export const WorkOrderGroupList: React.FC = () => {
                       }
                       if (deadlineTime > groups[woId].subtaskDeadline) {
                         groups[woId].subtaskDeadline = deadlineTime;
+                      }
+                      if (globalDeadlineTimeOriginal > groups[woId].originalDeadline) {
+                        groups[woId].originalDeadline = globalDeadlineTimeOriginal;
                       }
                     }
                     if (item.task.isReadOnly) {
@@ -1305,6 +1379,8 @@ export const WorkOrderGroupList: React.FC = () => {
                                     globalDeadline={globalDeadline}
                                     subtaskDeadline={subtaskDeadline}
                                     isCompleted={isAllCompleted}
+                                    originalDeadline={groups[wo.id]?.originalDeadline}
+                                    isRevision={!!(wo as any).categories?.flatMap((c: any) => c.tasks).find((t: any) => t.currentRevision && t.currentRevision !== 'rev00')}
                                   />
                                 </div>
                               </div>{" "}
@@ -1460,7 +1536,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                                      flexWrap: "wrap",
                                                    }}
                                                  >
-                                                   <span>{task.id || ""}</span>
+                                                    <span>{formatSubtaskId(task.subtaskId || task.id) || ""}</span>
                                                    {foremanName && (
                                                      <span style={{ color: "#6366f1", fontWeight: 700 }}>
                                                        • 👤 {foremanName}

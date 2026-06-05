@@ -9,10 +9,12 @@ import { logService } from '../services/logService';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AdminAssignModal from '../components/AdminAssignModal';
+import { formatDate } from '../utils/date';
+import CustomDateInput from '../components/CustomDateInput';
 
 const Evaluation = () => {
     const { user } = useAuth();
-    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors } = useWorkOrders();
+    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -45,7 +47,8 @@ const Evaluation = () => {
                     setHighlightedId(workOrderId);
                     setSelectedWorkOrder(wo);
                     setIsDetailModalOpen(true);
-                    markWorkOrderAsReviewed(wo.id); // Mark as reviewed by admin
+                    markWorkOrderAsOpenedByAdmin(wo.id);
+                    // NOTE: do NOT call markWorkOrderAsReviewed here — opening to view must NOT unlock foremen
                 } else {
                     const statusThai: Record<string, string> = {
                         'Approved': 'อนุมัติแล้ว',
@@ -100,12 +103,13 @@ const Evaluation = () => {
                 navigate({ search: newSearch ? `?${newSearch}` : '' }, { replace: true });
             }
         }
-    }, [location.search, workOrders, navigate, markWorkOrderAsReviewed]);
+    }, [location.search, workOrders, navigate, markWorkOrderAsReviewed, markWorkOrderAsOpenedByAdmin]);
 
     const handleCardClick = (wo: WorkOrder) => {
         setSelectedWorkOrder(wo);
         setIsDetailModalOpen(true);
-        markWorkOrderAsReviewed(wo.id);
+        markWorkOrderAsOpenedByAdmin(wo.id);
+        // NOTE: do NOT call markWorkOrderAsReviewed here — opening to view must NOT unlock foremen
     };
 
     // ✅ Real-time Sync selectedWorkOrder & taskDecisions with Firestore Context
@@ -129,7 +133,11 @@ const Evaluation = () => {
 
     const pendingWorkOrders = workOrders
         .filter(wo => {
-            const isPending = wo.status === 'Evaluating' || wo.status === 'Rejected';
+            const isPending = wo.status === 'Evaluating' ||
+                (wo.status === 'Rejected' && (
+                    wo.pendingAdminReassign === true ||
+                    (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
+                ));
             const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
@@ -276,7 +284,7 @@ const Evaluation = () => {
                             setModalAlert({
                                 isOpen: true,
                                 title: 'มอบหมายงานใหม่สำเร็จ',
-                                message: `มอบหมายงาน ${assigningTask.name} เรียบร้อยแล้ว (วันเริ่มดำเนินการ: ${new Date(updates.startDate || '').toLocaleDateString('th-TH')})`,
+                                message: `มอบหมายงาน ${assigningTask.name} เรียบร้อยแล้ว (วันเริ่มดำเนินการ: ${formatDate(updates.startDate)})`,
                                 type: 'success'
                             });
                             
@@ -332,7 +340,13 @@ const Evaluation = () => {
                         >
                             <option value="">-- ทุกโครงการ --</option>
                             {projects
-                                .filter(p => workOrders.some(wo => wo.projectId === p.id && (wo.status === 'Evaluating' || wo.status === 'Rejected')))
+                                .filter(p => workOrders.some(wo => wo.projectId === p.id && (
+                                    wo.status === 'Evaluating' ||
+                                    (wo.status === 'Rejected' && (
+                                        wo.pendingAdminReassign === true ||
+                                        (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
+                                    ))
+                                )))
                                 .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                         <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
@@ -340,27 +354,19 @@ const Evaluation = () => {
                         </div>
                     </div>
 
-                    <div style={{ position: 'relative' }}>
-                        <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', display: 'flex', color: '#94a3b8' }}>
-                            <Calendar size={20} />
-                        </div>
-                        <input
-                            type="date"
-                            style={{ ...commonInputStyle, paddingLeft: '48px' }}
+                    <div style={{ position: 'relative', width: '100%' }}>
+                        <CustomDateInput
                             value={startDate}
                             onChange={e => setStartDate(e.target.value)}
+                            style={{ ...commonInputStyle, paddingLeft: '48px' }}
                         />
                     </div>
 
-                    <div style={{ position: 'relative' }}>
-                        <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', display: 'flex', color: '#94a3b8' }}>
-                            <Calendar size={20} />
-                        </div>
-                        <input
-                            type="date"
-                            style={{ ...commonInputStyle, paddingLeft: '48px' }}
+                    <div style={{ position: 'relative', width: '100%' }}>
+                        <CustomDateInput
                             value={endDate}
                             onChange={e => setEndDate(e.target.value)}
+                            style={{ ...commonInputStyle, paddingLeft: '48px' }}
                         />
                     </div>
                 </div>

@@ -6,6 +6,7 @@ import ImageOverlay from './ImageOverlay';
 import { AnalogTimePicker } from './AnalogTimePicker';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
+import { formatDate } from '../utils/date';
 
 interface ForemanCalendarProps {
     workOrders: WorkOrder[];
@@ -172,7 +173,12 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                                          leave: h.leave || [],
                                          type: h.type || 'Normal',
                                          normalHours, otHours, manpower,
-                                         time: new Date(h.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+                                          time: (() => {
+                                              const d = new Date(h.date);
+                                              const hours = String(d.getHours()).padStart(2, '0');
+                                              const minutes = String(d.getMinutes()).padStart(2, '0');
+                                              return `${hours}:${minutes}`;
+                                          })()
                                      };
                                 }
                             }
@@ -503,7 +509,7 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
         setPreviewImage(imageList[index]?.url || null);
     };
 
-    const formattedDate = new Date(dateStr).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const formattedDate = formatDate(dateStr);
 
     const startEditing = (ev: any) => {
         const wo = workOrders.find(w => w.id === ev.woId);

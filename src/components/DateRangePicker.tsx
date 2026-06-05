@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { formatDate } from '../utils/date';
 
 interface DateRangePickerProps {
     startDate: string; // ISO format (YYYY-MM-DD)
@@ -35,15 +36,6 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    const formatDateThai = (dateStr: string) => {
-        if (!dateStr) return '';
-        const date = new Date(dateStr);
-        const day = date.getDate();
-        const month = THAI_MONTHS[date.getMonth()].substring(0, 3);
-        const year = (date.getFullYear() + 543).toString().substring(2);
-        return `${day} ${month} ${year}`;
-    };
 
     const getDaysInMonth = (year: number, month: number) => {
         return new Date(year, month + 1, 0).getDate();
@@ -132,7 +124,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         return (
             <div style={{ padding: '10px' }}>
                 <div style={{ textAlign: 'center', fontWeight: 800, color: '#0f172a', marginBottom: '12px', fontSize: '0.9rem' }}>
-                    {THAI_MONTHS[month]} {year + 543}
+                    {THAI_MONTHS[month]} {year}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '8px' }}>
                     {THAI_DAYS.map(day => (
@@ -174,8 +166,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {startDate ? (
                         <>
-                            {formatDateThai(startDate)}
-                            {endDate && ` - ${formatDateThai(endDate)}`}
+                            {formatDate(startDate)}
+                            {endDate && ` - ${formatDate(endDate)}`}
                         </>
                     ) : placeholder}
                 </div>

@@ -3,6 +3,7 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import TrackingCard from '../components/TrackingCard';
 import { Search, Building2, Calendar, LayoutDashboard, User2, Filter } from 'lucide-react';
 import { MOCK_PROJECTS, MOCK_STAFF } from '../data/mockData';
+import CustomDateInput from './CustomDateInput';
 
 type Role = 'Foreman' | 'Director';
 
@@ -171,12 +172,10 @@ const SLAMonitor = () => {
                                 {MOCK_STAFF.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
-                        <div style={{ position: 'relative' }}>
-                            <Calendar size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                            <input
-                                type="date"
-                                style={commonInputStyle}
+                        <div style={{ position: 'relative', width: '100%' }}>
+                            <CustomDateInput
                                 value={startDate} onChange={e => setStartDate(e.target.value)}
+                                style={commonInputStyle}
                             />
                         </div>
 

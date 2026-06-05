@@ -6,6 +6,7 @@ import MasterFilter from '../components/MasterFilter';
 import { Archive, Search, Building2, User2, RotateCcw, ChevronRight, FileSpreadsheet, FileText, CheckCircle, SlidersHorizontal, Layers, Clock, XCircle, Star } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import { logService } from '../services/logService';
+import { formatDate } from '../utils/date';
 
 const History = () => {
     const { workOrders, projects, staff, contractors } = useWorkOrders();
@@ -479,7 +480,7 @@ const History = () => {
                                         const d = new Date(h.date).getTime();
                                         if (d > latestDate) latestDate = d;
                                     });
-                                    endDateStr = new Date(latestDate).toLocaleDateString('th-TH');
+                                    endDateStr = formatDate(latestDate);
                                 } else if (task.status === 'Rejected' || wo.status === 'Rejected') {
                                     endDateStr = 'ปฏิเสธงาน';
                                 } else if (wo.status === 'Cancelled') {
@@ -534,7 +535,7 @@ const History = () => {
 
                                         {/* Date Start - End */}
                                         <td style={{ padding: '16px 24px', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>
-                                            {new Date(wo.createdAt).toLocaleDateString('th-TH')} - {endDateStr}
+                                            {formatDate(wo.createdAt)} - {endDateStr}
                                         </td>
 
                                         {/* Reporter */}

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, X, ChevronLeft, ChevronRight, Image as ImageIcon, Info, FileText } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { formatDate } from '../utils/date';
 import { useAuth } from '../context/AuthContext';
 import { logService } from '../services/logService';
 import CloseJobModal from '../components/CloseJobModal';
@@ -198,7 +199,17 @@ const SLAMonitor = () => {
 
         const slaHoursMap = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
         const limit = slaHoursMap[task.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
-        const parsedStart = task.slaStartTime ? new Date(task.slaStartTime).getTime() : (woCreatedAt ? new Date(woCreatedAt).getTime() : Date.now());
+        const getTaskStartTime = () => {
+            if (task.startDate) {
+                const datePart = task.startDate.includes('T') ? task.startDate.split('T')[0] : task.startDate;
+                return new Date(`${datePart}T08:00:00`).getTime();
+            }
+            if (task.slaStartTime) {
+                return new Date(task.slaStartTime).getTime();
+            }
+            return woCreatedAt ? new Date(woCreatedAt).getTime() : Date.now();
+        };
+        const parsedStart = getTaskStartTime();
         const start = isNaN(parsedStart) ? Date.now() : parsedStart;
         const diffMs = (start + (limit * 60 * 60 * 1000)) - Date.now();
 
@@ -718,7 +729,7 @@ const SLAMonitor = () => {
                                                             <span style={{ fontWeight: 800, color: '#94a3b8' }}>เบอร์ติดต่อ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{assignedPhone}</span>
                                                         </div>
                                                         <div>
-                                                            <span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{task.startDate ? new Date(task.startDate).toLocaleDateString('th-TH') : '-'}</span>
+                                                            <span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{task.startDate ? formatDate(task.startDate) : '-'}</span>
                                                         </div>
 
                                                         {totalSisterTasksCount > 0 && (
@@ -1406,7 +1417,12 @@ const SLAMonitor = () => {
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #e2e8f0', paddingTop: '8px', fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>
                                                     <div>ผู้บันทึก: {selectedReport.createdBy || 'Foreman'}</div>
-                                                    <div>เวลาบันทึก: {selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleTimeString('th-TH') : '-'}</div>
+                                                    <div>เวลาบันทึก: {selectedReport.createdAt ? (() => {
+                                                        const d = new Date(selectedReport.createdAt);
+                                                        const hours = String(d.getHours()).padStart(2, '0');
+                                                        const minutes = String(d.getMinutes()).padStart(2, '0');
+                                                        return `${hours}:${minutes}`;
+                                                    })() : '-'}</div>
                                                 </div>
                                             </div>
 

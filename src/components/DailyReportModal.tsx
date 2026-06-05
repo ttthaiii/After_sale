@@ -6,6 +6,7 @@ import LoadingOverlay from './LoadingOverlay';
 import { storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
+import CustomDateInput from './CustomDateInput';
 
 interface DailyReportModalProps {
     isOpen: boolean;
@@ -283,8 +284,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
                         {/* B: Interaction Box (Date) */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right' }}>เลือกวันที่รายงาน</div>
-                            <input 
-                                type="date"
+                            <CustomDateInput 
                                 value={reportDate}
                                 min={minDate}
                                 max={maxDate}

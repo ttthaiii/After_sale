@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { FileText, Edit, Trash2, Clock, Building2 } from 'lucide-react';
 import ForemanReportModal from '../components/ForemanReportModal';
 import { WorkOrder } from '../types';
+import { formatDate } from '../utils/date';
 
 const MyDrafts = () => {
     const { user } = useAuth();
@@ -59,7 +60,7 @@ const MyDrafts = () => {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 700 }}>
                                             <Clock size={14} />
-                                            แก้ไขเมื่อ: {new Date(draft.createdAt).toLocaleDateString('th-TH')}
+                                            แก้ไขเมื่อ: {formatDate(draft.createdAt)}
                                         </div>
                                         <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 850, color: '#0f172a', lineHeight: 1.2 }}>{draft.locationName}</h3>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6366f1', fontSize: '0.9rem', fontWeight: 700, marginTop: '2px' }}>

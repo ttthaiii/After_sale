@@ -7,6 +7,7 @@ import {
   Info,
 } from "lucide-react";
 import { DailyReportProvider, useDailyReport } from "../context/DailyReportContext";
+import { formatDate } from "../utils/date";
 import { WorkOrderGroupList } from "../components/daily-report/WorkOrderGroupList";
 import { DailyReportDetailPane } from "../components/daily-report/DailyReportDetailPane";
 import { DailyReportSummaryModal } from "../components/daily-report/DailyReportSummaryModal";
@@ -95,7 +96,7 @@ const DailyReportContent: React.FC = () => {
       {showSummaryModal && <DailyReportSummaryModal />}
 
       {/* Unlock Request Modal Overlay (Direct Slice) */}
-            {showUnlockModal && selectedTaskInfo && (
+      {showUnlockModal && selectedTaskInfo && (
          <div
           style={{
             position: "fixed",
@@ -208,11 +209,7 @@ const DailyReportContent: React.FC = () => {
                   color: "#1e3a8a",
                 }}
               >
-                {new Date(pendingUnlockDate).toLocaleDateString("th-TH", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
+                {formatDate(pendingUnlockDate)}
               </span>
             </div>{" "}
             
@@ -335,7 +332,7 @@ const DailyReportContent: React.FC = () => {
       )}
 
       {/* Image Zoom Modal Overlay (Direct Slice) */}
-            {zoomImage && (
+      {zoomImage && (
          <div
           onClick={() => setZoomImage(null)}
           style={{
@@ -353,8 +350,6 @@ const DailyReportContent: React.FC = () => {
             cursor: "zoom-out",
           }}
         >
-          {" "}
-          
           <img
             src={zoomImage}
             style={{
@@ -370,7 +365,7 @@ const DailyReportContent: React.FC = () => {
       )}
 
       {/* Modal Alert Overlay (Direct Slice) */}
-            {modalAlert && modalAlert.isOpen && (
+      {modalAlert && modalAlert.isOpen && (
          <div
           style={{
             position: "fixed",

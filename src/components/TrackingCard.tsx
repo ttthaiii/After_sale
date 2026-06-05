@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WorkOrder, MasterTask, UserRole, Staff, Contractor, Project } from '../types';
 import { ChevronDown, Phone, Building2, User, AlertCircle, CheckCircle2, Calendar, Flame, MapPin, Package, Info } from 'lucide-react';
+import { formatDateTime } from '../utils/date';
 
 interface TrackingCardProps {
     wo: WorkOrder;
@@ -43,7 +44,9 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
             if (isDone) return { diffHours: 9999, isDone: true };
 
             const limit = slaHoursMap[t.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
-            const start = t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime();
+            const start = t.startDate
+            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+            : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
             const now = Date.now();
             return { diffHours: limit - (now - start) / (1000 * 60 * 60), isDone: false };
         });
@@ -71,7 +74,9 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
         };
 
         const limit = slaHoursMap[t.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
-        const start = t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime();
+        const start = t.startDate
+            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+            : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
         const now = Date.now();
         const diffHours = limit - (now - start) / (1000 * 60 * 60);
 
@@ -476,7 +481,7 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
                                                                             <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                                                                                 <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', marginBottom: '4px' }}>อัปเดตล่าสุด:</div>
                                                                                 <div style={{ fontSize: '0.9rem', fontWeight: 900, color: '#334155' }}>
-                                                                                    {latestUpdate ? new Date(latestUpdate.date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'ยังไม่มีข้อมูล'}
+                                                                                    {latestUpdate ? formatDateTime(latestUpdate.date) : 'ยังไม่มีข้อมูล'}
                                                                                 </div>
                                                                             </div>
                                                                             <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '12px', border: '1px solid #dcfce7' }}>

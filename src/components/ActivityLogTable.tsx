@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
+import { formatDate, formatDateTime } from '../utils/date';
 import { ActivityLog } from '../types';
+import CustomDateInput from './CustomDateInput';
 import { Search, Calendar, User, Shield, Activity as ActionIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ActivityLogTable = () => {
@@ -85,13 +87,7 @@ const ActivityLogTable = () => {
             </span>
         );
         const date = ts.toDate();
-        return date.toLocaleString('th-TH', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        return formatDateTime(date);
     };
 
     const commonInputStyle = {
@@ -130,10 +126,8 @@ const ActivityLogTable = () => {
                             <ChevronLeft size={20} />
                         </button>
 
-                        <div style={{ position: 'relative', borderLeft: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9' }}>
-                            <Calendar style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} size={16} />
-                            <input
-                                type="date"
+                        <div style={{ position: 'relative', borderLeft: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', width: '150px' }}>
+                            <CustomDateInput
                                 value={selectedDate}
                                 onChange={(e) => setSelectedDate(e.target.value)}
                                 style={{ ...commonInputStyle, border: 'none', paddingLeft: '38px', borderRadius: 0 }}
@@ -244,7 +238,7 @@ const ActivityLogTable = () => {
 
             {/* Summary Footer */}
             <div style={{ padding: '20px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', color: '#64748b', fontSize: '0.85rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>แสดงรายการสำหรับวันที่ {selectedDate ? new Date(selectedDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'} ({filteredLogs.length} รายการ )</div>
+                <div>แสดงรายการสำหรับวันที่ {selectedDate ? formatDate(selectedDate) : '-'} ({filteredLogs.length} รายการ )</div>
                 <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>* ระบบเก็บข้อมูลย้อนหลัง 6 เดือน และอัปเดตแบบ Real-time</div>
             </div>
         </div>

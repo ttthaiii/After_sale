@@ -74,6 +74,7 @@ export interface WorkTask {
   rejectReason?: string;
   reason?: string;
   taskName?: string;
+  subtaskId?: string;
 }
 
 export interface WorkOrderCategory {
@@ -95,6 +96,7 @@ export interface WorkOrder {
   categories: WorkOrderCategory[];
   deliveryQrToken?: string;
   reviewedByAdmin?: boolean;
+  pendingAdminReassign?: boolean;
   building?: string;
   floor?: string;
   room?: string;
@@ -255,6 +257,7 @@ export interface GroupData {
   maxSla: string;
   globalDeadline: number;
   subtaskDeadline: number;
+  originalDeadline: number;
 }
 
 export interface SLACountdownProps {
@@ -270,6 +273,8 @@ export interface GroupSLACountdownProps {
   globalDeadline: number;
   subtaskDeadline: number;
   isCompleted: boolean;
+  originalDeadline?: number;
+  isRevision?: boolean; // true เมื่อ currentRevision !== 'rev00'
 }
 
 export interface BatchAddModalProps {

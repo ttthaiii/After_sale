@@ -9,7 +9,13 @@ interface CustomerInspectionMockupProps {
     onClose: () => void;
     workOrder: WorkOrder;
     onSubmitInspection: (
-        approvals: Record<string, { status: 'approved' | 'rejected'; reason?: string; defectCategories?: Record<string, boolean> }>,
+        approvals: Record<string, { 
+            status: 'approved' | 'rejected'; 
+            reason?: string; 
+            defectCategories?: Record<string, boolean>;
+            contactName?: string;
+            contactPhone?: string;
+        }>,
         survey?: {
             workQuality: number;
             siteCleanliness: number;
@@ -54,7 +60,9 @@ export default function CustomerInspectionMockup({
     const [approvals, setApprovals] = useState<Record<string, { 
         status: 'approved' | 'rejected'; 
         reason?: string; 
-        defectCategories?: Record<string, boolean> 
+        defectCategories?: Record<string, boolean>;
+        contactName?: string;
+        contactPhone?: string;
     }>>({});
     
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,18 +73,35 @@ export default function CustomerInspectionMockup({
     const [lightboxTaskId, setLightboxTaskId] = useState<string | null>(null);
     const [activePhotoIndices, setActivePhotoIndices] = useState<Record<string, number>>({});
 
-
-
+    // Form inputs for Rejected items
+    const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+    const [defectCategories, setDefectCategories] = useState<Record<string, Record<string, boolean>>>({});
+    const [contactNames, setContactNames] = useState<Record<string, string>>({});
+    const [contactPhones, setContactPhones] = useState<Record<string, string>>({});
 
     useEffect(() => {
         if (isOpen && workOrder.id) {
             logCustomerQrView(workOrder.id);
+            
+            // Pre-populate contact name and phone from existing task data if present
+            const names: Record<string, string> = {};
+            const phones: Record<string, string> = {};
+            
+            workOrder.categories?.forEach(cat => {
+                cat.tasks?.forEach(task => {
+                    if (task.contactName) {
+                        names[task.id] = task.contactName;
+                    }
+                    if (task.contactPhone) {
+                        phones[task.id] = task.contactPhone;
+                    }
+                });
+            });
+            
+            setContactNames(names);
+            setContactPhones(phones);
         }
-    }, [isOpen, workOrder.id]);
-
-    // Form inputs for Rejected items
-    const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
-    const [defectCategories, setDefectCategories] = useState<Record<string, Record<string, boolean>>>({});
+    }, [isOpen, workOrder.id, workOrder.categories]);
 
     // 5-Star Ratings
     const [workQuality, setWorkQuality] = useState(5);
@@ -87,24 +112,32 @@ export default function CustomerInspectionMockup({
 
     if (!isOpen) return null;
 
-    // Filter tasks that are completed and exclude those already verified or pending admin re-evaluation
-    // 🛡️ CRITICAL RULE: Never include tasks rejected by admin / pending re-assignment
+    // Filter tasks that are completed and eligible for customer review
+    // 🛡️ CRITICAL RULE: Only exclude tasks when WO is still pending admin re-assignment
+    // evaluationStatus='Rejected' is NOT a blocker — task may have been re-worked after admin re-assigned
+    const isWoPendingReassign = 
+        (workOrder as any).pendingAdminReassign === true ||
+        ((workOrder as any).pendingAdminReassign === undefined && (workOrder as any).reviewedByAdmin === false && workOrder.status === 'Rejected');
     const eligibleTasks = workOrder.categories.flatMap(cat => 
         cat.tasks.filter(task => {
             const hasCompletedProgress = task.dailyProgress === 100;
             const notYetVerified = task.status !== 'Verified' && task.status !== 'completed';
-            const notRejectedByAdmin = task.status !== 'Rejected' && (task.evaluationStatus as any) !== 'Rejected'; // Exclude admin-rejected tasks!
-            return hasCompletedProgress && notYetVerified && notRejectedByAdmin;
+            const notStillRejectedByAdmin = task.status !== 'Rejected' && !isWoPendingReassign;
+            return hasCompletedProgress && notYetVerified && notStillRejectedByAdmin;
         })
     );
 
     const handleSelectAction = (taskId: string, status: 'approved' | 'rejected') => {
         const incompleteRejectTask = eligibleTasks.find(t => 
-            approvals[t.id]?.status === 'rejected' && !rejectReasons[t.id]?.trim()
+            approvals[t.id]?.status === 'rejected' && (
+                !rejectReasons[t.id]?.trim() || 
+                !contactNames[t.id]?.trim() || 
+                !contactPhones[t.id]?.trim()
+            )
         );
         
         if (incompleteRejectTask && incompleteRejectTask.id !== taskId) {
-            alert(`กรุณากรอกสาเหตุสำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนทำการประเมินรายการอื่น`);
+            alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนทำการประเมินรายการอื่น`);
             return;
         }
 
@@ -120,23 +153,33 @@ export default function CustomerInspectionMockup({
                 [taskId]: {
                     status,
                     reason: status === 'rejected' ? rejectReasons[taskId] || '' : undefined,
-                    defectCategories: status === 'rejected' ? defectCategories[taskId] || {} : undefined
+                    defectCategories: status === 'rejected' ? defectCategories[taskId] || {} : undefined,
+                    contactName: status === 'rejected' ? contactNames[taskId] || '' : undefined,
+                    contactPhone: status === 'rejected' ? contactPhones[taskId] || '' : undefined,
                 }
             };
         });
+
+        if (status === 'rejected') {
+            setExpandedTaskIds(prev => ({ ...prev, [taskId]: true }));
+        }
     };
 
     const handleToggleExpand = (taskId: string) => {
         const incompleteRejectTask = eligibleTasks.find(t => 
-            approvals[t.id]?.status === 'rejected' && !rejectReasons[t.id]?.trim()
+            approvals[t.id]?.status === 'rejected' && (
+                !rejectReasons[t.id]?.trim() || 
+                !contactNames[t.id]?.trim() || 
+                !contactPhones[t.id]?.trim()
+            )
         );
         
         if (incompleteRejectTask) {
             if (incompleteRejectTask.id !== taskId) {
-                alert(`กรุณากรอกสาเหตุสำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนจึงจะสามารถเปิดรายการอื่นได้`);
+                alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนจึงจะสามารถเปิดรายการอื่นได้`);
                 return;
             } else {
-                alert('กรุณากรอกสาเหตุสำหรับการสั่งแก้ไข (Reject) ให้เรียบร้อยก่อนปิดรายการนี้');
+                alert('กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) ให้เรียบร้อยก่อนปิดรายการนี้');
                 return;
             }
         }
@@ -152,6 +195,32 @@ export default function CustomerInspectionMockup({
                 [taskId]: {
                     ...prev[taskId],
                     reason: reason
+                }
+            }));
+        }
+    };
+
+    const handleContactNameChange = (taskId: string, name: string) => {
+        setContactNames(prev => ({ ...prev, [taskId]: name }));
+        if (approvals[taskId]?.status === 'rejected') {
+            setApprovals(prev => ({
+                ...prev,
+                [taskId]: {
+                    ...prev[taskId],
+                    contactName: name
+                }
+            }));
+        }
+    };
+
+    const handleContactPhoneChange = (taskId: string, phone: string) => {
+        setContactPhones(prev => ({ ...prev, [taskId]: phone }));
+        if (approvals[taskId]?.status === 'rejected') {
+            setApprovals(prev => ({
+                ...prev,
+                [taskId]: {
+                    ...prev[taskId],
+                    contactPhone: phone
                 }
             }));
         }
@@ -181,10 +250,16 @@ export default function CustomerInspectionMockup({
             return;
         }
 
-        // Validate that rejected items have a reason
-        const invalidRejects = eligibleTasks.filter(t => approvals[t.id]?.status === 'rejected' && !rejectReasons[t.id]?.trim());
+        // Validate that rejected items have a reason, name, and phone
+        const invalidRejects = eligibleTasks.filter(t => 
+            approvals[t.id]?.status === 'rejected' && (
+                !rejectReasons[t.id]?.trim() || 
+                !contactNames[t.id]?.trim() || 
+                !contactPhones[t.id]?.trim()
+            )
+        );
         if (invalidRejects.length > 0) {
-            alert('กรุณาระบุสาเหตุหรือคำอธิบายสำหรับรายการที่สั่งแก้ไข (Reject)');
+            alert('กรุณาระบุสาเหตุ ชื่อผู้แจ้ง และเบอร์โทรติดต่อกลับ สำหรับรายการที่สั่งแก้ไข (Reject)');
             return;
         }
 
@@ -308,7 +383,7 @@ export default function CustomerInspectionMockup({
                                     >
                                         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '0.65rem', fontWeight: 900, color: '#6366f1', background: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{task.id}</span>
-                                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(task.name || '').replace(/\s*\(REV\.\s*\d+\)/gi, '').trim()}</span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} onClick={e => e.stopPropagation()}>
                                             <button 
@@ -506,6 +581,7 @@ export default function CustomerInspectionMockup({
                                                             return (
                                                                 <button
                                                                     key={defectCat}
+                                                                    type="button"
                                                                     onClick={() => handleToggleDefect(task.id, defectCat)}
                                                                     style={{
                                                                         border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
@@ -518,6 +594,35 @@ export default function CustomerInspectionMockup({
                                                             );
                                                         })}
                                                     </div>
+
+                                                    {/* Contact Name & Phone Row */}
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '4px' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>
+                                                                ชื่อผู้แจ้ง / ติดต่อกลับ <span style={{ color: '#ef4444' }}>*</span>
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="ระบุชื่อผู้แจ้ง..."
+                                                                value={contactNames[task.id] || ''}
+                                                                onChange={e => handleContactNameChange(task.id, e.target.value)}
+                                                                style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '8px', fontSize: '0.8rem', outline: 'none' }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>
+                                                                เบอร์โทรติดต่อกลับ <span style={{ color: '#ef4444' }}>*</span>
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="ระบุเบอร์โทรศัพท์..."
+                                                                value={contactPhones[task.id] || ''}
+                                                                onChange={e => handleContactPhoneChange(task.id, e.target.value)}
+                                                                style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '8px', fontSize: '0.8rem', outline: 'none' }}
+                                                            />
+                                                        </div>
+                                                    </div>
+
                                                     <textarea
                                                         rows={2}
                                                         placeholder="ระบุจุดบกพร่องที่ต้องแก้ไขให้ช่างรับทราบด่วน... (ห้ามว่าง)"

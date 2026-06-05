@@ -5,6 +5,7 @@ import { Clock, CheckCircle2, XCircle, UserCheck, Package, Search, Edit, Trash2,
 import { WorkOrder } from '../types';
 import ForemanReportModal from '../components/ForemanReportModal';
 import HistoryDetailModal from '../components/HistoryDetailModal';
+import { formatDate } from '../utils/date';
 
 const MyTracking = () => {
     const { user } = useAuth();
@@ -393,7 +394,7 @@ const MyTracking = () => {
 
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: 'auto', marginBottom: '4px' }}>
                                         <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            วันที่แจ้ง: <span style={{ color: '#1e293b', fontWeight: 700 }}>{new Date(wo.createdAt).toLocaleDateString('th-TH')}</span>
+                                            วันที่แจ้ง: <span style={{ color: '#1e293b', fontWeight: 700 }}>{formatDate(wo.createdAt)}</span>
                                         </div>
                                     </div>
 

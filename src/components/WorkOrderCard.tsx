@@ -3,6 +3,7 @@ import { WorkOrder, MasterTask } from '../types';
 import { ChevronDown, ChevronRight, Clock, MapPin, User, HardHat, Info, FileText, Search, CheckCircle2, XCircle, Edit2 } from 'lucide-react';
 import ImageOverlay from './ImageOverlay';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { formatDate } from '../utils/date';
 
 interface WorkOrderCardProps {
     wo: WorkOrder;
@@ -262,11 +263,11 @@ const WorkOrderCard = ({
                             <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: '0.9rem', marginBottom: '4px' }}>ข้อมูลงาน</div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                                 <span style={{ color: '#64748b' }}>วันที่แจ้งซ่อม</span>
-                                <span style={{ fontWeight: 600, color: '#1e293b' }}>{wo.reportDate ? new Date(wo.reportDate).toLocaleDateString('th-TH') : '-'}</span>
+                                <span style={{ fontWeight: 600, color: '#1e293b' }}>{wo.reportDate ? formatDate(wo.reportDate) : '-'}</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                                 <span style={{ color: '#64748b' }}>วันนัดดำเนินการ</span>
-                                <span style={{ fontWeight: 600, color: '#1e293b' }}>{wo.appointmentDate ? new Date(wo.appointmentDate).toLocaleDateString('th-TH') : '-'}</span>
+                                <span style={{ fontWeight: 600, color: '#1e293b' }}>{wo.appointmentDate ? formatDate(wo.appointmentDate) : '-'}</span>
                             </div>
                             <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '10px', marginTop: '4px' }}>
                                 <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '4px' }}>ปัญหาเบื้องต้น</div>
@@ -428,8 +429,14 @@ const WorkOrderCard = ({
                                                                             </div>
                                                                             {task.position && <div style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>จุดที่พบ: {task.position}</div>}
                                                                             {task.currentRevision && task.currentRevision !== 'rev00' && (task.status === 'Rejected' || (task.status === 'in-progress' && task.evaluationStatus === 'Rejected')) && (
-                                                                                 <div style={{ fontSize: '0.72rem', color: '#be123c', background: '#fff1f2', padding: '4px 8px', borderRadius: '6px', marginTop: '6px', border: '1px solid #ffe4e6', width: 'fit-content' }}>
-                                                                                     <strong>เหตุผลการตีกลับ:</strong> {task.rejectReason || task.revisionName || 'ไม่ระบุสาเหตุ'}
+                                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.72rem', color: '#be123c', background: '#fff1f2', padding: '8px 12px', borderRadius: '8px', marginTop: '6px', border: '1px solid #ffe4e6', width: 'fit-content' }}>
+                                                                                     <div><strong>เหตุผลการตีกลับ:</strong> {task.rejectReason || task.revisionName || 'ไม่ระบุสาเหตุ'}</div>
+                                                                                     {(task.contactName || task.contactPhone) && (
+                                                                                         <div style={{ borderTop: '1px dashed #fecdd3', paddingTop: '4px', marginTop: '2px', display: 'flex', gap: '12px', color: '#9f1239', fontWeight: 700 }}>
+                                                                                             {task.contactName && <span>👤 ผู้แจ้ง: {task.contactName}</span>}
+                                                                                             {task.contactPhone && <span>📞 เบอร์ติดต่อกลับ: {task.contactPhone}</span>}
+                                                                                         </div>
+                                                                                     )}
                                                                                  </div>
                                                                              )}
                                                                         </td>

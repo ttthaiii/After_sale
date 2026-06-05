@@ -1,5 +1,6 @@
 import { X, Wrench } from 'lucide-react';
 import { WorkOrder, Project } from '../types';
+import { formatDate } from '../utils/date';
 
 interface WorkOrderViewModalProps {
     isOpen: boolean;
@@ -12,11 +13,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
     if (!isOpen || !wo) return null;
 
     const project = projects.find(p => p.id === wo.projectId);
-    const reportDate = wo.reportDate ? new Date(wo.reportDate).toLocaleDateString('th-TH', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }) : '-';
+    const reportDate = formatDate(wo.reportDate);
 
     return (
         <div

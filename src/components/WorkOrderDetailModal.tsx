@@ -2,6 +2,7 @@ import { FileText, User, Phone, Clock, Star, Sparkles } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderCard from './WorkOrderCard';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { formatDateTime } from '../utils/date';
 
 
 interface WorkOrderDetailModalProps {
@@ -174,12 +175,7 @@ const WorkOrderDetailModal = ({
 
                         const formatTime = (isoString?: string) => {
                             if (!isoString) return 'ยังไม่เริ่ม';
-                            try {
-                                const date = new Date(isoString);
-                                return `${date.toLocaleDateString('th-TH')} ${date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`;
-                            } catch {
-                                return isoString;
-                            }
+                            return formatDateTime(isoString);
                         };
 
                         if (!hasTimeline && !hasSurvey) return null;

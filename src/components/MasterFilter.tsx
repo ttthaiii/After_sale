@@ -43,7 +43,7 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
     const weeks = [0, 1, 2, 3, 4];
     if (daysInMonth > 28) weeks.push(5);
 
-    const monthName = new Date(year, month - 1, 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+    const monthName = `${new Date(year, month - 1, 1).toLocaleDateString('th-TH', { month: 'long' })} ${year}`;
 
     return (
         <div style={{ 

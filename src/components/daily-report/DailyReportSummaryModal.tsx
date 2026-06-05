@@ -13,6 +13,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { useDailyReport } from "../../context/DailyReportContext";
+import { formatDate } from "../../utils/date";
 
 export const DailyReportSummaryModal: React.FC = () => {
   const {
@@ -383,11 +384,7 @@ export const DailyReportSummaryModal: React.FC = () => {
                           {" "}
                           
                           <Calendar size={14} color="#3b82f6" />
-                          {new Date(reportDate).toLocaleDateString("th-TH", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
+                          {formatDate(reportDate)}
                         </div>
                       </div>{" "}
                       

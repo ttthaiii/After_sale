@@ -4,6 +4,7 @@ import { MasterTask, DailyReport } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import LoadingOverlay from './LoadingOverlay';
+import CustomDateInput from './CustomDateInput';
 
 interface TaskUpdateModalProps {
     isOpen: boolean;
@@ -110,10 +111,9 @@ const TaskUpdateModal = ({ isOpen, onClose, task, categoryId, workOrderId, categ
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', minWidth: '130px' }}>
                             <div style={{ fontSize: '0.65rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Report Date</div>
-                            <input 
-                                type="date"
+                            <CustomDateInput 
                                 value={reportDate}
                                 min={minDate}
                                 max={maxDate}
