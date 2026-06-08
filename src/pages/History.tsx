@@ -143,6 +143,13 @@ const History = () => {
                         (!task.rootCause || task.rootCause.trim() === '');
                     if (isFakeReject) return;
                     
+                    // Task-level staff filtering
+                    if (selectedStaffId) {
+                        const isAssigned = task.responsibleStaffIds?.includes(selectedStaffId) ||
+                            (selectedStaffId === CURRENT_USER_ID && user?.employeeId && task.responsibleStaffIds?.includes(user.employeeId));
+                        if (!isAssigned) return;
+                    }
+                    
                     list.push({ 
                         wo, 
                         task, 
@@ -154,7 +161,7 @@ const History = () => {
             });
         });
         return list;
-    }, [archivedWorkOrders]);
+    }, [archivedWorkOrders, selectedStaffId, CURRENT_USER_ID, user?.employeeId]);
 
     // Calculate accurate Task counts for each sub-tab
     const activeTasksCount = useMemo(() => {
@@ -588,7 +595,7 @@ const History = () => {
                                             </td>
                                         ) : (
                                             <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                                                {(task.status === 'Verified' || wo.status === 'Verified') && task.status !== 'Rejected' ? (
+                                                {((wo.status === 'Verified' || wo.status === 'Completed') && task.status !== 'Rejected') ? (
                                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
                                                             <Star size={14} fill="#f59e0b" style={{ stroke: 'none' }} />
