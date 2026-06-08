@@ -60,6 +60,14 @@ export const CustomDateInput: React.FC<CustomDateInputProps> = ({
                 min={min}
                 max={max}
                 disabled={disabled}
+                onClick={(e) => {
+                    if (disabled) return;
+                    try {
+                        (e.currentTarget as any).showPicker();
+                    } catch (err) {
+                        // Safe fallback if not supported
+                    }
+                }}
                 style={{
                     position: 'absolute',
                     top: 0,
