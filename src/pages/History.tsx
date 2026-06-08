@@ -25,6 +25,7 @@ const History = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProjectId, setSelectedProjectId] = useState('');
     const [selectedStaffId, setSelectedStaffId] = useState(currentRole === 'Foreman' ? CURRENT_USER_ID : '');
+    const effectiveStaffId = currentRole === 'Foreman' ? (user?.employeeId || user?.id || '') : selectedStaffId;
     const [selectedMonth, setSelectedMonth] = useState(`${new Date().getFullYear()}-${(new Date().getMonth() + 1).toString().padStart(2, '0')}`);
     const [selectedWeek, setSelectedWeek] = useState(0);
     const [selectedCategory, setSelectedCategory] = useState('');
@@ -72,7 +73,7 @@ const History = () => {
                 });
             });
         });
-        return staff.filter(s => staffIdsInHistory.has(s.id));
+        return staff.filter(s => staffIdsInHistory.has(s.id) || staffIdsInHistory.has(s.employeeId));
     }, [staff, baseHistoryWorkOrders]);
 
     // Filtered result for the table
@@ -81,13 +82,16 @@ const History = () => {
             const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
-            const matchesStaff = selectedStaffId ? (
-                wo.reporterId === selectedStaffId ||
+            
+            const targetStaff = effectiveStaffId ? staff.find(s => s.id === effectiveStaffId) : null;
+            const matchesStaff = effectiveStaffId ? (
+                wo.reporterId === effectiveStaffId ||
+                (targetStaff && wo.reporterId === targetStaff.employeeId) ||
                 wo.categories.some(cat =>
                     cat.tasks.some(task => 
-                        task.responsibleStaffIds?.includes(selectedStaffId) ||
-                        // Fallback: หากเลือกตัวเอง ให้เช็ค employeeId ด้วย
-                        (selectedStaffId === CURRENT_USER_ID && user?.employeeId && task.responsibleStaffIds?.includes(user.employeeId))
+                        task.responsibleStaffIds?.includes(effectiveStaffId) ||
+                        (targetStaff && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
+                        (targetStaff && targetStaff.id && task.responsibleStaffIds?.includes(targetStaff.id))
                     )
                 )
             ) : true;
@@ -108,7 +112,7 @@ const History = () => {
 
             return matchesSearch && matchesProject && matchesStaff && matchesMonth && matchesWeek && matchesCategory && matchesSlaStatus;
         }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [baseHistoryWorkOrders, searchTerm, selectedProjectId, selectedStaffId, selectedMonth, selectedWeek, selectedCategory, selectedSlaStatus]);
+    }, [baseHistoryWorkOrders, searchTerm, selectedProjectId, effectiveStaffId, staff, selectedMonth, selectedWeek, selectedCategory, selectedSlaStatus]);
 
     // Flatten all work orders into all tasks first (1-to-1) before separating by active/archived tabs
     const allHistoryTasks = useMemo(() => {
@@ -144,9 +148,11 @@ const History = () => {
                     if (isFakeReject) return;
                     
                     // Task-level staff filtering
-                    if (selectedStaffId) {
-                        const isAssigned = task.responsibleStaffIds?.includes(selectedStaffId) ||
-                            (selectedStaffId === CURRENT_USER_ID && user?.employeeId && task.responsibleStaffIds?.includes(user.employeeId));
+                    if (effectiveStaffId) {
+                        const targetStaff = staff.find(s => s.id === effectiveStaffId);
+                        const isAssigned = task.responsibleStaffIds?.includes(effectiveStaffId) ||
+                            (targetStaff && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
+                            (targetStaff && targetStaff.id && task.responsibleStaffIds?.includes(targetStaff.id));
                         if (!isAssigned) return;
                     }
                     
@@ -161,7 +167,31 @@ const History = () => {
             });
         });
         return list;
-    }, [archivedWorkOrders, selectedStaffId, CURRENT_USER_ID, user?.employeeId]);
+    }, [archivedWorkOrders, effectiveStaffId, staff]);
+
+    // Check if the work order is fully completed and evaluated (all tasks are finished/closed)
+    const isWorkOrderFullyCompleted = (wo: WorkOrder) => {
+        if (wo.status === 'Verified' || wo.status === 'Completed') return true;
+        
+        const allTasks = wo.categories.flatMap(cat => cat.tasks || []);
+        const activeTasks = allTasks.filter(t => {
+            if (!t) return false;
+            // Filter out fake/placeholder rejected tasks
+            const isFakeReject = t.status === 'Rejected' && 
+                (!t.responsibleStaffIds || t.responsibleStaffIds.length === 0) &&
+                (!t.rootCause || t.rootCause.trim() === '');
+            return !isFakeReject;
+        });
+        
+        if (activeTasks.length === 0) return false;
+        
+        return activeTasks.every(t => 
+            t.status === 'Verified' || 
+            t.status === 'completed' || 
+            t.status === 'Approved' || 
+            t.status === 'Cancelled'
+        );
+    };
 
     // Calculate accurate Task counts for each sub-tab
     const activeTasksCount = useMemo(() => {
@@ -299,7 +329,7 @@ const History = () => {
                             <User2 size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                             <select
                                 style={{ ...commonInputStyle, appearance: 'none' }}
-                                value={selectedStaffId} disabled={currentRole === 'Foreman'}
+                                value={effectiveStaffId} disabled={currentRole === 'Foreman'}
                                 onChange={e => setSelectedStaffId(e.target.value)}
                             >
                                 <option value="">พนักงานทั้งหมด</option>
@@ -595,7 +625,7 @@ const History = () => {
                                             </td>
                                         ) : (
                                             <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                                                {((wo.status === 'Verified' || wo.status === 'Completed') && task.status !== 'Rejected') ? (
+                                                {(isWorkOrderFullyCompleted(wo) && task.status !== 'Rejected') ? (
                                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
                                                             <Star size={14} fill="#f59e0b" style={{ stroke: 'none' }} />
