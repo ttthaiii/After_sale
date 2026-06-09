@@ -55,7 +55,7 @@ const SLAMonitor = () => {
     const getThaiStatusBadge = (t: any) => {
         const progress = t.dailyProgress || 0;
         let status: any = t.status;
-        if (progress >= 100 && status !== 'Completed') {
+        if (progress >= 100 && status !== 'Completed' && status !== 'Verified') {
             status = 'for-checking';
         } else if (progress > 0 && progress < 100 && (status === 'Pending' || status === 'Assigned' || status === 'upcoming')) {
             status = 'in-progress';
@@ -74,12 +74,12 @@ const SLAMonitor = () => {
             case 'in-progress':
                 return <span style={{ color: '#7c3aed', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>กำลังทำ</span>;
             case 'for-checking':
+                return <span style={{ color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอลูกค้าประเมิน</span>;
             case 'Verified':
-                return <span style={{ color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอตรวจสอบ</span>;
             case 'Completed':
                 return <span style={{ color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>สำเร็จ</span>;
             case 'Rejected':
-                return <span style={{ color: '#b91c1c', background: '#fee2e2', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>ปฏิเสธ</span>;
+                return <span style={{ color: '#b91c1c', background: '#fee2e2', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอมอบหมายใหม่</span>;
         }
         return <span style={{ color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>{status}</span>;
     };
@@ -327,7 +327,19 @@ const SLAMonitor = () => {
     };
 
     const flattenedTasks = useMemo(() => {
-        let filteredWOs = workOrders.filter((wo) => wo.status !== 'Draft' && wo.status !== 'Completed' && !wo.isArchived);
+        const now = new Date();
+        const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        let filteredWOs = workOrders.filter((wo) => {
+            if (wo.status === 'Draft' || wo.isArchived) return false;
+            if (wo.status === 'Completed' || wo.status === 'Verified') {
+                const completedDate = (wo as any).updatedAt || wo.createdAt || '';
+                if (!completedDate) return false;
+                const d = new Date(completedDate);
+                const woYM = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                return woYM === currentYM;
+            }
+            return true;
+        });
 
         if (currentRole === 'Admin') {
             filteredWOs = filteredWOs.filter((wo) => {
@@ -377,8 +389,7 @@ const SLAMonitor = () => {
         });
 
         const filtered = allTasks.filter((task) => {
-            if (task.status === 'Rejected') return false;
-
+            // Rejected tasks (awaiting admin reassignment) must stay visible in งานรอประเมิน
             const matchesSearch = (task.taskCode || task.woId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (task.woLocation || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (task.name || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -559,7 +570,7 @@ const SLAMonitor = () => {
                     { id: 'pending-eval', label: 'งานรอประเมิน', color: '#ef4444' },
                     { id: 'assigned-unstarted', label: 'มอบหมายแล้วยังไม่ทำ', color: '#3b82f6' },
                     { id: 'in-progress', label: 'กำลังทำ', color: '#7c3aed' },
-                    { id: 'for-checking', label: 'รอตรวจสอบ', color: '#d97706' },
+                    { id: 'for-checking', label: 'รอลูกค้าประเมิน', color: '#d97706' },
                     { id: 'completed', label: 'สำเร็จ', color: '#059669' },
                 ].map((column) => {
                     const columnTasks = flattenedTasks.filter((t) => {
@@ -572,7 +583,7 @@ const SLAMonitor = () => {
                             effectiveStatus = 'in-progress';
                         }
 
-                        if (column.id === 'pending-eval') return effectiveStatus === 'Pending';
+                        if (column.id === 'pending-eval') return effectiveStatus === 'Pending' || effectiveStatus === 'Rejected';
                         if (column.id === 'assigned-unstarted') return (effectiveStatus === 'Assigned' || effectiveStatus === 'Approved' || effectiveStatus === 'upcoming') && progress === 0;
                         if (column.id === 'in-progress') return effectiveStatus === 'In Progress' || effectiveStatus === 'in-progress';
                         if (column.id === 'for-checking') return effectiveStatus === 'Completed' || effectiveStatus === 'for-checking';
@@ -580,6 +591,14 @@ const SLAMonitor = () => {
 
                         return false;
                     });
+
+                    const displayTasks = column.id === 'completed'
+                        ? [...columnTasks].sort((a, b) => {
+                            const dateA = new Date((a as any).updatedAt || a.woCreatedAt || 0).getTime();
+                            const dateB = new Date((b as any).updatedAt || b.woCreatedAt || 0).getTime();
+                            return dateB - dateA;
+                        })
+                        : columnTasks;
 
                     return (
                         <div key={column.id} style={{ minWidth: 340, width: 340, background: '#f4f6f8', borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0' }}>
@@ -589,10 +608,10 @@ const SLAMonitor = () => {
                                 <div style={{ background: '#e2e8f0', color: '#475569', fontSize: '0.8rem', fontWeight: 900, padding: '2px 10px', borderRadius: '12px', marginLeft: 'auto' }}>{columnTasks.length}</div>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 200 }}>
-                                {columnTasks.length === 0 ? (
+                                {displayTasks.length === 0 ? (
                                     <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700, padding: '32px 0', border: '2px dashed #e2e8f0', borderRadius: '16px' }}>No Tasks</div>
                                 ) : (
-                                    columnTasks.map((task) => {
+                                    displayTasks.map((task) => {
                                         const project = projects.find((p) => p.id === task.woProjectId);
                                         const sla = getSLARemaining(task, task.woCreatedAt);
                                         const isExpanded = expandedTaskIds.has(task.id);

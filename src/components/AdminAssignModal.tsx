@@ -52,6 +52,26 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                 updates.slaStartTime = new Date().toISOString();
             }
 
+            // Lock initialStartDate on first-ever assignment only
+            const existingInit = (task as any).initialStartDate;
+            const revCreatedAt = (task as any).revisionCreatedAt;
+            const taskIsRevision = !!(task as any).revisionCreatedAt ||
+                ((task as any).currentRevision && (task as any).currentRevision !== 'rev00');
+            // Valid = set BEFORE first rejection (or no rejection yet)
+            const initIsValid = existingInit && revCreatedAt
+                ? new Date(existingInit) < new Date(revCreatedAt)
+                : !!existingInit;
+
+            if (!existingInit && !taskIsRevision) {
+                // First-ever assignment: lock the original date
+                (updates as any).initialStartDate = new Date(startDate).toISOString();
+                (updates as any).initialSlaCategory = slaCategory;
+            } else if (existingInit && !initIsValid) {
+                // Clear invalid initialStartDate (was set after rejection by mistake)
+                (updates as any).initialStartDate = null;
+                (updates as any).initialSlaCategory = null;
+            }
+
             await onAssign(workOrderId, task.id, updates);
 
             // ✅ Send notifications to each assigned staff

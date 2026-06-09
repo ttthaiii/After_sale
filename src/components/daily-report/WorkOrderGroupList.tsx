@@ -47,6 +47,7 @@ export const WorkOrderGroupList: React.FC = () => {
     setMockupWorkOrder,
     generateDeliveryQrToken,
     setModalAlert,
+    draftedTaskIds,
   } = useDailyReport();
 
   // Helper render function with lexical scope access
@@ -304,6 +305,22 @@ export const WorkOrderGroupList: React.FC = () => {
                 }}
               >
                 REV. {parseInt(task.currentRevision.replace("rev", ""))}
+              </div>
+            )}
+            {draftedTaskIds.has(task.id) && (
+              <div
+                style={{
+                  fontSize: "0.62rem",
+                  fontWeight: 800,
+                  color: "#92400e",
+                  background: "#fef3c7",
+                  padding: "2px 5px",
+                  borderRadius: "4px",
+                  whiteSpace: "nowrap",
+                  border: "1px solid #fcd34d",
+                }}
+              >
+                ✏️ ร่างค้าง
               </div>
             )}
             {isReadOnly && (
@@ -728,10 +745,19 @@ export const WorkOrderGroupList: React.FC = () => {
                             maxDl = tDeadline;
                           }
 
-                          // Original Deadline Calculation
-                          const originalSla = t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
+                          // Original Deadline Calculation — locked to first assignment
+                          // Validate: initialStartDate must be BEFORE revisionCreatedAt (else it was set after rejection — invalid)
+                          const tRawInit1 = (t as any).initialStartDate;
+                          const tRevAt1 = (t as any).revisionCreatedAt;
+                          const tValidInit1 = tRawInit1 && tRevAt1
+                            ? (new Date(tRawInit1) < new Date(tRevAt1) ? tRawInit1 : null)
+                            : (tRawInit1 || null);
+                          const originalSla = (tValidInit1 ? (t as any).initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
                           const tDurHoursOriginal = slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24;
-                          let tStartOriginal = t.slaStartTime || wo.createdAt || new Date().toISOString();
+                          const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
+                          const tStartOriginal = tValidInit1
+                            ? `${tStartOriginalRaw.split('T')[0]}T08:00:00`
+                            : tStartOriginalRaw;
                           const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
                           if (tDeadlineOriginal > maxDlOriginal) {
                             maxDlOriginal = tDeadlineOriginal;
@@ -1006,10 +1032,19 @@ export const WorkOrderGroupList: React.FC = () => {
                       durationHours * 60 * 60 * 1e3;
                     let globalDeadlineTime = deadlineTime;
                     
-                    // Original start time & deadline calculation
-                    let originalSla = item.task.baselineSla || item.task.estimatedSla || item.task.slaCategory || "24h";
-                    let tStartOriginal = item.task.slaStartTime || item.wo.createdAt || new Date().toISOString();
-                    let deadlineTimeOriginal = new Date(tStartOriginal).getTime() + (slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24) * 60 * 60 * 1e3;
+                    // Original start time & deadline — locked to first assignment
+                    // Validate: initialStartDate must be BEFORE revisionCreatedAt
+                    const tRawInit2 = (item.task as any).initialStartDate;
+                    const tRevAt2 = (item.task as any).revisionCreatedAt;
+                    const tValidInit2 = tRawInit2 && tRevAt2
+                      ? (new Date(tRawInit2) < new Date(tRevAt2) ? tRawInit2 : null)
+                      : (tRawInit2 || null);
+                    const origSlaItem = (tValidInit2 ? (item.task as any).initialSlaCategory : null) || item.task.baselineSla || item.task.estimatedSla || item.task.slaCategory || "24h";
+                    const origStartRaw = tValidInit2 || item.task.slaStartTime || item.wo.createdAt || new Date().toISOString();
+                    const origStart = tValidInit2
+                      ? `${origStartRaw.split('T')[0]}T08:00:00`
+                      : origStartRaw;
+                    let deadlineTimeOriginal = new Date(origStart).getTime() + (slaHoursMap[origSlaItem as keyof typeof slaHoursMap] || 24) * 60 * 60 * 1e3;
                     let globalDeadlineTimeOriginal = deadlineTimeOriginal;
 
                     const fullWo = (workOrders as any[]).find((w) => w.id === woId);
@@ -1040,10 +1075,19 @@ export const WorkOrderGroupList: React.FC = () => {
                             maxDl = tDeadline;
                           }
 
-                          // Original Deadline Calculation
-                          const oSla = t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
+                          // Original Deadline Calculation — locked to first assignment
+                          // Validate: initialStartDate must be BEFORE revisionCreatedAt
+                          const tRawInit3 = t.initialStartDate;
+                          const tRevAt3 = t.revisionCreatedAt;
+                          const tValidInit3 = tRawInit3 && tRevAt3
+                            ? (new Date(tRawInit3) < new Date(tRevAt3) ? tRawInit3 : null)
+                            : (tRawInit3 || null);
+                          const oSla = (tValidInit3 ? t.initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
                           const tDurHoursOriginal = slaHoursMap[oSla as keyof typeof slaHoursMap] || 24;
-                          let tStartOriginal = t.slaStartTime || fullWo.createdAt || new Date().toISOString();
+                          const tOrigRaw = tValidInit3 || t.slaStartTime || fullWo.createdAt || new Date().toISOString();
+                          const tStartOriginal = tValidInit3
+                            ? `${tOrigRaw.split('T')[0]}T08:00:00`
+                            : tOrigRaw;
                           const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
                           if (tDeadlineOriginal > maxDlOriginal) {
                             maxDlOriginal = tDeadlineOriginal;

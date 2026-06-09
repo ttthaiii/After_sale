@@ -1064,14 +1064,16 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                     <div style={{
                                                         display: 'inline-flex', alignItems: 'center', gap: '6px',
                                                         padding: '5px 12px', borderRadius: '10px', marginBottom: '8px',
-                                                        background: performance.isOnTime ? '#ecfdf5' : '#fff7ed',
-                                                        border: `1px solid ${performance.isOnTime ? '#6ee7b7' : '#fed7aa'}`,
+                                                        background: !isCompleted ? '#eff6ff' : performance.isOnTime ? '#ecfdf5' : '#fff7ed',
+                                                        border: `1px solid ${!isCompleted ? '#bfdbfe' : performance.isOnTime ? '#6ee7b7' : '#fed7aa'}`,
                                                     }}>
-                                                        <span style={{ fontSize: '0.85rem' }}>{performance.isOnTime ? '✅' : '⚠️'}</span>
-                                                        <span style={{ fontSize: '0.78rem', fontWeight: 900, color: performance.isOnTime ? '#065f46' : '#9a3412' }}>
-                                                            {performance.isOnTime
-                                                                ? 'เสร็จทันเวลา'
-                                                                : `เกินกำหนด ${performance.actual - performance.target} ชม.`}
+                                                        <span style={{ fontSize: '0.85rem' }}>{!isCompleted ? '🔄' : performance.isOnTime ? '✅' : '⚠️'}</span>
+                                                        <span style={{ fontSize: '0.78rem', fontWeight: 900, color: !isCompleted ? '#1d4ed8' : performance.isOnTime ? '#065f46' : '#9a3412' }}>
+                                                            {!isCompleted
+                                                                ? 'อยู่ระหว่างดำเนินการ'
+                                                                : performance.isOnTime
+                                                                    ? 'เสร็จทันเวลา'
+                                                                    : `เกินกำหนด ${performance.actual - performance.target} ชม.`}
                                                         </span>
                                                     </div>
                                                     {/* 2 supporting numbers */}
@@ -1260,14 +1262,18 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                                 {formatDate(h.date)}
                                                                         </div>
                                                                         {(() => {
-                                                                            const shiftStr = h.labor?.[0]?.shiftTimes?.day as string | undefined;
+                                                                            const firstLabor = h.labor?.[0];
+                                                                            const shiftStr = firstLabor?.shiftTimes?.day as string | undefined;
                                                                             if (!shiftStr) return null;
                                                                             const parts = shiftStr.split(' - ');
                                                                             if (parts.length !== 2) return null;
                                                                             const [startStr, endStr] = parts;
-                                                                            const [sh, sm] = startStr.split(':').map(Number);
-                                                                            const [eh, em] = endStr.split(':').map(Number);
-                                                                            const hrs = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 10) / 10;
+                                                                            const startMin = parseInt(startStr.split(':')[0], 10) * 60 + parseInt(startStr.split(':')[1] || '0', 10);
+                                                                            const endMin = parseInt(endStr.split(':')[0], 10) * 60 + parseInt(endStr.split(':')[1] || '0', 10);
+                                                                            let diffMin = endMin - startMin;
+                                                                            const otNoon = firstLabor?.shifts?.otNoon;
+                                                                            if (!otNoon && startMin <= 720 && endMin >= 780) diffMin -= 60;
+                                                                            const hrs = Math.round(diffMin / 60 * 10) / 10;
                                                                             return (
                                                                                 <div style={{ fontSize: '0.75rem', color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                                                     ⏱ {shiftStr}{hrs > 0 ? ` (${hrs} ชม.)` : ''}

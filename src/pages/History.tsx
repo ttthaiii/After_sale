@@ -51,7 +51,13 @@ const History = () => {
                 
                 return isOfficiallyFinished || hasTaskAssigned || isReporter;
             } else {
-                return isOfficiallyFinished;
+                // Admin/Approver: show finished WOs + in-progress WOs that have at least one foreman assigned
+                const hasAssignedForeman = wo.categories.some(cat =>
+                    cat.tasks.some(task =>
+                        task.responsibleStaffIds && task.responsibleStaffIds.length > 0
+                    )
+                );
+                return isOfficiallyFinished || hasAssignedForeman;
             }
         });
     }, [workOrders, currentRole, CURRENT_USER_ID, user?.employeeId]);

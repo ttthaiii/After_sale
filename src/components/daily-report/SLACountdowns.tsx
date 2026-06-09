@@ -433,7 +433,9 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
             กำหนดส่งมอบ (ลูกค้า):
           </span>
           <span style={{ fontSize: "0.7rem", fontWeight: 900, color: "#1e293b" }}>
-            {formattedGlobalDate} ({formattedGlobalTime})
+            {(isRevision && originalDeadline)
+              ? `${formattedOriginalDate} (${formattedOriginalTime})`
+              : `${formattedGlobalDate} (${formattedGlobalTime})`}
           </span>
         </div>
       )}

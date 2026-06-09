@@ -1442,8 +1442,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     }}
                   >
                     {selectedTaskInfo.task.history?.some(
-                      (h) => h.date?.split("T")[0] === reportDate &&
-                             (!selectedTaskInfo.task.revisionCreatedAt || (h.createdAt || h.serverTimestamp || h.date) > selectedTaskInfo.task.revisionCreatedAt),
+                      (h) => h.date?.split("T")[0] === reportDate,
                     ) &&
                       !isTaskFinished &&
                       (isEditingExisting ? (
@@ -3924,22 +3923,41 @@ export const DailyReportDetailPane: React.FC = () => {
                                   </div>
                                 </div>{" "}
                                 
-                                <div
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: "#64748b",
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {" "}
-                                  
-                                  <Users
-                                    size={12}
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <div
                                     style={{
-                                      marginRight: "4px",
+                                      fontSize: "0.75rem",
+                                      color: "#64748b",
+                                      fontWeight: 700,
                                     }}
-                                  />{" "}
-                                  {totalManpower} คน
+                                  >
+                                    {" "}
+
+                                    <Users
+                                      size={12}
+                                      style={{
+                                        marginRight: "4px",
+                                      }}
+                                    />{" "}
+                                    {totalManpower} คน
+                                  </div>
+                                  {(() => {
+                                    const firstLabor = h.labor?.[0];
+                                    const shiftStr = firstLabor?.shiftTimes?.day as string | undefined;
+                                    if (!shiftStr) return null;
+                                    const parts = shiftStr.split(" - ");
+                                    if (parts.length !== 2) return null;
+                                    const startMin = parseInt(parts[0].split(":")[0], 10) * 60 + parseInt(parts[0].split(":")[1] || "0", 10);
+                                    const endMin = parseInt(parts[1].split(":")[0], 10) * 60 + parseInt(parts[1].split(":")[1] || "0", 10);
+                                    let diffMin = endMin - startMin;
+                                    if (!firstLabor?.shifts?.otNoon && startMin <= 720 && endMin >= 780) diffMin -= 60;
+                                    const hrs = Math.round((diffMin / 60) * 10) / 10;
+                                    return (
+                                      <div style={{ fontSize: "0.75rem", color: "#0369a1", background: "#e0f2fe", padding: "2px 8px", borderRadius: "6px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                        ⏱ {shiftStr}{hrs > 0 ? ` (${hrs} ชม.)` : ""}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                               {h.note && (

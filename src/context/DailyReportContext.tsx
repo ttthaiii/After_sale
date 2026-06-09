@@ -173,6 +173,7 @@ interface DailyReportContextType {
   isReportDatePast3Days: boolean;
   isTimeOverlap: (time1: string, time2: string) => boolean;
   progressBounds: { min: number; max: number; isToday: boolean };
+  draftedTaskIds: Set<string>;
 }
 
 const DailyReportContext = createContext<DailyReportContextType | undefined>(undefined);
@@ -346,6 +347,12 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [selectedTaskInfo, workOrders]);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [draftedTaskIds, setDraftedTaskIds] = useState<Set<string>>(() => {
+    try {
+      const stored = sessionStorage.getItem('draftedTaskIds');
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
   const [progress, setProgress] = useState(0);
   const [note, setNote] = useState("");
   const [labor, setLabor] = useState<LaborEntry[]>([]);
@@ -510,9 +517,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!selectedTaskInfo) return;
     let active = true;
     const existingReport = selectedTaskInfo.task.history?.find((h) => {
-      const hTime = h.createdAt || h.serverTimestamp || h.date;
-      return h.date?.split("T")[0] === reportDate &&
-             (!selectedTaskInfo.task.revisionCreatedAt || hTime > selectedTaskInfo.task.revisionCreatedAt);
+      return h.date?.split("T")[0] === reportDate;
     });
     if (existingReport) {
       setProgress(existingReport.progress);
@@ -619,13 +624,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } else {
       const history = selectedTaskInfo.task.history || [];
       const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
-      let min = 0;
-      filteredHistory.forEach((h) => {
-        const hDate = h.date?.split("T")[0] || "";
-        if (hDate && hDate < reportDate && h.progress > min) {
-          min = h.progress;
-        }
+      let min = selectedTaskInfo.task.dailyProgress || 0;
+      const priorEntries = filteredHistory
+        .filter((h) => (h.date?.split("T")[0] || "") < reportDate)
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      priorEntries.forEach((h) => {
+        if (h.progress > min) min = h.progress;
       });
+      const lastEntry = priorEntries[0];
 
       const checkAndLoadDraft = async () => {
         try {
@@ -672,7 +678,35 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (!active) return;
         setProgress(min);
         setNote("");
-        setLabor([]);
+        // Pre-fill labor from most recent prior entry so crew data carries over day-to-day
+        if (lastEntry && lastEntry.labor?.length > 0) {
+          const priorLabor = lastEntry.labor.map((l: any) => ({
+            id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            membership: (l.contractorId ? "Outsource" : "Internal") as "Internal" | "Outsource",
+            staffId: l.workerId || l.staffId || "",
+            staffName: l.staffName || l.workerName || "",
+            employeeId: l.employeeId || "",
+            affiliation: l.staffName || l.workerName || "General",
+            amount: Number(l.amount) || 1,
+            timeType: "Normal" as const,
+            shifts: {
+              normal: l.shifts?.normal || false,
+              otMorning: false,
+              otNoon: false,
+              otEvening: false,
+            },
+            shiftTimes: {
+              day: l.shiftTimes?.day || "08:00 - 17:00",
+              otMorning: "06:00 - 08:00",
+              otNoon: "12:00 - 13:00",
+              otEvening: "18:00 - 21:00",
+            },
+            leave: { active: false, time: "08:00 - 17:00", medCertFileUrl: "" },
+          }));
+          setLabor(priorLabor);
+        } else {
+          setLabor([]);
+        }
         setSitePhotos([]);
         setLaborRegularPhotos([]);
         setLaborOtMorningPhotos([]);
@@ -1925,6 +1959,12 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       alert("บันทึกรายงานเรียบร้อยแล้ว");
+      setDraftedTaskIds(prev => {
+        const next = new Set(prev);
+        next.delete(selectedTaskInfo.task.id);
+        sessionStorage.setItem('draftedTaskIds', JSON.stringify([...next]));
+        return next;
+      });
       setShowSummaryModal(false);
       if (existingHistory) {
         setIsEditingExisting(false);
@@ -1997,6 +2037,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       await setDoc(draftDocRef, draftPayload);
+      setDraftedTaskIds(prev => {
+        const next = new Set(prev).add(taskId);
+        sessionStorage.setItem('draftedTaskIds', JSON.stringify([...next]));
+        return next;
+      });
       alert("บันทึกแบบร่างเรียบร้อยแล้ว");
     } catch (error) {
       console.error("Save draft failed:", error);
@@ -2266,6 +2311,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isReportDatePast3Days,
         isTimeOverlap,
         progressBounds,
+        draftedTaskIds,
       }}
     >
       {children}
