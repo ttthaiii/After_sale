@@ -66,6 +66,7 @@ export const DailyReportDetailPane: React.FC = () => {
     handleUploadLeaveCert,
     handleRemoveLeaveCert,
     handleSubmit,
+    handleSaveDraft,
     toggleShift,
     isProgressNotePhotosEditable,
     hasHistoryForSelectedDate,
@@ -2959,7 +2960,43 @@ export const DailyReportDetailPane: React.FC = () => {
                       {
                         id: "regular",
                         label: "กะปกติ",
-                        required: 4,
+                        required: (() => {
+                          const normalLabor = displayLabor.filter((l) => l.shifts?.normal);
+                          if (normalLabor.length === 0) return 4;
+
+                          const parseStartHour = (timeRange: string): number => {
+                            if (!timeRange) return 8;
+                            const parts = timeRange.split(" - ");
+                            if (parts.length < 1) return 8;
+                            const [h, m] = parts[0].split(":").map(Number);
+                            if (isNaN(h)) return 8;
+                            return h + (isNaN(m) ? 0 : m) / 60;
+                          };
+                          
+                          const parseEndHour = (timeRange: string): number => {
+                            if (!timeRange) return 17;
+                            const parts = timeRange.split(" - ");
+                            if (parts.length < 2) return 17;
+                            const [h, m] = parts[1].split(":").map(Number);
+                            if (isNaN(h)) return 17;
+                            return h + (isNaN(m) ? 0 : m) / 60;
+                          };
+
+                          const minStartHour = normalLabor.reduce((min, l) => {
+                            const startHour = parseStartHour(l.shiftTimes?.day || "08:00 - 17:00");
+                            return Math.min(min, startHour);
+                          }, 24);
+                          
+                          const maxEndHour = normalLabor.reduce((max, l) => {
+                            const endHour = parseEndHour(l.shiftTimes?.day || "08:00 - 17:00");
+                            return Math.max(max, endHour);
+                          }, 0);
+                          
+                          if (minStartHour >= 13.0 || maxEndHour <= 12.0) {
+                            return 2;
+                          }
+                          return 4;
+                        })(),
                         current: displayRegularPhotos.length,
                         isMinimum: false,
                         show: displayLabor.some((l) => l.shifts?.normal),
@@ -3260,17 +3297,148 @@ export const DailyReportDetailPane: React.FC = () => {
                           range?.split(" - ")[0] || "";
                         const parseEnd = (range: string) =>
                           range?.split(" - ")[1] || "";
+
+                        const isSlotTimeAllowed = (slotIdx: number) => {
+                          const todayStr = new Date().toISOString().split("T")[0];
+                          if (reportDate < todayStr) return true;
+                          if (reportDate > todayStr) return false;
+
+                          const now = new Date();
+                          const currentHour = now.getHours();
+                          const currentMin = now.getMinutes();
+
+                          const hasReachedTime = (timeStr: string, defaultHour: number) => {
+                            if (!timeStr) return currentHour >= defaultHour;
+                            const [h, m] = timeStr.split(":").map(Number);
+                            if (currentHour > h) return true;
+                            if (currentHour === h) return currentMin >= m;
+                            return false;
+                          };
+
+                          if (shiftKey === "regular") {
+                            const dayRange = getShiftTime("day");
+                            const startT = parseStart(dayRange);
+                            const endT = parseEnd(dayRange);
+
+                            const normalLabor = labor.filter((l) => l.shifts?.normal);
+                            let requiredCount = 4;
+                            let minStartHour = 8;
+                            let maxEndHour = 17;
+                            if (normalLabor.length > 0) {
+                              const parseStartHour = (timeRange: string): number => {
+                                if (!timeRange) return 8;
+                                const parts = timeRange.split(" - ");
+                                if (parts.length < 1) return 8;
+                                const [h, m] = parts[0].split(":").map(Number);
+                                if (isNaN(h)) return 8;
+                                return h + (isNaN(m) ? 0 : m) / 60;
+                              };
+                              const parseEndHour = (timeRange: string): number => {
+                                if (!timeRange) return 17;
+                                const parts = timeRange.split(" - ");
+                                if (parts.length < 2) return 17;
+                                const [h, m] = parts[1].split(":").map(Number);
+                                if (isNaN(h)) return 17;
+                                return h + (isNaN(m) ? 0 : m) / 60;
+                              };
+                              minStartHour = normalLabor.reduce((min, l) => {
+                                const startHour = parseStartHour(l.shiftTimes?.day || "08:00 - 17:00");
+                                return Math.min(min, startHour);
+                              }, 24);
+                              maxEndHour = normalLabor.reduce((max, l) => {
+                                const endHour = parseEndHour(l.shiftTimes?.day || "08:00 - 17:00");
+                                return Math.max(max, endHour);
+                              }, 0);
+                              if (minStartHour >= 13.0 || maxEndHour <= 12.0) {
+                                requiredCount = 2;
+                              }
+                            }
+
+                            if (requiredCount === 2) {
+                              if (minStartHour >= 13.0) {
+                                if (slotIdx === 0) return hasReachedTime(startT, 13);
+                                if (slotIdx === 1) return hasReachedTime(endT, 17);
+                              } else {
+                                if (slotIdx === 0) return hasReachedTime(startT, 8);
+                                if (slotIdx === 1) return hasReachedTime(endT, 12);
+                              }
+                            } else {
+                              if (slotIdx === 0) return hasReachedTime(startT, 8);
+                              if (slotIdx === 1) return hasReachedTime("12:00", 12);
+                              if (slotIdx === 2) return hasReachedTime("13:00", 13);
+                              if (slotIdx === 3) return hasReachedTime(endT, 17);
+                            }
+                          } else {
+                            const otRange = getShiftTime(shiftKey);
+                            const startT = parseStart(otRange);
+                            const endT = parseEnd(otRange);
+
+                            if (slotIdx === 0) return hasReachedTime(startT, shiftKey === "otMorning" ? 6 : (shiftKey === "otNoon" ? 12 : 18));
+                            if (slotIdx === 1) return hasReachedTime(endT, shiftKey === "otMorning" ? 8 : (shiftKey === "otNoon" ? 13 : 21));
+                          }
+                          return true;
+                        };
+
                         let slotLabels;
                         if (shiftKey === "regular") {
                           const dayRange = getShiftTime("day");
                           const startT = parseStart(dayRange);
                           const endT = parseEnd(dayRange);
-                          slotLabels = [
-                            startT ? `เช้า (${startT})` : "เช้า",
-                            "พักเที่ยง (12:00)",
-                            "เข้าบ่าย (13:00)",
-                            endT ? `ออก (${endT})` : "ออก",
-                          ];
+
+                          const normalLabor = labor.filter((l) => l.shifts?.normal);
+                          let requiredCount = 4;
+                          let minStartHour = 8;
+                          let maxEndHour = 17;
+                          if (normalLabor.length > 0) {
+                            const parseStartHour = (timeRange: string): number => {
+                              if (!timeRange) return 8;
+                              const parts = timeRange.split(" - ");
+                              if (parts.length < 1) return 8;
+                              const [h, m] = parts[0].split(":").map(Number);
+                              if (isNaN(h)) return 8;
+                              return h + (isNaN(m) ? 0 : m) / 60;
+                            };
+                            const parseEndHour = (timeRange: string): number => {
+                              if (!timeRange) return 17;
+                              const parts = timeRange.split(" - ");
+                              if (parts.length < 2) return 17;
+                              const [h, m] = parts[1].split(":").map(Number);
+                              if (isNaN(h)) return 17;
+                              return h + (isNaN(m) ? 0 : m) / 60;
+                            };
+                            minStartHour = normalLabor.reduce((min, l) => {
+                              const startHour = parseStartHour(l.shiftTimes?.day || "08:00 - 17:00");
+                              return Math.min(min, startHour);
+                            }, 24);
+                            maxEndHour = normalLabor.reduce((max, l) => {
+                              const endHour = parseEndHour(l.shiftTimes?.day || "08:00 - 17:00");
+                              return Math.max(max, endHour);
+                            }, 0);
+                            if (minStartHour >= 13.0 || maxEndHour <= 12.0) {
+                              requiredCount = 2;
+                            }
+                          }
+
+                          if (requiredCount === 2) {
+                            if (minStartHour >= 13.0) {
+                              slotLabels = [
+                                startT ? `เข้าบ่าย (${startT})` : "เข้าบ่าย",
+                                endT ? `ออก (${endT})` : "ออก",
+                              ];
+                            } else {
+                              slotLabels = [
+                                startT ? `เช้า (${startT})` : "เช้า",
+                                endT ? `ออก (${endT})` : "ออก",
+                              ];
+                            }
+                          } else {
+                            slotLabels = [
+                              startT ? `เช้า (${startT})` : "เช้า",
+                              "พักเที่ยง (12:00)",
+                              "เข้าบ่าย (13:00)",
+                              endT ? `ออก (${endT})` : "ออก",
+                            ];
+                          }
                         } else {
                           const otKey = shiftKey;
                           const otRange = getShiftTime(otKey);
@@ -3365,7 +3533,42 @@ export const DailyReportDetailPane: React.FC = () => {
                                       )}
                                     </div>
                                   ) : isProgressNotePhotosEditable ? (
-                                     <label
+                                    !isSlotTimeAllowed(slotIdx) ? (
+                                      <div
+                                        style={{
+                                          width: 120,
+                                          height: 120,
+                                          border: "1px dashed #cbd5e1",
+                                          borderRadius: 14,
+                                          background: "#f1f5f9",
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          color: "#94a3b8",
+                                          gap: "6px",
+                                          position: "relative",
+                                          cursor: "not-allowed",
+                                          opacity: 0.8
+                                        }}
+                                        title={`ยังไม่ถึงเวลาปฏิบัติงานสำหรับส่วน "${slotLabel}"`}
+                                        key={slotIdx}
+                                      >
+                                        <Lock size={18} style={{ color: "#94a3b8" }} />
+                                        <span
+                                          style={{
+                                            fontSize: "0.55rem",
+                                            fontWeight: 700,
+                                            textAlign: "center",
+                                            color: "#94a3b8",
+                                            padding: "0 4px"
+                                          }}
+                                        >
+                                          ยังไม่ถึงเวลากะ
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <label
                                       style={{
                                         width: 120,
                                         height: 120,
@@ -3420,7 +3623,8 @@ export const DailyReportDetailPane: React.FC = () => {
                                         disabled={isUploading}
                                       />
                                     </label>
-                                  ) : (
+                                  )
+                                ) : (
                                      <div
                                       style={{
                                         width: 120,
@@ -3878,6 +4082,42 @@ export const DailyReportDetailPane: React.FC = () => {
                       }}
                     />{" "}
                     
+                    <button
+                      onClick={handleSaveDraft}
+                      disabled={isSubmitting || isUploading}
+                      style={{
+                        padding: "12px 24px",
+                        borderRadius: "14px",
+                        border: "1.5px solid #cbd5e1",
+                        background: "#fff",
+                        color: "#475569",
+                        fontWeight: 900,
+                        cursor:
+                          isSubmitting || isUploading
+                            ? "not-allowed"
+                            : "pointer",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        transition: "all 0.2s"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSubmitting && !isUploading) {
+                          e.currentTarget.style.background = "#f8fafc";
+                          e.currentTarget.style.borderColor = "#94a3b8";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSubmitting && !isUploading) {
+                          e.currentTarget.style.background = "#fff";
+                          e.currentTarget.style.borderColor = "#cbd5e1";
+                        }
+                      }}
+                    >
+                      บันทึกแบบร่าง
+                    </button>
+
                     <button
                       onClick={handleSubmit}
                       disabled={isSubmitting || isUploading}

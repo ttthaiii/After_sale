@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
 import { db, storage } from "../lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { useWorkOrders } from "./WorkOrderContext";
 import { useAuth } from "./AuthContext";
 import { useNotifications } from "./NotificationContext";
@@ -157,6 +157,7 @@ interface DailyReportContextType {
   handleBounceBackSLA: (workOrderId: string, categoryId: string, taskId: string) => Promise<void>;
   handleSubmit: () => Promise<void>;
   handleFinalSubmit: () => Promise<void>;
+  handleSaveDraft: () => Promise<void>;
   handleCancelEdit: () => void;
   handleDateChange: (newDateStr: string) => void;
   
@@ -183,6 +184,66 @@ export const filterHistoryByRevision = (history: any[], revisionCreatedAt: strin
     const hTime = h.createdAt || h.serverTimestamp || h.date;
     return hTime && hTime > revisionCreatedAt;
   });
+};
+
+export const calculateWorkingHours = (timeRange: string): number => {
+  if (!timeRange) return 8;
+  const match = timeRange.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/);
+  if (!match) return 8;
+  const startHour = parseInt(match[1], 10);
+  const startMin = parseInt(match[2], 10);
+  const endHour = parseInt(match[3], 10);
+  const endMin = parseInt(match[4], 10);
+  
+  const startDecimal = startHour + startMin / 60;
+  const endDecimal = endHour + endMin / 60;
+  let diff = endDecimal - startDecimal;
+  
+  // Subtract 1 hour for lunch break if the shift spans from <= 12:00 to >= 13:00
+  if (startDecimal <= 12 && endDecimal >= 13) {
+    diff -= 1;
+  }
+  
+  return Math.max(0, Math.round(diff * 100) / 100);
+};
+
+export const getRequiredRegularPhotoCount = (laborList: any[]): number => {
+  const normalLabor = laborList.filter((l: any) => l.shifts?.normal);
+  if (normalLabor.length === 0) return 4;
+
+  const getShiftStartHour = (timeRange: string): number => {
+    if (!timeRange) return 8;
+    const parts = timeRange.split(" - ");
+    if (parts.length < 1) return 8;
+    const [h, m] = parts[0].split(":").map(Number);
+    if (isNaN(h)) return 8;
+    return h + (isNaN(m) ? 0 : m) / 60;
+  };
+  
+  const getShiftEndHour = (timeRange: string): number => {
+    if (!timeRange) return 17;
+    const parts = timeRange.split(" - ");
+    if (parts.length < 2) return 17;
+    const timePart = parts[1];
+    const [h, m] = timePart.split(":").map(Number);
+    if (isNaN(h)) return 17;
+    return h + (isNaN(m) ? 0 : m) / 60;
+  };
+  
+  const minStartHour = normalLabor.reduce((min, l) => {
+    const startHour = getShiftStartHour(l.shiftTimes?.day || "08:00 - 17:00");
+    return Math.min(min, startHour);
+  }, 24);
+
+  const maxEndHour = normalLabor.reduce((max, l) => {
+    const endHour = getShiftEndHour(l.shiftTimes?.day || "08:00 - 17:00");
+    return Math.max(max, endHour);
+  }, 0);
+  
+  if (minStartHour >= 13.0 || maxEndHour <= 12.0) {
+    return 2;
+  }
+  return 4;
 };
 
 export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -447,6 +508,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   useEffect(() => {
     if (!selectedTaskInfo) return;
+    let active = true;
     const existingReport = selectedTaskInfo.task.history?.find((h) => {
       const hTime = h.createdAt || h.serverTimestamp || h.date;
       return h.date?.split("T")[0] === reportDate &&
@@ -564,17 +626,66 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           min = h.progress;
         }
       });
-      setProgress(min);
-      setNote("");
-      setLabor([]);
-      setSitePhotos([]);
-      setLaborRegularPhotos([]);
-      setLaborOtMorningPhotos([]);
-      setLaborOtNoonPhotos([]);
-      setLaborOtEveningPhotos([]);
-      setActivePhotoTab("site");
-      setIsEditingExisting(isTaskFinished ? false : true);
+
+      const checkAndLoadDraft = async () => {
+        try {
+          const isWoaWop =
+            selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
+            selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+          const workOrderId = selectedTaskInfo.wo.id;
+          const categoryId = selectedTaskInfo.categoryId;
+          const taskId = selectedTaskInfo.task.id;
+          const getSubtaskId = (tId: string): string => {
+            if (tId && tId.startsWith("LR-")) {
+              return tId.substring(3);
+            }
+            return tId;
+          };
+          const subtaskId = getSubtaskId(taskId);
+          const taskDoc = workOrders.find((w) => w?.id === workOrderId)?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
+          const currentRev = taskDoc?.currentRevision || "rev00";
+          let draftDocRef;
+          if (isWoaWop) {
+            draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+          } else {
+            draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
+          }
+          const draftSnap = await getDoc(draftDocRef);
+          if (!active) return;
+          if (draftSnap.exists()) {
+            const draftData = draftSnap.data();
+            setProgress(draftData.progress ?? min);
+            setNote(draftData.note || "");
+            setLabor(draftData.labor || []);
+            setSitePhotos(draftData.sitePhotos || []);
+            setLaborRegularPhotos(draftData.laborRegularPhotos || []);
+            setLaborOtMorningPhotos(draftData.laborOtMorningPhotos || []);
+            setLaborOtNoonPhotos(draftData.laborOtNoonPhotos || []);
+            setLaborOtEveningPhotos(draftData.laborOtEveningPhotos || []);
+            setActivePhotoTab("site");
+            setIsEditingExisting(isTaskFinished ? false : true);
+            return;
+          }
+        } catch (err) {
+          console.error("Error checking draft:", err);
+        }
+        if (!active) return;
+        setProgress(min);
+        setNote("");
+        setLabor([]);
+        setSitePhotos([]);
+        setLaborRegularPhotos([]);
+        setLaborOtMorningPhotos([]);
+        setLaborOtNoonPhotos([]);
+        setLaborOtEveningPhotos([]);
+        setActivePhotoTab("site");
+        setIsEditingExisting(isTaskFinished ? false : true);
+      };
+      checkAndLoadDraft();
     }
+    return () => {
+      active = false;
+    };
   }, [reportDate, selectedTaskInfo?.task.id]);
 
   useEffect(() => {
@@ -598,23 +709,38 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const _pendingInspectionTasks: TaskListItem[] = [];
     const _pendingDeliveryWOs: PendingDeliveryItem[] = [];
     workOrders.forEach((wo) => {
-      if (["Draft", "Cancelled"].includes(wo.status))
+      if (["Draft", "Cancelled", "Completed", "Verified"].includes(wo.status))
         return;
+      const isWoOwner =
+        wo.woOwnerId === user?.id ||
+        (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+        wo.reporterId === user?.id ||
+        (user?.employeeId && wo.reporterId === user.employeeId);
+      const isParticipant =
+        user?.role === "Admin" ||
+        user?.role === "Manager" ||
+        isWoOwner ||
+        wo.categories.some((cat: any) =>
+          cat.tasks.some((t: any) =>
+            t.subtaskOperatorId === user?.id ||
+            (user?.employeeId && t.subtaskOperatorId === user.employeeId) ||
+            t.responsibleStaffIds?.includes(foremanId)
+          )
+        );
+      const hasActiveTasks = wo.categories.some((cat: any) =>
+        cat.tasks.some((t: any) => t.status !== "Pending" && t.status !== "Verified")
+      );
       let totalActiveTasks = 0;
       let completedActiveTasks = 0;
       const woTasksList: TaskListItem[] = [];
       wo.categories.forEach((cat: any) => {
         cat.tasks.forEach((task: any) => {
-          if (
-            task.status === "Pending" ||
-            task.status === "Verified"
-          )
+          const shouldSkip =
+            (task.status === "Pending" || task.status === "Verified") &&
+            (!isParticipant || !hasActiveTasks);
+          if (shouldSkip)
             return;
-          const isWoOwner2 =
-            wo.woOwnerId === user?.id ||
-            (user?.employeeId && wo.woOwnerId === user.employeeId) ||
-            wo.reporterId === user?.id ||
-            (user?.employeeId && wo.reporterId === user.employeeId);
+          const isWoOwner2 = isWoOwner;
           const isSubtaskOperator =
             task.subtaskOperatorId === user?.id ||
             (user?.employeeId && task.subtaskOperatorId === user.employeeId) ||
@@ -671,20 +797,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         });
       });
-      const isWoOwner =
-        wo.woOwnerId === user?.id ||
-        (user?.employeeId && wo.woOwnerId === user.employeeId) ||
-        wo.reporterId === user?.id ||
-        (user?.employeeId && wo.reporterId === user.employeeId);
-      const isParticipant =
-        isWoOwner ||
-        wo.categories.some((cat: any) =>
-          cat.tasks.some((t: any) =>
-            t.subtaskOperatorId === user?.id ||
-            (user?.employeeId && t.subtaskOperatorId === user.employeeId) ||
-            t.responsibleStaffIds?.includes(foremanId)
-          )
-        );
+
       const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
       const globalIsAllCompleted =
         globalTasks.length > 0 &&
@@ -1519,10 +1632,18 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (sitePhotos.filter(Boolean).length < 2)
       return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
     const isRegularActive = labor.some((l) => l.shifts?.normal);
-    if (isRegularActive && laborRegularPhotos.filter(Boolean).length < 4) {
-      return alert(
-        "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
-      );
+    if (isRegularActive) {
+      const requiredCount = getRequiredRegularPhotoCount(labor);
+      const uploadedCount = laborRegularPhotos.filter(Boolean).length;
+      if (uploadedCount < requiredCount) {
+        if (requiredCount === 2) {
+          return alert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+        } else {
+          return alert(
+            "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
+          );
+        }
+      }
     }
     const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
     if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
@@ -1666,7 +1787,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             otNoon: l.shifts?.otNoon || false,
           },
           expectedHours: {
-            normal: l.shifts?.normal ? 8 : 0,
+            normal: l.shifts?.normal ? calculateWorkingHours(l.shiftTimes?.day || "08:00 - 17:00") : 0,
             otMorning: l.shifts?.otMorning ? 2 : 0,
             otNoon: l.shifts?.otNoon ? 1 : 0,
             otEvening: l.shifts?.otEvening ? 3 : 0,
@@ -1774,6 +1895,35 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         selectedTaskInfo.task.id,
         newUpdate as any,
       );
+
+      // ลบแบบร่าง (Draft) ออกจากระบบเมื่อทำการส่งรายงานผลสำเร็จ
+      try {
+        const isWoaWop =
+          selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
+          selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+        const workOrderId = selectedTaskInfo.wo.id;
+        const categoryId = selectedTaskInfo.categoryId;
+        const taskId = selectedTaskInfo.task.id;
+        const getSubtaskId = (tId: string): string => {
+          if (tId && tId.startsWith("LR-")) {
+            return tId.substring(3);
+          }
+          return tId;
+        };
+        const subtaskId = getSubtaskId(taskId);
+        const taskDoc = workOrders.find((w) => w?.id === workOrderId)?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
+        const currentRev = taskDoc?.currentRevision || "rev00";
+        let draftDocRef;
+        if (isWoaWop) {
+          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+        } else {
+          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
+        }
+        await deleteDoc(draftDocRef);
+      } catch (deleteErr) {
+        console.error("Failed to delete draft:", deleteErr);
+      }
+
       alert("บันทึกรายงานเรียบร้อยแล้ว");
       setShowSummaryModal(false);
       if (existingHistory) {
@@ -1796,6 +1946,62 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       alert("บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (submittingRef.current || isSubmitting) return;
+    if (!selectedTaskInfo) return;
+    setIsSubmitting(true);
+    try {
+      const isWoaWop =
+        selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
+        selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+      const workOrderId = selectedTaskInfo.wo.id;
+      const categoryId = selectedTaskInfo.categoryId;
+      const taskId = selectedTaskInfo.task.id;
+      const getSubtaskId = (tId: string): string => {
+        if (tId && tId.startsWith("LR-")) {
+          return tId.substring(3);
+        }
+        return tId;
+      };
+      const subtaskId = getSubtaskId(taskId);
+      const taskDoc = workOrders.find((w) => w?.id === workOrderId)?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
+      const currentRev = taskDoc?.currentRevision || "rev00";
+
+      const draftPayload = {
+        progress,
+        note,
+        labor,
+        sitePhotos: sitePhotos.filter(Boolean),
+        laborRegularPhotos,
+        laborOtMorningPhotos,
+        laborOtNoonPhotos,
+        laborOtEveningPhotos,
+        reportType,
+        reportDate,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.employeeId || user?.id || "unknown",
+      };
+
+      let draftDocRef;
+      if (isWoaWop) {
+        const revDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev);
+        await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+
+        draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+      } else {
+        draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
+      }
+
+      await setDoc(draftDocRef, draftPayload);
+      alert("บันทึกแบบร่างเรียบร้อยแล้ว");
+    } catch (error) {
+      console.error("Save draft failed:", error);
+      alert("บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -2046,6 +2252,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         handleBounceBackSLA,
         handleSubmit,
         handleFinalSubmit,
+        handleSaveDraft,
         handleCancelEdit,
         handleDateChange,
         

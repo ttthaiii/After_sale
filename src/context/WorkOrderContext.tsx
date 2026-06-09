@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { WorkOrder, Category, MasterTask, DailyReport, Project, Staff, Contractor } from '../types';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
 import { TaskAssignee } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -1091,6 +1091,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const now = new Date().toISOString();
         
         let hasRejections = false;
+        const rejectedTaskNames: string[] = [];
         
         // Loop through categories and tasks to apply customer decision
         const categoriesSnap = await getDocs(collection(db, 'workOrders', woId, 'categories'));
@@ -1124,8 +1125,29 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         status: 'closed_approved',
                         approvedAt: now
                     }, { merge: true });
+
+                    // Send notification to the foreman responsible for this task
+                    try {
+                        const foremanId = taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || woData.woOwnerId || woData.reporterId || 'unknown';
+                        if (foremanId && foremanId !== 'unknown') {
+                            await addDoc(collection(db, 'notifications'), {
+                                recipientId: foremanId,
+                                senderId: 'customer',
+                                senderName: 'ลูกค้า',
+                                title: 'งานได้รับการอนุมัติจากลูกค้า',
+                                message: `งาน "${taskData.taskName || taskData.name || taskId}" (ใบงาน ${woId}) ได้รับการอนุมัติผ่านจากลูกค้าเรียบร้อยแล้ว`,
+                                type: 'success',
+                                targetPath: `/daily-report?id=${woId}`,
+                                isRead: false,
+                                createdAt: serverTimestamp()
+                            });
+                        }
+                    } catch (notifyErr) {
+                        console.error("Failed to send approval notification to foreman:", notifyErr);
+                    }
                 } else if (decision.status === 'rejected') {
                     hasRejections = true;
+                    rejectedTaskNames.push(taskData.taskName || taskData.name || taskId);
                     
                     // Close current revision as rejected
                     const currentRevisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
@@ -1183,6 +1205,26 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         createdAt: now
                     });
                     
+                    // Send notification to the foreman originally assigned (or the WO owner foreman who will re-do it)
+                    try {
+                        const origForemanId = taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || ownerId;
+                        if (origForemanId && origForemanId !== 'unknown') {
+                            await addDoc(collection(db, 'notifications'), {
+                                recipientId: origForemanId,
+                                senderId: 'customer',
+                                senderName: 'ลูกค้า',
+                                title: 'งานถูกปฏิเสธโดยลูกค้า',
+                                message: `งาน "${cleanName}" (ใบงาน ${woId}) ถูกปฏิเสธจากลูกค้า: ${decision.reason || 'กรุณาตรวจสอบและแก้ไข'}`,
+                                type: 'error',
+                                targetPath: `/daily-report?id=${woId}`,
+                                isRead: false,
+                                createdAt: serverTimestamp()
+                            });
+                        }
+                    } catch (notifyErr) {
+                        console.error("Failed to send reject notification to foreman:", notifyErr);
+                    }
+                    
                     // IMPORTANT: Do NOT clone labor records or daily reports into the new revision!
                     // This satisfies the constraint to start the new revision from a clean slate.
                 }
@@ -1199,6 +1241,23 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             woUpdates.status = 'Rejected';
             woUpdates.reviewedByAdmin = false;
             woUpdates.pendingAdminReassign = true; // gate: foremen locked until admin re-assigns
+
+            // Send notification to Admins
+            try {
+                await addDoc(collection(db, 'notifications'), {
+                    recipientRole: 'Admin',
+                    senderId: 'customer',
+                    senderName: 'ลูกค้า',
+                    title: 'ใบงานถูกปฏิเสธโดยลูกค้า',
+                    message: `ใบงาน ${woId} ถูกปฏิเสธในรายการ: ${rejectedTaskNames.join(', ')}`,
+                    type: 'error',
+                    targetPath: `/evaluation`,
+                    isRead: false,
+                    createdAt: serverTimestamp()
+                });
+            } catch (notifyErr) {
+                console.error("Failed to send reject notification to admin:", notifyErr);
+            }
         } else {
             woUpdates.status = 'Completed';
             woUpdates.completedAt = now;
@@ -1207,6 +1266,23 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     ...survey,
                     submittedAt: now
                 };
+            }
+
+            // Send notification to Admins for successful completion
+            try {
+                await addDoc(collection(db, 'notifications'), {
+                    recipientRole: 'Admin',
+                    senderId: 'customer',
+                    senderName: 'ลูกค้า',
+                    title: 'ใบงานได้รับการอนุมัติ (สำเร็จ)',
+                    message: `ใบงาน ${woId} ได้รับการตรวจสอบและอนุมัติผ่านจากลูกค้าเรียบร้อยแล้ว`,
+                    type: 'success',
+                    targetPath: `/evaluation`,
+                    isRead: false,
+                    createdAt: serverTimestamp()
+                });
+            } catch (notifyErr) {
+                console.error("Failed to send approval notification to admin:", notifyErr);
             }
         }
         

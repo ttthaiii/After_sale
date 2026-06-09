@@ -1,6 +1,9 @@
+import { useState, useEffect } from 'react';
 import { FileText, Download, Camera, User, UserCheck, CheckCircle, Clock, Activity, ChevronDown, Printer, Star, RotateCcw } from 'lucide-react';
 import { WorkOrder, MasterTask, Project, Staff, Contractor } from '../types';
 import { formatDate, formatDateTime } from '../utils/date';
+import { db } from '../lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 interface HistoryDetailModalProps {
     isOpen: boolean;
@@ -14,6 +17,119 @@ interface HistoryDetailModalProps {
 }
 
 const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, currentUserId, selectedTaskId }: HistoryDetailModalProps) => {
+    const [taskRevisions, setTaskRevisions] = useState<Record<string, any[]>>({});
+    const [selectedRevisions, setSelectedRevisions] = useState<Record<string, string>>({});
+
+    const getSubtaskId = (tId: string): string => {
+        if (tId && tId.startsWith('LR-')) {
+            return tId.substring(3);
+        }
+        return tId;
+    };
+
+    const getProgressPhotos = (h: any): string[] => {
+        if (!h || !h.photos) return [];
+        if (Array.isArray(h.photos)) {
+            return h.photos.filter(Boolean);
+        }
+        if (typeof h.photos === 'object') {
+            if (h.photos.site && Array.isArray(h.photos.site)) {
+                return h.photos.site.filter(Boolean);
+            }
+        }
+        return [];
+    };
+
+    const getPhotoFromReport = (report: any) => {
+        if (!report || !report.photos) return null;
+        const p = report.photos;
+        if (Array.isArray(p)) {
+            return p.find(Boolean) || null;
+        }
+        if (typeof p === 'object') {
+            // Priority 1: regular shift photos (last regular shift photo represents sign-out/after state)
+            if (p.laborByShift?.regular && Array.isArray(p.laborByShift.regular)) {
+                const regPhotos = p.laborByShift.regular.filter(Boolean);
+                if (regPhotos.length > 0) return regPhotos[regPhotos.length - 1];
+            }
+            // Priority 2: site photos
+            if (p.site && Array.isArray(p.site)) {
+                const siteP = p.site.filter(Boolean);
+                if (siteP.length > 0) return siteP[0];
+            }
+            // Priority 3: ot shift photos
+            for (const shift of ['otEvening', 'otNoon', 'otMorning']) {
+                const ot = p.laborByShift?.[shift];
+                if (ot) {
+                    if (ot.out) return ot.out;
+                    if (ot.in) return ot.in;
+                }
+            }
+        }
+        return null;
+    };
+
+
+    useEffect(() => {
+        if (!isOpen || !workOrder) return;
+
+        const loadAllRevisions = async () => {
+            const revisionsMap: Record<string, any[]> = {};
+            const selectedMap: Record<string, string> = {};
+
+            try {
+                for (const cat of (workOrder.categories || [])) {
+                    for (const task of (cat.tasks || [])) {
+                        if (!task) continue;
+                        const subtaskId = getSubtaskId(task.id);
+                        
+                        const revisionsSnap = await getDocs(
+                            collection(db, 'workOrders', workOrder.id, 'categories', cat.id, 'tasks', task.id, 'subtasks', subtaskId, 'revisions')
+                        );
+                        
+                        const revs: any[] = [];
+                        for (const revDoc of revisionsSnap.docs) {
+                            const revData = revDoc.data();
+                            
+                            const reportsSnap = await getDocs(
+                                collection(db, 'workOrders', workOrder.id, 'categories', cat.id, 'tasks', task.id, 'subtasks', subtaskId, 'revisions', revDoc.id, 'dailyReports')
+                            );
+                            const dailyReports = reportsSnap.docs.map(rd => ({
+                                ...rd.data(),
+                                id: rd.id
+                            })).sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+                            
+                            revs.push({
+                                id: revDoc.id,
+                                ...revData,
+                                dailyReports
+                            });
+                        }
+
+                        revs.sort((a, b) => b.id.localeCompare(a.id));
+                        
+                        if (revs.length === 0) {
+                            revs.push({
+                                id: task.currentRevision || 'rev00',
+                                status: 'active',
+                                dailyReports: task.history || []
+                            });
+                        }
+                        
+                        revisionsMap[task.id] = revs;
+                        selectedMap[task.id] = revs[0].id;
+                    }
+                }
+                setTaskRevisions(revisionsMap);
+                setSelectedRevisions(selectedMap);
+            } catch (err) {
+                console.error("Failed to load task revisions:", err);
+            }
+        };
+
+        loadAllRevisions();
+    }, [isOpen, workOrder]);
+
     if (!isOpen) return null;
 
     const project = projects.find(p => p.id === workOrder.projectId);
@@ -735,6 +851,11 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                 return !isAdminOrFakeReject;
                             }).map((task, idx) => {
                                 const performance = getSLAPerformance(task as any);
+                                const selectedRevId = selectedRevisions[task.id] || task.currentRevision || 'rev00';
+                                const selectedRevNum = parseInt(selectedRevId.replace('rev', ''));
+                                const currentRevObj = taskRevisions[task.id]?.find(r => r.id === selectedRevId) || { dailyReports: task.history || [] };
+                                const reports = currentRevObj?.dailyReports || [];
+
                                 const isCompleted = task.status === 'Completed' || task.dailyProgress === 100;
                                 const isUserContributor = currentUserId && (
                                     (task.responsibleStaffIds && task.responsibleStaffIds.includes(currentUserId)) ||
@@ -755,7 +876,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                                             <div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                     <div style={{ 
                                                         fontSize: '1rem', 
                                                         fontWeight: 800, 
@@ -777,6 +898,19 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                         )}
                                                         {idx + 1}. {task.name}
                                                     </div>
+                                                    <span style={{
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 900,
+                                                        background: '#f1f5f9',
+                                                        color: '#475569',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #e2e8f0',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center'
+                                                    }}>
+                                                        REV. {selectedRevNum}
+                                                    </span>
                                                     <div style={{
                                                         fontSize: '0.7rem',
                                                         fontWeight: 800,
@@ -873,6 +1007,48 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                             )}
                                         </div>
 
+                                        {/* Revision Selector Row */}
+                                        {taskRevisions[task.id] && taskRevisions[task.id].length > 1 && (
+                                            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }} className="no-print">
+                                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>รอบการแก้ไข:</span>
+                                                {taskRevisions[task.id].map((rev) => {
+                                                    const isSelected = selectedRevId === rev.id;
+                                                    const revNum = parseInt(rev.id.replace('rev', ''));
+                                                    return (
+                                                        <button
+                                                            key={rev.id}
+                                                            onClick={() => setSelectedRevisions(prev => ({ ...prev, [task.id]: rev.id }))}
+                                                            style={{
+                                                                padding: '6px 14px',
+                                                                borderRadius: '10px',
+                                                                border: isSelected ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
+                                                                background: isSelected ? '#eff6ff' : '#fff',
+                                                                color: isSelected ? '#2563eb' : '#64748b',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s',
+                                                                boxShadow: isSelected ? '0 2px 4px rgba(99, 102, 241, 0.1)' : 'none'
+                                                            }}
+                                                            onMouseEnter={(e) => {
+                                                                if (!isSelected) {
+                                                                    e.currentTarget.style.borderColor = '#94a3b8';
+                                                                    e.currentTarget.style.background = '#f8fafc';
+                                                                }
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                if (!isSelected) {
+                                                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                                                    e.currentTarget.style.background = '#fff';
+                                                                }
+                                                            }}
+                                                        >
+                                                            REV. {revNum} {rev.status === 'rejected' ? '(ไม่ผ่าน)' : '(ล่าสุด)'}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
 
                                         {/* Photos Side-by-Side */}
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
@@ -890,19 +1066,19 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                 </div>
                                             </div>
                                             <div style={{ position: 'relative' }}>
-                                                <div style={{ position: 'absolute', top: '12px', left: '12px', background: workOrder.status === 'Rejected' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)', color: 'white', padding: '4px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, zIndex: 1, backdropFilter: 'blur(4px)' }}>
-                                                    {workOrder.status === 'Rejected' ? 'REJECTED' : 'AFTER'}
+                                                <div style={{ position: 'absolute', top: '12px', left: '12px', background: (workOrder.status === 'Rejected' || currentRevObj.status === 'rejected') ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)', color: 'white', padding: '4px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, zIndex: 1, backdropFilter: 'blur(4px)' }}>
+                                                    {(workOrder.status === 'Rejected' || currentRevObj.status === 'rejected') ? 'REJECTED' : 'AFTER'}
                                                 </div>
                                                 <div style={{ width: '100%', aspectRatio: '16/10', borderRadius: '16px', overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                     {(() => {
-                                                        // 1. Find the report where progress reached 100%
-                                                        const completionReport = (task.history || []).find(h => h.progress === 100);
-                                                        const completionPhoto = completionReport && (completionReport as any).photos && (completionReport as any).photos.length > 0
-                                                            ? (completionReport as any).photos[0]
-                                                            : null;
+                                                        const completionReport = reports.find((h: any) => h.progress === 100);
+                                                        let completionPhoto = completionReport ? getPhotoFromReport(completionReport) : null;
                                                         
-                                                        // 2. Final URL to display (Priority: 100% Photo > official afterPhotoUrl)
-                                                        const displayPhoto = completionPhoto || task.afterPhotoUrl;
+                                                        if (!completionPhoto && reports.length > 0) {
+                                                            completionPhoto = getPhotoFromReport(reports[0]);
+                                                        }
+                                                        
+                                                        const displayPhoto = completionPhoto || (selectedRevId === (task.currentRevision || 'rev00') ? task.afterPhotoUrl : null);
 
                                                         if (displayPhoto) {
                                                             return <img loading="lazy" src={displayPhoto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="After" />;
@@ -911,7 +1087,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                         return (
                                                             <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '20px' }}>
                                                                 <Camera size={32} style={{ marginBottom: '8px' }} />
-                                                                <div style={{ fontSize: '0.8rem' }}>{workOrder.status === 'Rejected' ? 'ระงับการดำเนินการ' : 'ไม่มีรูปภาพเมื่อครบ 100%'}</div>
+                                                                <div style={{ fontSize: '0.8rem' }}>{(workOrder.status === 'Rejected' || currentRevObj.status === 'rejected') ? 'ระงับการดำเนินการ' : 'ไม่มีรูปภาพเมื่อครบ 100%'}</div>
                                                             </div>
                                                         );
                                                     })()}
@@ -920,11 +1096,11 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                         </div>
 
                                         {/* Work History Timeline (Moved below photos and wrapped) */}
-                                        {task.history && task.history.length > 0 && (
+                                        {reports && reports.length > 0 && (
                                             <details style={{ marginTop: '1.5rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
                                                 <summary style={{ padding: '12px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', listStyle: 'none', background: '#fff' }}>
                                                     <div style={{ fontSize: '0.9rem', fontWeight: 900, color: '#475569', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <Activity size={18} color="#6366f1" /> บันทึกการปฏิบัติงาน ({task.history.length} ครั้ง)
+                                                        <Activity size={18} color="#6366f1" /> บันทึกการปฏิบัติงาน ({reports.length} ครั้ง)
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#6366f1', fontSize: '0.85rem', fontWeight: 800 }}>
                                                         ดูประวัติการเข้างาน <ChevronDown size={14} />
@@ -932,7 +1108,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                 </summary>
                                                 
                                                 <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                                    {task.history.map((h) => {
+                                                    {reports.map((h: any) => {
                                                         const totalManpower = (h.labor || []).reduce((acc: number, l: any) => acc + (l.amount || 0), 0);
                                                         return (
                                                             <details key={h.id} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', background: '#fff' }}>
@@ -980,23 +1156,27 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                     </div>
 
                                                                     {/* Daily Progress Photos */}
-                                                                    {(h as any).photos && (h as any).photos.length > 0 && (
-                                                                        <div style={{ marginTop: '16px' }}>
-                                                                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '8px' }}>รูปภาพอัปเดตหน้างาน: {h.type === 'Problem' ? '(รูปประกอบปัญหา)' : ''}</div>
-                                                                            <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '8px' }}>
-                                                                                {(h as any).photos.map((photo: string, pIdx: number) => (
-                                                                                    <div key={pIdx} style={{ width: '120px', height: '120px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', flexShrink: 0, background: '#f8fafc' }}>
-                                                                                        <img 
-                                                                                            src={photo} 
-                                                                                            style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
-                                                                                            alt={`Progress ${pIdx + 1}`}
-                                                                                            onClick={() => window.open(photo, '_blank')}
-                                                                                        />
-                                                                                    </div>
-                                                                                ))}
+                                                                    {(() => {
+                                                                        const progPhotos = getProgressPhotos(h);
+                                                                        if (progPhotos.length === 0) return null;
+                                                                        return (
+                                                                            <div style={{ marginTop: '16px' }}>
+                                                                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '8px' }}>รูปภาพอัปเดตหน้างาน: {h.type === 'Problem' ? '(รูปประกอบปัญหา)' : ''}</div>
+                                                                                <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '8px' }}>
+                                                                                    {progPhotos.map((photo: string, pIdx: number) => (
+                                                                                        <div key={pIdx} style={{ width: '120px', height: '120px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', flexShrink: 0, background: '#f8fafc' }}>
+                                                                                            <img 
+                                                                                                src={photo} 
+                                                                                                style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
+                                                                                                alt={`Progress ${pIdx + 1}`}
+                                                                                                onClick={() => window.open(photo, '_blank')}
+                                                                                            />
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
-                                                                    )}
+                                                                        );
+                                                                    })()}
 
                                                                     {/* Labor Proof Photos (NEW) */}
                                                                     {(() => {

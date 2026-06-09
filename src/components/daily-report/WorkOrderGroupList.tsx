@@ -686,13 +686,11 @@ export const WorkOrderGroupList: React.FC = () => {
                       งานที่รอส่งมอบภาพรวม (Delivery)
                     </h3>
                     {pendingDeliveryWorkOrders.map(({ wo }) => {
-                      const isHelper = wo.id.includes("202G") || wo.id.includes("G-WO");
                       const isWoOwner =
-                        !isHelper &&
-                        (wo.woOwnerId === user?.id ||
-                          (user?.employeeId && wo.woOwnerId === user.employeeId) ||
-                          wo.reporterId === user?.id ||
-                          (user?.employeeId && wo.reporterId === user.employeeId));
+                        wo.woOwnerId === user?.id ||
+                        (user?.employeeId && wo.woOwnerId === user.employeeId) ||
+                        wo.reporterId === user?.id ||
+                        (user?.employeeId && wo.reporterId === user.employeeId);
 
                       const globalTasks = wo.categories.flatMap((c) => c.tasks);
                       const globalIsAllCompleted =
@@ -1274,15 +1272,13 @@ export const WorkOrderGroupList: React.FC = () => {
                                     {statusBadge}
                                     {isAllCompleted &&
                                       (() => {
-                                        const isHelper =
-                                          wo.id.includes("202G") ||
-                                          wo.id.includes("G-WO");
                                         const isWoOwner =
-                                          !isHelper &&
-                                          (wo.woOwnerId === user?.id ||
-                                            (user?.employeeId &&
-                                              wo.woOwnerId ===
-                                                user.employeeId));
+                                           wo.woOwnerId === user?.id ||
+                                           (user?.employeeId &&
+                                             wo.woOwnerId === user.employeeId) ||
+                                           wo.reporterId === user?.id ||
+                                           (user?.employeeId &&
+                                             wo.reporterId === user.employeeId);
                                         return isWoOwner ? (
                                            <button
                                             onClick={async (e) => {
@@ -1537,6 +1533,24 @@ export const WorkOrderGroupList: React.FC = () => {
                                                    }}
                                                  >
                                                     <span>{formatSubtaskId(task.subtaskId || task.id) || ""}</span>
+                                                     {task.currentRevision && task.currentRevision !== "rev00" && (
+                                                       <span
+                                                         style={{
+                                                           fontSize: "0.58rem",
+                                                           fontWeight: 900,
+                                                           color: "#ef4444",
+                                                           textTransform: "uppercase",
+                                                           background: "#fee2e2",
+                                                           padding: "1px 4px",
+                                                           borderRadius: "3px",
+                                                           whiteSpace: "nowrap",
+                                                           border: "1px solid #fca5a5",
+                                                           marginLeft: "4px",
+                                                         }}
+                                                       >
+                                                         REV. {parseInt(task.currentRevision.replace("rev", ""))}
+                                                       </span>
+                                                     )}
                                                    {foremanName && (
                                                      <span style={{ color: "#6366f1", fontWeight: 700 }}>
                                                        • 👤 {foremanName}
