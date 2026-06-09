@@ -193,15 +193,17 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
     };
 
     // Helper: Calculate Time vs SLA
-    const getSLAPerformance = (task: MasterTask) => {
-        // ✅ นำวันนัดดำเนินการ (slaStartTime) มาเป็นจุดเริ่มต้นนับเวลา ถ้าไม่มีให้ใช้จุดที่สร้างใบงาน
+    const getSLAPerformance = (task: MasterTask, revReports: any[] = [], allRevisions?: any[]) => {
         const reportDate = task.slaStartTime ? new Date(task.slaStartTime) : new Date(workOrder.createdAt);
 
-        const completionDate = task.status === 'Completed' && task.history && task.history.length > 0
-            ? new Date(task.history[task.history.length - 1].date)
-            : new Date();
+        const sortedRevDates = revReports.map((r: any) => r.date).filter(Boolean).sort();
 
-        // ✅ ตาราง SLA ที่ถูกต้องสอดคล้องกับ Dashboard
+        const completionDate = task.status === 'Completed' && sortedRevDates.length > 0
+            ? new Date(sortedRevDates[sortedRevDates.length - 1])
+            : task.status === 'Completed' && task.history && task.history.length > 0
+                ? new Date(task.history[task.history.length - 1].date)
+                : new Date();
+
         const slaMap: Record<string, number> = {
             'Immediately': 4,
             '24h': 24,
@@ -212,9 +214,16 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
         };
         const baselineHours = slaMap[task.slaCategory || ''] || 24;
 
-        const actualHoursUsed = task.actualCompletionTime !== undefined
-            ? task.actualCompletionTime
-            : Math.max(1, Math.floor((completionDate.getTime() - reportDate.getTime()) / (1000 * 60 * 60)));
+        let actualHoursUsed: number;
+        if (sortedRevDates.length >= 2) {
+            const first = new Date(sortedRevDates[0]);
+            const last = new Date(sortedRevDates[sortedRevDates.length - 1]);
+            actualHoursUsed = Math.max(8, Math.ceil((last.getTime() - first.getTime()) / (1000 * 60 * 60)));
+        } else {
+            actualHoursUsed = task.actualCompletionTime !== undefined
+                ? task.actualCompletionTime
+                : Math.max(1, Math.floor((completionDate.getTime() - reportDate.getTime()) / (1000 * 60 * 60)));
+        }
 
         // Helper to get leave hours from time range string
         const getLeaveHours = (timeRange: string): number => {
@@ -265,30 +274,24 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
             }
         };
 
-        // Calculate On-Site Time (derived from history labor logs)
-        let totalOnSiteHours = 0;
-        if (task.history) {
-            task.history.forEach(update => {
+        // Extract labor calculation into reusable helper
+        const calcOnSiteFromReports = (reps: any[]): number => {
+            let hrs = 0;
+            reps.forEach(update => {
                 const leaveList = update.leave || [];
                 const leaveMap = new Map<string, any>();
                 leaveList.forEach((lv: any) => {
                     const wId = lv.workerId || lv.id || lv.staffId || '';
-                    if (wId) {
-                        leaveMap.set(wId, lv);
-                    }
+                    if (wId) leaveMap.set(wId, lv);
                 });
-
                 (update.labor || []).forEach((l: any) => {
                     const wId = l.workerId || l.staffId || l.contractorId || l.id;
-                    const hasLeave = leaveMap.has(wId);
                     const leaveRecord = leaveMap.get(wId);
-                    
                     let leaveHours = 0;
-                    if (hasLeave && leaveRecord) {
+                    if (leaveRecord) {
                         const leaveTimeRange = leaveRecord.leaveTimes?.custom || '08:00 - 17:00';
                         leaveHours = getLeaveHours(leaveTimeRange);
                     }
-
                     if (l.shifts) {
                         let normalHr = 0;
                         if (l.shifts.normal) {
@@ -296,19 +299,26 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                             const duration = getShiftHours(regTime, 8);
                             normalHr = Math.max(0, duration - (regTime === '08:00 - 17:00' ? leaveHours : 0));
                         }
-                        totalOnSiteHours += (l.amount * normalHr);
-                        if (l.shifts.otMorning) {
-                            totalOnSiteHours += (l.amount * getShiftHours(l.shiftTimes?.otMorning, 2));
-                        }
-                        if (l.shifts.otNoon) {
-                            totalOnSiteHours += (l.amount * getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1));
-                        }
-                        if (l.shifts.otEvening) {
-                            totalOnSiteHours += (l.amount * getShiftHours(l.shiftTimes?.otEvening, 3));
-                        }
+                        hrs += (l.amount * normalHr);
+                        if (l.shifts.otMorning) hrs += (l.amount * getShiftHours(l.shiftTimes?.otMorning, 2));
+                        if (l.shifts.otNoon) hrs += (l.amount * getShiftHours(l.shiftTimes?.otNoon || '12:00 - 13:00', 1));
+                        if (l.shifts.otEvening) hrs += (l.amount * getShiftHours(l.shiftTimes?.otEvening, 3));
                     }
                 });
             });
+            return hrs;
+        };
+
+        // On-site hours for this revision (fall back to task.history if no revReports)
+        const reportsForCalc = revReports.length > 0 ? revReports : (task.history || []);
+        const totalOnSiteHours = calcOnSiteFromReports(reportsForCalc);
+
+        // Cumulative on-site hours across all revisions
+        let cumulativeOnSiteHours = totalOnSiteHours;
+        if (allRevisions && allRevisions.length > 0) {
+            cumulativeOnSiteHours = allRevisions.reduce((sum: number, rev: any) => {
+                return sum + calcOnSiteFromReports(rev.dailyReports || []);
+            }, 0);
         }
 
         const isOnTime = actualHoursUsed <= baselineHours;
@@ -317,6 +327,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
             target: baselineHours,
             actual: actualHoursUsed,
             onSite: totalOnSiteHours,
+            cumulative: cumulativeOnSiteHours,
             isOnTime,
             color: isOnTime ? '#10b981' : '#f59e0b'
         };
@@ -835,6 +846,41 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         </div>
                     </div>
 
+                    {/* Context Strip: other contributors */}
+                    {currentUserId && (() => {
+                        const allTasksWO = (workOrder.categories || []).flatMap(cat => cat.tasks || []);
+                        const otherIds = new Set<string>();
+                        allTasksWO.forEach(t => {
+                            (t.responsibleStaffIds || []).forEach(id => {
+                                if (id !== currentUserId) otherIds.add(id);
+                            });
+                        });
+                        if (otherIds.size === 0) return null;
+                        const others = Array.from(otherIds)
+                            .map(id => staff.find(s => s.id === id || s.employeeId === id))
+                            .filter(Boolean) as typeof staff;
+                        return (
+                            <div className="no-print" style={{ marginBottom: '1.5rem', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '16px', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0369a1' }}>ผู้ร่วมงานใน WO นี้:</span>
+                                {others.map(s => (
+                                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#0284c7', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 900, overflow: 'hidden', flexShrink: 0 }}>
+                                            {s.profileImage
+                                                ? <img loading="lazy" src={s.profileImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                : (s.name || '?').replace('คุณ', '').charAt(0).toUpperCase()}
+                                        </div>
+                                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0c4a6e' }}>
+                                            {s.name.startsWith('คุณ') ? s.name : `คุณ${s.name}`}
+                                        </span>
+                                    </div>
+                                ))}
+                                {others.length === 0 && otherIds.size > 0 && (
+                                    <span style={{ fontSize: '0.75rem', color: '#7dd3fc' }}>{otherIds.size} คน</span>
+                                )}
+                            </div>
+                        );
+                    })()}
+
                     {/* Task List Section */}
                     <div style={{ marginBottom: '2rem' }}>
                         <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -850,12 +896,15 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                     (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0);
                                 return !isAdminOrFakeReject;
                             }).map((task, idx) => {
-                                const performance = getSLAPerformance(task as any);
                                 const selectedRevId = selectedRevisions[task.id] || task.currentRevision || 'rev00';
                                 const selectedRevNum = parseInt(selectedRevId.replace('rev', ''));
                                 const currentRevObj = taskRevisions[task.id]?.find(r => r.id === selectedRevId) || { dailyReports: task.history || [] };
                                 const reports = currentRevObj?.dailyReports || [];
+                                const performance = getSLAPerformance(task as any, reports, taskRevisions[task.id]);
 
+                                const latestRevId = taskRevisions[task.id]?.[0]?.id || task.currentRevision || 'rev00';
+                                const isSelectedRevRejected = selectedRevId !== latestRevId && (taskRevisions[task.id]?.length ?? 0) > 1;
+                                const revRejectReason = (currentRevObj as any).rejectReason || task.rejectReason;
                                 const isCompleted = task.status === 'Completed' || task.dailyProgress === 100;
                                 const isUserContributor = currentUserId && (
                                     (task.responsibleStaffIds && task.responsibleStaffIds.includes(currentUserId)) ||
@@ -887,6 +936,8 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                     }}>
                                                                                         {isCompleted ? (
                                                             <CheckCircle size={18} style={{ color: '#10b981' }} />
+                                                        ) : isSelectedRevRejected ? (
+                                                            <RotateCcw size={18} style={{ color: '#be123c' }} />
                                                         ) : task.status === 'Rejected' ? (
                                                             <RotateCcw size={18} style={{ color: '#be123c' }} />
                                                         ) : task.status === 'In Progress' ? (
@@ -916,44 +967,52 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                         fontWeight: 800,
                                                         padding: '4px 10px',
                                                         borderRadius: '8px',
-                                                        background: isCompleted 
-                                                            ? '#ecfdf5' 
-                                                            : task.status === 'Rejected'
+                                                        background: isCompleted
+                                                            ? '#ecfdf5'
+                                                            : isSelectedRevRejected
                                                                 ? '#fff1f2'
-                                                                : task.status === 'In Progress' 
-                                                                    ? '#eff6ff' 
-                                                                    : task.status === 'Assigned' 
-                                                                        ? '#fff7ed' 
+                                                                : task.status === 'Rejected'
+                                                                ? '#fff1f2'
+                                                                : task.status === 'In Progress'
+                                                                    ? '#eff6ff'
+                                                                    : task.status === 'Assigned'
+                                                                        ? '#fff7ed'
                                                                         : '#f8fafc',
-                                                        color: isCompleted 
-                                                            ? '#10b981' 
-                                                            : task.status === 'Rejected'
+                                                        color: isCompleted
+                                                            ? '#10b981'
+                                                            : isSelectedRevRejected
                                                                 ? '#be123c'
-                                                                : task.status === 'In Progress' 
-                                                                    ? '#3b82f6' 
-                                                                    : task.status === 'Assigned' 
-                                                                        ? '#f97316' 
+                                                                : task.status === 'Rejected'
+                                                                ? '#be123c'
+                                                                : task.status === 'In Progress'
+                                                                    ? '#3b82f6'
+                                                                    : task.status === 'Assigned'
+                                                                        ? '#f97316'
                                                                         : '#64748b',
                                                         border: `1px solid ${
-                                                            isCompleted 
-                                                                ? '#d1fae5' 
-                                                                : task.status === 'Rejected'
+                                                            isCompleted
+                                                                ? '#d1fae5'
+                                                                : isSelectedRevRejected
                                                                     ? '#ffe4e6'
-                                                                    : task.status === 'In Progress' 
-                                                                        ? '#dbeafe' 
-                                                                        : task.status === 'Assigned' 
-                                                                            ? '#ffedd5' 
+                                                                    : task.status === 'Rejected'
+                                                                    ? '#ffe4e6'
+                                                                    : task.status === 'In Progress'
+                                                                        ? '#dbeafe'
+                                                                        : task.status === 'Assigned'
+                                                                            ? '#ffedd5'
                                                                             : '#e2e8f0'
                                                         }`
                                                     }}>
-                                                        {isCompleted 
-                                                            ? 'สำเร็จ' 
-                                                            : task.status === 'Rejected'
+                                                        {isCompleted
+                                                            ? 'สำเร็จ'
+                                                            : isSelectedRevRejected
+                                                                ? 'ไม่ผ่าน'
+                                                                : task.status === 'Rejected'
                                                                 ? 'ส่งคืนแก้ไข (ลูกค้า)'
-                                                                : task.status === 'In Progress' 
-                                                                    ? 'กำลังดำเนินการ' 
-                                                                    : task.status === 'Assigned' 
-                                                                        ? 'มอบหมายแล้ว' 
+                                                                : task.status === 'In Progress'
+                                                                    ? 'กำลังดำเนินการ'
+                                                                    : task.status === 'Assigned'
+                                                                        ? 'มอบหมายแล้ว'
                                                                         : 'รอมอบหมาย'}
                                                     </div>
                                                     {task.responsibleStaffIds && task.responsibleStaffIds.length > 0 && (
@@ -983,37 +1042,120 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                     <span><strong>หมวดงาน:</strong> {(task as any).categoryName}</span>
                                                     <span>ประเภท SLA: {task.slaCategory || 'ทั่วไป'}</span>
                                                 </div>
+                                                {isSelectedRevRejected && revRejectReason && (
+                                                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#fff1f2', border: '1px solid #ffe4e6', borderRadius: '10px', padding: '8px 12px' }}>
+                                                        <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>⛔</span>
+                                                        <div style={{ fontSize: '0.8rem', color: '#9f1239', fontWeight: 700, lineHeight: 1.5 }}>
+                                                            <span style={{ color: '#be123c', fontWeight: 900 }}>เหตุผลที่ไม่ผ่าน: </span>
+                                                            {revRejectReason}
+                                                            {task.contactName && (
+                                                                <span style={{ color: '#64748b', fontWeight: 600, marginLeft: '8px' }}>
+                                                                    — ลูกค้า: {task.contactName}{task.contactPhone ? ` (${task.contactPhone})` : ''}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                             {workOrder.status !== 'Rejected' && (
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>SLA Performance</div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                                                <div style={{ textAlign: 'right', minWidth: '180px' }}>
+                                                    <div style={{ fontSize: '0.6rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>SLA Performance</div>
+                                                    {/* Verdict badge */}
+                                                    <div style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                        padding: '5px 12px', borderRadius: '10px', marginBottom: '8px',
+                                                        background: performance.isOnTime ? '#ecfdf5' : '#fff7ed',
+                                                        border: `1px solid ${performance.isOnTime ? '#6ee7b7' : '#fed7aa'}`,
+                                                    }}>
+                                                        <span style={{ fontSize: '0.85rem' }}>{performance.isOnTime ? '✅' : '⚠️'}</span>
+                                                        <span style={{ fontSize: '0.78rem', fontWeight: 900, color: performance.isOnTime ? '#065f46' : '#9a3412' }}>
+                                                            {performance.isOnTime
+                                                                ? 'เสร็จทันเวลา'
+                                                                : `เกินกำหนด ${performance.actual - performance.target} ชม.`}
+                                                        </span>
+                                                    </div>
+                                                    {/* 2 supporting numbers */}
+                                                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700 }}>เป้าหมาย</div>
+                                                            <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700 }}>เป้าหมาย SLA</div>
                                                             <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>{performance.target} ชม.</div>
                                                         </div>
-                                                        <div style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 4px' }}></div>
+                                                        <div style={{ width: '1px', background: '#e2e8f0' }}></div>
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700 }}>เวลาทั้งหมด</div>
-                                                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: performance.color }}>{performance.actual} ชม.</div>
-                                                        </div>
-                                                        <div style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 4px' }}></div>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                                            <div style={{ fontSize: '0.7rem', color: '#4f46e5', fontWeight: 800 }}>ลงปฏิบัติงานจริง</div>
-                                                            <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#4f46e5' }}>{performance.onSite} ชม.</div>
+                                                            <div style={{ fontSize: '0.65rem', color: '#4f46e5', fontWeight: 800 }}>แรงงานรวมทุก rev.</div>
+                                                            <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#4f46e5' }}>{performance.cumulative} ชม.</div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
 
+                                        {/* Rejection Timeline — show when there are rejected revisions */}
+                                        {taskRevisions[task.id] && taskRevisions[task.id].length > 1 && (() => {
+                                            const slaMapRT: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+                                            const baseHrs = slaMapRT[task.slaCategory || ''] || 24;
+                                            const origStart = task.slaStartTime ? new Date(task.slaStartTime) : new Date(workOrder.createdAt);
+                                            const origDeadline = new Date(origStart.getTime() + baseHrs * 60 * 60 * 1000);
+                                            const revsSorted = [...taskRevisions[task.id]].sort((a, b) => a.id.localeCompare(b.id));
+                                            const rejectedRevs = revsSorted.filter(r => r.status === 'rejected' || r.status === 'Rejected');
+                                            if (rejectedRevs.length === 0) return null;
+                                            return (
+                                                <div className="no-print" style={{ marginBottom: '16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px', padding: '14px 18px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                                        <RotateCcw size={15} color="#d97706" />
+                                                        <span style={{ fontSize: '0.82rem', fontWeight: 900, color: '#92400e' }}>ประวัติการส่งคืน ({rejectedRevs.length} ครั้ง)</span>
+                                                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 700, color: '#b45309' }}>เดดไลน์เดิม: {formatDate(origDeadline.toISOString())}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                        {rejectedRevs.map((rev) => {
+                                                            const revNum = parseInt(rev.id.replace('rev', ''));
+                                                            const revDates = (rev.dailyReports || []).map((r: any) => r.date).filter(Boolean).sort();
+                                                            const rawStart = rev.createdAt;
+                                                            const rawEnd = rev.rejectedAt;
+                                                            const toIso = (v: any) => typeof v === 'string' ? v : v?.toDate?.()?.toISOString?.() || '';
+                                                            const startStr = rawStart ? formatDate(toIso(rawStart)) : (revDates[0] ? formatDate(revDates[0]) : '-');
+                                                            const endStr = rawEnd ? formatDate(toIso(rawEnd)) : (revDates[revDates.length - 1] ? formatDate(revDates[revDates.length - 1]) : '-');
+                                                            const endDate = rawEnd ? new Date(toIso(rawEnd)) : null;
+                                                            const isOver = endDate ? endDate > origDeadline : false;
+                                                            const overDays = isOver && endDate ? Math.ceil((endDate.getTime() - origDeadline.getTime()) / 86400000) : 0;
+                                                            const reason = rev.rejectReason || null;
+                                                            const contact = rev.contactName || null;
+                                                            const phone = rev.contactPhone || null;
+                                                            return (
+                                                                <div key={rev.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', background: '#fff', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                                                                    <div style={{ minWidth: '48px', textAlign: 'center', background: '#fff7ed', borderRadius: '8px', padding: '4px 6px', border: '1px solid #fed7aa' }}>
+                                                                        <div style={{ fontSize: '0.6rem', color: '#9a3412', fontWeight: 800 }}>REV.</div>
+                                                                        <div style={{ fontSize: '1rem', fontWeight: 900, color: '#c2410c' }}>{revNum}</div>
+                                                                    </div>
+                                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                                        <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 700, marginBottom: '3px' }}>
+                                                                            {startStr} → ส่งคืน {endStr}
+                                                                            {isOver ? (
+                                                                                <span style={{ marginLeft: '8px', color: '#ef4444', fontWeight: 900 }}>เกินเดดไลน์ {overDays} วัน</span>
+                                                                            ) : endDate ? (
+                                                                                <span style={{ marginLeft: '8px', color: '#10b981', fontWeight: 800 }}>ยังไม่เกินเดดไลน์</span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                        {reason && <div style={{ fontSize: '0.75rem', color: '#92400e' }}>เหตุผล: <span style={{ fontWeight: 800 }}>{reason}</span></div>}
+                                                                        {contact && <div style={{ fontSize: '0.72rem', color: '#b45309' }}>ผู้แจ้ง: {contact}{phone ? ` · ${phone}` : ''}</div>}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* Revision Selector Row */}
                                         {taskRevisions[task.id] && taskRevisions[task.id].length > 1 && (
                                             <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }} className="no-print">
                                                 <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>รอบการแก้ไข:</span>
-                                                {taskRevisions[task.id].map((rev) => {
+                                                {taskRevisions[task.id].map((rev, rIdx) => {
                                                     const isSelected = selectedRevId === rev.id;
                                                     const revNum = parseInt(rev.id.replace('rev', ''));
+                                                    const isRejected = rev.status === 'rejected' || rev.status === 'Rejected';
+                                                    const label = isRejected ? ' (ไม่ผ่าน)' : rIdx === 0 ? ' (ล่าสุด)' : '';
                                                     return (
                                                         <button
                                                             key={rev.id}
@@ -1023,7 +1165,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                 borderRadius: '10px',
                                                                 border: isSelected ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
                                                                 background: isSelected ? '#eff6ff' : '#fff',
-                                                                color: isSelected ? '#2563eb' : '#64748b',
+                                                                color: isSelected ? '#2563eb' : isRejected ? '#be123c' : '#64748b',
                                                                 fontSize: '0.75rem',
                                                                 fontWeight: 800,
                                                                 cursor: 'pointer',
@@ -1043,7 +1185,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                 }
                                                             }}
                                                         >
-                                                            REV. {revNum} {rev.status === 'rejected' ? '(ไม่ผ่าน)' : '(ล่าสุด)'}
+                                                            REV. {revNum}{label}
                                                         </button>
                                                     );
                                                 })}
@@ -1115,8 +1257,23 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                                 <summary style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', listStyle: 'none' }}>
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                                                                         <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>
-                                                                                {formatDateTime(h.date)}
+                                                                                {formatDate(h.date)}
                                                                         </div>
+                                                                        {(() => {
+                                                                            const shiftStr = h.labor?.[0]?.shiftTimes?.day as string | undefined;
+                                                                            if (!shiftStr) return null;
+                                                                            const parts = shiftStr.split(' - ');
+                                                                            if (parts.length !== 2) return null;
+                                                                            const [startStr, endStr] = parts;
+                                                                            const [sh, sm] = startStr.split(':').map(Number);
+                                                                            const [eh, em] = endStr.split(':').map(Number);
+                                                                            const hrs = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 10) / 10;
+                                                                            return (
+                                                                                <div style={{ fontSize: '0.75rem', color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                                                    ⏱ {shiftStr}{hrs > 0 ? ` (${hrs} ชม.)` : ''}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                         <div style={{ fontSize: '0.75rem', color: '#6366f1', background: '#eef2ff', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                                             Progress: {h.progress}%
                                                                         </div>
