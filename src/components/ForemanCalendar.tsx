@@ -89,7 +89,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                 cat.tasks.forEach(task => {
                     const isResponsible = task.responsibleStaffIds?.includes(currentUserId);
                     if (task.history && task.history.length > 0) {
-                        const sortedHistory = [...task.history].sort((a, b) => a.date.localeCompare(b.date));
+                        const sortedHistory = [...task.history].filter(h => h?.date).sort((a, b) => a.date.localeCompare(b.date));
                         sortedHistory.forEach((h, hIdx) => {
                             const isUserInLabor = h.labor?.some(l => l.staffId === currentUserId);
                             if (isResponsible || isUserInLabor) {
@@ -216,11 +216,11 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                 cat.tasks.forEach(task => {
                     const isResponsible = task.responsibleStaffIds?.includes(currentUserId);
                     const hasHistory = task.history?.some(h =>
-                        h.date.startsWith(monthPrefix) && h.labor?.some(l => l.staffId === currentUserId)
+                        h?.date?.startsWith(monthPrefix) && h.labor?.some(l => l.staffId === currentUserId)
                     );
 
                     if (isResponsible || hasHistory) {
-                        const historyInMonth = (task.history || []).filter(h => h.date.startsWith(monthPrefix));
+                        const historyInMonth = (task.history || []).filter(h => h?.date?.startsWith(monthPrefix));
                         if (historyInMonth.length > 0) {
                             const sortedH = [...historyInMonth].sort((a, b) => a.date.localeCompare(b.date));
                             const start = sortedH[0].date.split('T')[0];
@@ -514,7 +514,7 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
     const startEditing = (ev: any) => {
         const wo = workOrders.find(w => w.id === ev.woId);
         const task = wo?.categories?.flatMap(c => c.tasks).find(t => t.id === ev.taskId);
-        const historyEntry = task?.history?.find((h: any) => h.date.startsWith(dateStr));
+        const historyEntry = task?.history?.find((h: any) => h?.date?.startsWith(dateStr));
         // Deep copy labor records including shiftTimes
         setTempLabor(JSON.parse(JSON.stringify(historyEntry?.labor || ev.labor || [])));
         setIsEditingId(ev.taskId);
@@ -526,7 +526,7 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
             const wo = workOrders.find(w => w.id === ev.woId);
             const category = wo?.categories?.find(c => c.tasks.some(t => t.id === ev.taskId));
             const task = category?.tasks.find(t => t.id === ev.taskId);
-            const historyEntry = task?.history?.find((h: any) => h.date.startsWith(dateStr));
+            const historyEntry = task?.history?.find((h: any) => h?.date?.startsWith(dateStr));
             if (!wo || !category || !historyEntry) throw new Error("WorkOrder, Category, or History entry not found");
             
             await addTaskUpdate(wo.id, category.id, ev.taskId, {
