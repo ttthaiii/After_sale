@@ -75,6 +75,11 @@ export interface WorkTask {
   reason?: string;
   taskName?: string;
   subtaskId?: string;
+  isHelper?: boolean;
+  isSupportRequest?: boolean;
+  isPickedUpBySupport?: boolean;
+  assignedForeman?: string;
+  helperForemanIds?: string[];
 }
 
 export interface WorkOrderCategory {

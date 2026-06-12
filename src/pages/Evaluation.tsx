@@ -1,19 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import WorkOrderCard from '../components/WorkOrderCard';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
-import { CheckSquare, Search, Calendar, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info } from 'lucide-react';
+import { CheckSquare, Search, Calendar, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info, Users } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useNotifications } from '../context/NotificationContext';
 import AdminAssignModal from '../components/AdminAssignModal';
+import AdminAssignHelperModal from '../components/AdminAssignHelperModal';
 import { formatDate } from '../utils/date';
 import CustomDateInput from '../components/CustomDateInput';
 
 const Evaluation = () => {
     const { user } = useAuth();
+    const { sendNotification } = useNotifications();
     const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
@@ -34,6 +37,10 @@ const Evaluation = () => {
         message: string;
         type: 'success' | 'info' | 'warning' | 'error';
     } | null>(null);
+
+    const [activeTab, setActiveTab] = useState<'evaluation' | 'helper'>('evaluation');
+    const [assigningHelperTask, setAssigningHelperTask] = useState<MasterTask | null>(null);
+    const [helperTaskWoId, setHelperTaskWoId] = useState<string>('');
 
     // ✅ Deep Link: Open Work Order if ID is in URL with State Validation (Case A)
     useEffect(() => {
@@ -160,6 +167,30 @@ const Evaluation = () => {
             const validB = isNaN(timeB) ? 0 : timeB;
             return validB - validA;
         }); // Sort Newest Submitted First
+
+    const pendingHelperTasks = useMemo(() => {
+        const tasksList: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
+        workOrders.forEach(wo => {
+            if (['Cancelled', 'Draft', 'Completed', 'Verified'].includes(wo.status)) return;
+            
+            wo.categories.forEach(cat => {
+                cat.tasks.forEach(t => {
+                    const isPendingSupport = t.isSupportRequest === true && t.isPickedUpBySupport !== true;
+                    if (isPendingSupport) {
+                        const matchesSearch = (t.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase());
+                        const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
+                        
+                        if (matchesSearch && matchesProject) {
+                            tasksList.push({ task: t, wo, categoryId: cat.id });
+                        }
+                    }
+                });
+            });
+        });
+        return tasksList;
+    }, [workOrders, searchTerm, selectedProjectId]);
 
     // ✅ Track Page View
     useEffect(() => {
@@ -302,6 +333,53 @@ const Evaluation = () => {
                 />
             )}
 
+            {assigningHelperTask && (
+                <AdminAssignHelperModal
+                    isOpen={!!assigningHelperTask}
+                    onClose={() => {
+                        setAssigningHelperTask(null);
+                        setHelperTaskWoId('');
+                    }}
+                    task={assigningHelperTask}
+                    workOrderId={helperTaskWoId}
+                    staffList={staff}
+                    onAssign={async (foremanId) => {
+                        const category = workOrders.find(w => w.id === helperTaskWoId)?.categories.find(c => c.tasks.some(t => t.id === assigningHelperTask.id));
+                        if (category) {
+                            await updateTask(helperTaskWoId, category.id, assigningHelperTask.id, {
+                                isPickedUpBySupport: true,
+                                assignedForeman: foremanId,
+                                helperForemanIds: [foremanId]
+                            });
+
+                            // Send notification to the helper foreman
+                            try {
+                                await sendNotification({
+                                    recipientId: foremanId,
+                                    senderId: user?.id || 'admin',
+                                    senderName: user?.name || 'Admin',
+                                    title: 'ได้รับมอบหมายงานช่วย',
+                                    message: `คุณได้รับมอบหมายให้เข้าช่วยงาน: ${assigningHelperTask.name} (ใบงาน ${helperTaskWoId})`,
+                                    type: 'info',
+                                    targetPath: `/daily-report?id=${helperTaskWoId}`
+                                });
+                            } catch (err) {
+                                console.error("Failed to send helper assignment notification:", err);
+                            }
+
+                            setModalAlert({
+                                isOpen: true,
+                                title: 'มอบหมายงานช่วยสำเร็จ',
+                                message: `มอบหมายงานช่วย ${assigningHelperTask.name} เรียบร้อยแล้ว`,
+                                type: 'success'
+                            });
+                        }
+                        setAssigningHelperTask(null);
+                        setHelperTaskWoId('');
+                    }}
+                />
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 <div style={{ background: '#f5f3ff', padding: '16px', borderRadius: '20px', color: '#7c3aed', border: '1px solid #ede9fe', boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.1)' }}>
                     <CheckSquare size={36} />
@@ -310,6 +388,50 @@ const Evaluation = () => {
                     <h1 style={{ margin: 0, fontSize: '2.25rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em' }}>ระบบประเมินและอนุมัติ</h1>
                     <span style={{ color: '#64748b', fontSize: '1.1rem', marginTop: '6px', display: 'block', fontWeight: 500 }}>ตรวจสอบและรับรองรายการแจ้งซ่อม</span>
                 </div>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem', marginLeft: '4px', marginRight: '4px' }}>
+                <button
+                    onClick={() => setActiveTab('evaluation')}
+                    style={{
+                        padding: '10px 20px',
+                        border: 'none',
+                        background: 'none',
+                        fontSize: '1rem',
+                        fontWeight: 800,
+                        color: activeTab === 'evaluation' ? '#4f46e5' : '#64748b',
+                        borderBottom: activeTab === 'evaluation' ? '3px solid #4f46e5' : '3px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    <CheckSquare size={18} />
+                    ประเมินใบงาน ({pendingWorkOrders.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('helper')}
+                    style={{
+                        padding: '10px 20px',
+                        border: 'none',
+                        background: 'none',
+                        fontSize: '1rem',
+                        fontWeight: 800,
+                        color: activeTab === 'helper' ? '#4f46e5' : '#64748b',
+                        borderBottom: activeTab === 'helper' ? '3px solid #4f46e5' : '3px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    <Users size={18} />
+                    จัดสรรงานช่วย ({pendingHelperTasks.length})
+                </button>
             </div>
 
             {/* Filters */}
@@ -340,13 +462,19 @@ const Evaluation = () => {
                         >
                             <option value="">-- ทุกโครงการ --</option>
                             {projects
-                                .filter(p => workOrders.some(wo => wo.projectId === p.id && (
-                                    wo.status === 'Evaluating' ||
-                                    (wo.status === 'Rejected' && (
-                                        wo.pendingAdminReassign === true ||
-                                        (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
-                                    ))
-                                )))
+                                .filter(p => {
+                                    if (activeTab === 'evaluation') {
+                                        return workOrders.some(wo => wo.projectId === p.id && (
+                                            wo.status === 'Evaluating' ||
+                                            (wo.status === 'Rejected' && (
+                                                wo.pendingAdminReassign === true ||
+                                                (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
+                                            ))
+                                        ));
+                                    } else {
+                                        return workOrders.some(wo => wo.projectId === p.id && wo.categories.some(c => c.tasks.some(t => t.isSupportRequest === true && t.isPickedUpBySupport !== true)));
+                                    }
+                                })
                                 .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                         <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
@@ -379,27 +507,98 @@ const Evaluation = () => {
                 gap: '1.5rem',
                 padding: '4px'
             }}>
-                {pendingWorkOrders.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่พบงานที่รอตรวจสอบ</div>
-                        <div style={{ fontSize: '1rem', color: '#94a3b8', marginTop: '8px' }}>รายการที่รอประเมินจะปรากฏขึ้นที่นี่</div>
-                    </div>
+                {activeTab === 'evaluation' ? (
+                    pendingWorkOrders.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่พบงานที่รอตรวจสอบ</div>
+                            <div style={{ fontSize: '1rem', color: '#94a3b8', marginTop: '8px' }}>รายการที่รอประเมินจะปรากฏขึ้นที่นี่</div>
+                        </div>
+                    ) : (
+                        pendingWorkOrders.map(wo => (
+                            <WorkOrderCard
+                                key={wo.id}
+                                wo={wo}
+                                variant="compact"
+                                showStatusBadge={true}
+                                onClick={() => handleCardClick(wo)}
+                                style={highlightedId === wo.id ? { 
+                                    border: '2px solid #3b82f6', 
+                                    boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)',
+                                    background: '#eff6ff',
+                                    transform: 'scale(1.02)'
+                                } : {}}
+                            />
+                        ))
+                    )
                 ) : (
-                    pendingWorkOrders.map(wo => (
-                        <WorkOrderCard
-                            key={wo.id}
-                            wo={wo}
-                            variant="compact"
-                            showStatusBadge={true}
-                            onClick={() => handleCardClick(wo)}
-                            style={highlightedId === wo.id ? { 
-                                border: '2px solid #3b82f6', 
-                                boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)',
-                                background: '#eff6ff',
-                                transform: 'scale(1.02)'
-                            } : {}}
-                        />
-                    ))
+                    pendingHelperTasks.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่พบรายการคำขอความช่วยเหลือ</div>
+                            <div style={{ fontSize: '1rem', color: '#94a3b8', marginTop: '8px' }}>รายการคำขอคนงานซัพพอร์ตที่ยังไม่ได้รับงานจะแสดงขึ้นที่นี่</div>
+                        </div>
+                    ) : (
+                        pendingHelperTasks.map(({ task, wo }) => {
+                            const projName = projects.find(p => p.id === wo.projectId)?.name || 'ไม่ระบุโครงการ';
+                            return (
+                                <div 
+                                    key={task.id}
+                                    style={{
+                                        background: '#ffffff',
+                                        padding: '24px',
+                                        borderRadius: '24px',
+                                        border: '1px solid #e2e8f0',
+                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        gap: '12px'
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 900, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                                                งานช่วย (Support)
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', fontFamily: 'monospace' }}>
+                                                {wo.id}
+                                            </span>
+                                        </div>
+                                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>
+                                            {task.name || (task as any).taskName}
+                                        </h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem', color: '#475569' }}>
+                                            <div><strong>โครงการ:</strong> {projName}</div>
+                                            <div><strong>สถานที่:</strong> {wo.locationName || '-'}</div>
+                                            <div><strong>ผู้ขอความช่วยเหลือ:</strong> {wo.reporterName || 'โฟร์แมนหลัก'}</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setHelperTaskWoId(wo.id);
+                                            setAssigningHelperTask(task);
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '10px',
+                                            borderRadius: '12px',
+                                            border: 'none',
+                                            background: '#3b82f6',
+                                            color: '#ffffff',
+                                            fontWeight: 800,
+                                            fontSize: '0.82rem',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            boxShadow: '0 4px 10px rgba(59, 130, 246, 0.2)'
+                                        }}
+                                        onMouseOver={(e) => e.currentTarget.style.background = '#2563eb'}
+                                        onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
+                                    >
+                                        จัดสรรโฟร์แมนช่วย
+                                    </button>
+                                </div>
+                            );
+                        })
+                    )
                 )}
             </div>
 

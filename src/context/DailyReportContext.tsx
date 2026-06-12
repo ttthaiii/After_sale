@@ -178,12 +178,41 @@ interface DailyReportContextType {
 
 const DailyReportContext = createContext<DailyReportContextType | undefined>(undefined);
 
-export const filterHistoryByRevision = (history: any[], revisionCreatedAt: string | null | undefined): any[] => {
+export const filterHistoryByRevision = (
+  history: any[],
+  revisionCreatedAt: string | null | undefined,
+  currentRevision?: string
+): any[] => {
   if (!history) return [];
+  
+  if (currentRevision) {
+    const hasRevisionId = history.some((h) => h.revisionId);
+    if (hasRevisionId) {
+      return history.filter((h) => h.revisionId === currentRevision);
+    }
+  }
+
   if (!revisionCreatedAt) return history;
   return history.filter((h: any) => {
     const hTime = h.createdAt || h.serverTimestamp || h.date;
-    return hTime && hTime > revisionCreatedAt;
+    if (!hTime) return false;
+    
+    let hDateStr = "";
+    if (typeof hTime === "string") {
+      hDateStr = hTime.split("T")[0];
+    } else if (hTime && typeof hTime === "object") {
+      if (typeof hTime.toDate === "function") {
+        hDateStr = hTime.toDate().toISOString().split("T")[0];
+      } else if (hTime.seconds !== undefined) {
+        hDateStr = new Date(hTime.seconds * 1000).toISOString().split("T")[0];
+      }
+    }
+    
+    const revDateStr = typeof revisionCreatedAt === "string" 
+      ? revisionCreatedAt.split("T")[0] 
+      : "";
+      
+    return hDateStr && revDateStr && hDateStr >= revDateStr;
   });
 };
 
@@ -329,7 +358,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         .find((t: any) => t.id === selectedTaskInfo.task.id) ||
       selectedTaskInfo.task;
     const history = currentTask.history || [];
-    const filteredHistory = filterHistoryByRevision(history, currentTask.revisionCreatedAt);
+    const filteredHistory = filterHistoryByRevision(history, currentTask.revisionCreatedAt, currentTask.currentRevision);
     const historyMax =
       filteredHistory.reduce((max: number, h: any) => Math.max(max, h.progress), 0) || 0;
     const actualProgress = Math.max(currentTask.dailyProgress || 0, historyMax);
@@ -421,7 +450,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const { task } = selectedTaskInfo;
     const history = task.history || [];
     const todayStr = new Date().toISOString().split("T")[0];
-    const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt);
+    const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt, task.currentRevision);
     const historyBeforeToday = filteredHistory
       .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -623,14 +652,20 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsEditingExisting(false);
     } else {
       const history = selectedTaskInfo.task.history || [];
-      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
-      let min = selectedTaskInfo.task.dailyProgress || 0;
+      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
       const priorEntries = filteredHistory
         .filter((h) => (h.date?.split("T")[0] || "") < reportDate)
         .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-      priorEntries.forEach((h) => {
-        if (h.progress > min) min = h.progress;
-      });
+      
+      let min = 0;
+      if (priorEntries.length > 0) {
+        min = priorEntries[0].progress;
+      } else {
+        const isToday = reportDate === new Date().toISOString().split("T")[0];
+        min = isToday ? (selectedTaskInfo.task.dailyProgress || 0) : 0;
+      }
+      
+      const defaultProgress = min > 0 ? min + 1 : 0;
       const lastEntry = priorEntries[0];
 
       const checkAndLoadDraft = async () => {
@@ -652,7 +687,12 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           const currentRev = taskDoc?.currentRevision || "rev00";
           let draftDocRef;
           if (isWoaWop) {
-            draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+            if (selectedTaskInfo.task.isHelper) {
+              const helpId = currentRev.replace('rev', 'help');
+              draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId, "dailyReportsDraft", reportDate);
+            } else {
+              draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+            }
           } else {
             draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
           }
@@ -660,7 +700,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (!active) return;
           if (draftSnap.exists()) {
             const draftData = draftSnap.data();
-            setProgress(draftData.progress ?? min);
+            setProgress(draftData.progress ?? defaultProgress);
             setNote(draftData.note || "");
             setLabor(draftData.labor || []);
             setSitePhotos(draftData.sitePhotos || []);
@@ -676,37 +716,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           console.error("Error checking draft:", err);
         }
         if (!active) return;
-        setProgress(min);
+        setProgress(defaultProgress);
         setNote("");
-        // Pre-fill labor from most recent prior entry so crew data carries over day-to-day
-        if (lastEntry && lastEntry.labor?.length > 0) {
-          const priorLabor = lastEntry.labor.map((l: any) => ({
-            id: `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            membership: (l.contractorId ? "Outsource" : "Internal") as "Internal" | "Outsource",
-            staffId: l.workerId || l.staffId || "",
-            staffName: l.staffName || l.workerName || "",
-            employeeId: l.employeeId || "",
-            affiliation: l.staffName || l.workerName || "General",
-            amount: Number(l.amount) || 1,
-            timeType: "Normal" as const,
-            shifts: {
-              normal: l.shifts?.normal || false,
-              otMorning: false,
-              otNoon: false,
-              otEvening: false,
-            },
-            shiftTimes: {
-              day: l.shiftTimes?.day || "08:00 - 17:00",
-              otMorning: "06:00 - 08:00",
-              otNoon: "12:00 - 13:00",
-              otEvening: "18:00 - 21:00",
-            },
-            leave: { active: false, time: "08:00 - 17:00", medCertFileUrl: "" },
-          }));
-          setLabor(priorLabor);
-        } else {
-          setLabor([]);
-        }
+        setLabor([]);
         setSitePhotos([]);
         setLaborRegularPhotos([]);
         setLaborOtMorningPhotos([]);
@@ -758,7 +770,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           cat.tasks.some((t: any) =>
             t.subtaskOperatorId === user?.id ||
             (user?.employeeId && t.subtaskOperatorId === user.employeeId) ||
-            t.responsibleStaffIds?.includes(foremanId)
+            t.responsibleStaffIds?.includes(foremanId) ||
+            t.helperForemanIds?.includes(user?.employeeId || user?.id || foremanId) ||
+            t.assignedForeman === (user?.employeeId || user?.id || foremanId)
           )
         );
       const hasActiveTasks = wo.categories.some((cat: any) =>
@@ -779,17 +793,21 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             task.subtaskOperatorId === user?.id ||
             (user?.employeeId && task.subtaskOperatorId === user.employeeId) ||
             task.responsibleStaffIds?.includes(foremanId);
+          const isHelper =
+            task.helperForemanIds?.includes(user?.employeeId || user?.id || foremanId) ||
+            task.assignedForeman === (user?.employeeId || user?.id || foremanId);
           const isAssigned =
             user?.role === "Admin" ||
             user?.role === "Manager" ||
             isWoOwner2 ||
             isSubtaskOperator ||
+            isHelper ||
             (wo.reporterId === user?.id &&
               task.status === "Approved" &&
               (!task.responsibleStaffIds ||
                 task.responsibleStaffIds.length === 0));
           if (isAssigned) {
-            const filteredHistory = filterHistoryByRevision(task.history || [], task.revisionCreatedAt);
+            const filteredHistory = filterHistoryByRevision(task.history || [], task.revisionCreatedAt, task.currentRevision);
             const historyMax =
               filteredHistory.reduce(
                 (max: number, h: any) => Math.max(max, h.progress),
@@ -804,11 +822,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false && wo.status === 'Rejected');
             const isReadOnly =
               isWoRejectedAwaitingAdmin2 ||
-              (!isSubtaskOperator &&
+              (!isSubtaskOperator && !isHelper &&
                 user?.role !== "Admin" &&
                 user?.role !== "Manager");
             const item: TaskListItem = {
-              task: { ...task, dailyProgress: actualProgress, isReadOnly },
+              task: { ...task, dailyProgress: actualProgress, isReadOnly, isHelper },
               wo,
               categoryId: cat.id,
             };
@@ -1012,7 +1030,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     const history = task.history || [];
     const todayStr = new Date().toISOString().split("T")[0];
-    const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt);
+    const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt, task.currentRevision);
     const historyBeforeToday = filteredHistory
       .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -1081,7 +1099,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const progressBounds = useMemo(() => {
     if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
     const targetDate = reportDate;
     let min = 0;
     let max = 100;
@@ -1091,7 +1109,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (hDate < targetDate) {
         if (h.progress > min) min = h.progress;
       } else if (hDate > targetDate) {
-        if (h.progress < max) max = h.progress;
+        // Enforce progressive range: progress of targetDate must be strictly less than future report's progress (progress - 1)
+        const allowedMax = h.progress - 1;
+        if (allowedMax < max) max = allowedMax;
       }
     });
     const isToday = reportDate === new Date().toISOString().split("T")[0];
@@ -1691,7 +1711,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
       return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
     }
-    if (progress <= progressBounds.min) {
+    const allowedMinVal = progressBounds.min > 0 ? progressBounds.min : -1;
+    if (progress <= allowedMinVal) {
       alert(
         `ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${progressBounds.min}% (ตามประวัติก่อนหน้า)`,
       );
@@ -1704,7 +1725,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
     const existingHistory = filteredHistory.find(
       (h) => h.date?.split("T")[0] === reportDate,
     );
@@ -1745,7 +1766,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 const hasOtEveningOverlap = l.shifts?.otEvening && matchingWorker.shifts?.otEvening;
 
                 if (hasNormalOverlap || hasOtMorningOverlap || hasOtNoonOverlap || hasOtEveningOverlap) {
-                  const workerName = l.staffName || l.name || l.affiliation || idToCheck;
+                  const workerName = l.staffName || (l as any).name || l.affiliation || idToCheck;
                   const taskNameClean = (t.name || t.taskName || t.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim();
                   
                   const overlappingShifts: string[] = [];
@@ -1778,7 +1799,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsSubmitting(true);
     try {
       const history = selectedTaskInfo.task.history || [];
-      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
       const existingHistory = filteredHistory.find(
         (h) => h.date?.split("T")[0] === reportDate,
       );
@@ -1949,7 +1970,12 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const currentRev = taskDoc?.currentRevision || "rev00";
         let draftDocRef;
         if (isWoaWop) {
-          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+          if (selectedTaskInfo.task.isHelper) {
+            const helpId = currentRev.replace('rev', 'help');
+            draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId, "dailyReportsDraft", reportDate);
+          } else {
+            draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+          }
         } else {
           draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
         }
@@ -2028,10 +2054,18 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       let draftDocRef;
       if (isWoaWop) {
-        const revDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev);
-        await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+        if (selectedTaskInfo.task.isHelper) {
+          const helpId = currentRev.replace('rev', 'help');
+          const helpDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId);
+          await setDoc(helpDocRef, { helpId, createdAt: new Date().toISOString() }, { merge: true });
 
-        draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId, "dailyReportsDraft", reportDate);
+        } else {
+          const revDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev);
+          await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+
+          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
+        }
       } else {
         draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
       }
@@ -2058,7 +2092,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     );
     if (!confirmCancel) return;
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
     const existingReport = filteredHistory.find(
       (h) => h.date?.split("T")[0] === reportDate,
     );
@@ -2069,13 +2103,13 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const laborMap = new Map<string, HistoryLaborEntry>();
       const leaveMap = new Map<string, HistoryLeaveEntry>();
       if (existingReport.labor) {
-        existingReport.labor.forEach((l) =>
+        existingReport.labor.forEach((l: any) =>
           laborMap.set(l.workerId || l.id || "", l),
         );
       }
       const exLeave = existingReport.leave;
       if (exLeave) {
-        exLeave.forEach((l) => leaveMap.set(l.workerId || l.id || "", l));
+        exLeave.forEach((l: any) => leaveMap.set(l.workerId || l.id || "", l));
       }
       const allWorkerIds = Array.from(
         new Set([...laborMap.keys(), ...leaveMap.keys()]),

@@ -41,6 +41,7 @@ interface WorkOrderContextType {
     ) => Promise<void>;
     logCustomerQrView: (woId: string) => Promise<void>;
     markWorkOrderAsOpenedByAdmin: (id: string) => Promise<void>;
+    requestSupport: (workOrderId: string, categoryId: string, taskId: string) => Promise<void>;
 }
 
 const WorkOrderContext = createContext<WorkOrderContextType | undefined>(undefined);
@@ -210,6 +211,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 let currentRevision = 'rev00';
                 let revisionCreatedAt: string | null = null;
                 
+                let isSupportRequest = taskData.isSupportRequest || false;
+                let isPickedUpBySupport = taskData.isPickedUpBySupport || false;
+                let assignedForeman = taskData.assignedForeman || '';
+                let helperForemanIds: string[] = taskData.helperForemanIds || [];
+
                 if (!subtasksSnap.empty) {
                     for (const subtaskDoc of subtasksSnap.docs) {
                         const revisionsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions'));
@@ -231,13 +237,21 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                         revisionCreatedAt = revData.createdAt;
                                     }
                                 }
-                                
-                                const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', activeRevDoc.id, 'dailyReports'));
+                            }
+
+                            // Fetch daily reports from ALL revisions instead of just the active one
+                            for (const revDoc of revisionsSnap.docs) {
+                                const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
-                                    dailyreports.push({
-                                        ...reportDoc.data(),
-                                        id: reportDoc.id
-                                    } as unknown as DailyReport);
+                                    const reportData = reportDoc.data();
+                                    // Avoid duplicates
+                                    if (!dailyreports.some(r => r.id === reportDoc.id || r.date === reportData.date)) {
+                                        dailyreports.push({
+                                            ...reportData,
+                                            id: reportDoc.id,
+                                            revisionId: revDoc.id
+                                        } as unknown as DailyReport);
+                                    }
                                 }
                             }
                         } else {
@@ -249,8 +263,23 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                             for (const reportDoc of reportsSnap.docs) {
                                 dailyreports.push({
                                     ...reportDoc.data(),
-                                    id: reportDoc.id
+                                    id: reportDoc.id,
+                                    revisionId: currentRevision
                                 } as unknown as DailyReport);
+                            }
+                        }
+
+                        // Check help subcollection (งานช่วย)
+                        const helpSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'help'));
+                        if (!helpSnap.empty) {
+                            isSupportRequest = true;
+                            const targetHelpId = currentRevision.replace('rev', 'help');
+                            const helpDoc = helpSnap.docs.find(d => d.id === targetHelpId) || helpSnap.docs[0];
+                            if (helpDoc) {
+                                const helpData = helpDoc.data();
+                                assignedForeman = helpData.assignedForeman || '';
+                                helperForemanIds = helpData.helperForemanIds || [];
+                                isPickedUpBySupport = !!assignedForeman || helperForemanIds.length > 0;
                             }
                         }
                     }
@@ -327,7 +356,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     currentRevision,
                     revisionCreatedAt: finalRevisionCreatedAt,
                     dailyreports: mappedDailyReports,
-                    history: mappedDailyReports // ✅ Backward compatibility for legacy UI components
+                    history: mappedDailyReports, // ✅ Backward compatibility for legacy UI components
+                    isSupportRequest,
+                    isPickedUpBySupport,
+                    assignedForeman,
+                    helperForemanIds
                 } as unknown as MasterTask);
             }
             categories.push({ ...catData, id: catDoc.id, tasks } as Category);
@@ -807,35 +840,69 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const currentRev = taskDoc?.currentRevision || 'rev00';
         const subtaskId = getSubtaskId(taskId);
 
+        const isHelperReport = taskDoc?.helperForemanIds?.includes(report.createdBy) || taskDoc?.assignedForeman === report.createdBy;
+
         if (isWoaWop) {
-            // ✅ Ensure revision document exists (prevents phantom doc bug where getDocs returns empty)
-            const revDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
-            await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+            if (isHelperReport) {
+                const helpId = currentRev.replace('rev', 'help');
+                const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'help', helpId);
+                await setDoc(helpDocRef, { helpId, createdAt: new Date().toISOString() }, { merge: true });
 
-            // Save daily report with date YYYY-MM-DD as document ID for LB compatibility
-            const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev, 'dailyReports', reportDate);
-            await setDoc(reportRef, finalReport);
+                // Save helper daily report
+                const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'help', helpId, 'dailyReports', reportDate);
+                await setDoc(reportRef, finalReport);
 
-            // Step 2: Trigger daily report sync API immediately after successful write
-            try {
-                const reportPath = `workOrders/${workOrderId}/categories/${categoryId}/tasks/${taskId}/subtasks/${subtaskId}/revisions/${currentRev}/dailyReports/${reportDate}`;
-                console.log('Syncing daily report to LB API...', { reportPath, reportDate });
-                const syncResponse = await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/syncDailyReport', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        reportPath,
-                        reportDate
-                    })
-                });
+                // Step 2: Trigger daily report sync API immediately after successful write
+                try {
+                    const reportPath = `workOrders/${workOrderId}/categories/${categoryId}/tasks/${taskId}/subtasks/${subtaskId}/help/${helpId}/dailyReports/${reportDate}`;
+                    console.log('Syncing helper daily report to LB API...', { reportPath, reportDate });
+                    const syncResponse = await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/syncDailyReport', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            reportPath,
+                            reportDate
+                        })
+                    });
 
-                if (!syncResponse.ok) {
-                    console.error('Failed to sync daily report:', syncResponse.status, await syncResponse.text());
-                } else {
-                    console.log('Successfully synced daily report to LB API');
+                    if (!syncResponse.ok) {
+                        console.error('Failed to sync helper daily report:', syncResponse.status, await syncResponse.text());
+                    } else {
+                        console.log('Successfully synced helper daily report to LB API');
+                    }
+                } catch (syncError) {
+                    console.error('Error calling syncDailyReport API for helper:', syncError);
                 }
-            } catch (syncError) {
-                console.error('Error calling syncDailyReport API:', syncError);
+            } else {
+                // ✅ Ensure revision document exists (prevents phantom doc bug where getDocs returns empty)
+                const revDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
+                await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+
+                // Save daily report with date YYYY-MM-DD as document ID for LB compatibility
+                const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev, 'dailyReports', reportDate);
+                await setDoc(reportRef, finalReport);
+
+                // Step 2: Trigger daily report sync API immediately after successful write
+                try {
+                    const reportPath = `workOrders/${workOrderId}/categories/${categoryId}/tasks/${taskId}/subtasks/${subtaskId}/revisions/${currentRev}/dailyReports/${reportDate}`;
+                    console.log('Syncing daily report to LB API...', { reportPath, reportDate });
+                    const syncResponse = await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/syncDailyReport', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            reportPath,
+                            reportDate
+                        })
+                    });
+
+                    if (!syncResponse.ok) {
+                        console.error('Failed to sync daily report:', syncResponse.status, await syncResponse.text());
+                    } else {
+                        console.log('Successfully synced daily report to LB API');
+                    }
+                } catch (syncError) {
+                    console.error('Error calling syncDailyReport API:', syncError);
+                }
             }
         } else {
             const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'dailyreport', report.id);
@@ -845,31 +912,38 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
         
         if (taskDoc) {
-            const isCompleted = report.progress === 100 || (taskDoc.dailyProgress === 100);
-            const newProgress = Math.max(taskDoc.dailyProgress || 0, report.progress || 0);
-            
-            // Map status values for LB compatibility
-            let lbStatus = isCompleted ? 'for-checking' : 'in-progress';
-            
-            if (isWoaWop) {
+            if (isHelperReport) {
+                // Bypass progress/status updates, only update updatedAt on task doc
                 await updateDoc(taskRef, {
-                    dailyProgress: newProgress,
-                    status: lbStatus,
                     updatedAt: new Date().toISOString()
-                });
-
-                // Update subtask as well
-                const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
-                await updateDoc(subtaskRef, {
-                    dailyProgress: newProgress,
-                    status: lbStatus
                 });
             } else {
-                await updateDoc(taskRef, {
-                    dailyProgress: newProgress,
-                    status: isCompleted ? 'Completed' : 'In Progress',
-                    updatedAt: new Date().toISOString()
-                });
+                const isCompleted = report.progress === 100 || (taskDoc.dailyProgress === 100);
+                const newProgress = Math.max(taskDoc.dailyProgress || 0, report.progress || 0);
+                
+                // Map status values for LB compatibility
+                let lbStatus = isCompleted ? 'for-checking' : 'in-progress';
+                
+                if (isWoaWop) {
+                    await updateDoc(taskRef, {
+                        dailyProgress: newProgress,
+                        status: lbStatus,
+                        updatedAt: new Date().toISOString()
+                    });
+
+                    // Update subtask as well
+                    const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
+                    await updateDoc(subtaskRef, {
+                        dailyProgress: newProgress,
+                        status: lbStatus
+                    });
+                } else {
+                    await updateDoc(taskRef, {
+                        dailyProgress: newProgress,
+                        status: isCompleted ? 'Completed' : 'In Progress',
+                        updatedAt: new Date().toISOString()
+                    });
+                }
             }
         }
         await updateDoc(doc(db, 'workOrders', workOrderId), { lastUpdate: new Date().toISOString() });
@@ -929,6 +1003,10 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         if (updates.status) subtaskUpdates.status = lbStatus;
         if (updates.dailyProgress !== undefined) subtaskUpdates.dailyProgress = updates.dailyProgress;
         if (updates.currentRevision) subtaskUpdates.currentRevision = updates.currentRevision;
+        if (updates.isSupportRequest !== undefined) subtaskUpdates.isSupportRequest = updates.isSupportRequest;
+        if (updates.isPickedUpBySupport !== undefined) subtaskUpdates.isPickedUpBySupport = updates.isPickedUpBySupport;
+        if (updates.assignedForeman !== undefined) subtaskUpdates.assignedForeman = updates.assignedForeman;
+        if (updates.helperForemanIds !== undefined) subtaskUpdates.helperForemanIds = updates.helperForemanIds;
         if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
             subtaskUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
             if (resolvedAssignees) {
@@ -950,7 +1028,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 assignees,
                 subtaskOperatorId: updates.responsibleStaffIds?.[0] || taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || "",
                 currentRevision: updates.currentRevision || taskData.currentRevision || 'rev00',
-                isActive: true
+                isActive: true,
+                isSupportRequest: updates.isSupportRequest !== undefined ? updates.isSupportRequest : (taskData.isSupportRequest || false),
+                isPickedUpBySupport: updates.isPickedUpBySupport !== undefined ? updates.isPickedUpBySupport : (taskData.isPickedUpBySupport || false),
+                assignedForeman: updates.assignedForeman !== undefined ? updates.assignedForeman : (taskData.assignedForeman || ""),
+                helperForemanIds: updates.helperForemanIds !== undefined ? updates.helperForemanIds : (taskData.helperForemanIds || [])
             });
         }
 
@@ -965,6 +1047,18 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             createdAt: updates.revisionCreatedAt || taskData.revisionCreatedAt || new Date().toISOString()
         };
         await setDoc(revisionRef, revisionData, { merge: true });
+
+        // If helper assigned, initialize help subcollection
+        if (updates.isPickedUpBySupport === true) {
+            const helpId = currentRev.replace('rev', 'help');
+            const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'help', helpId);
+            await setDoc(helpDocRef, {
+                helpId,
+                createdAt: new Date().toISOString(),
+                assignedForeman: updates.assignedForeman || '',
+                helperForemanIds: updates.helperForemanIds || []
+            }, { merge: true });
+        }
 
         // Auto-transition Rejected Work Orders to In Progress if all tasks are resolved (re-assigned)
         try {
@@ -1328,6 +1422,29 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    const requestSupport = async (workOrderId: string, categoryId: string, taskId: string) => {
+        try {
+            const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
+            await updateDoc(taskRef, {
+                isSupportRequest: true,
+                isPickedUpBySupport: false
+            });
+
+            const subtaskId = getSubtaskId(taskId);
+            const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
+            const subtaskSnap = await getDoc(subtaskRef);
+            if (subtaskSnap.exists()) {
+                await updateDoc(subtaskRef, {
+                    isSupportRequest: true,
+                    isPickedUpBySupport: false
+                });
+            }
+        } catch (err) {
+            console.error("Failed to request support:", err);
+            throw err;
+        }
+    };
+
     return (
         <WorkOrderContext.Provider value={{
             workOrders,
@@ -1348,7 +1465,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             generateDeliveryQrToken,
             submitCustomerInspection,
             logCustomerQrView,
-            markWorkOrderAsOpenedByAdmin
+            markWorkOrderAsOpenedByAdmin,
+            requestSupport
         }}>
             {children}
         </WorkOrderContext.Provider>

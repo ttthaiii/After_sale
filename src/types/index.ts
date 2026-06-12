@@ -136,6 +136,9 @@ export interface MasterTask {
     categoryName?: string;
     projectId?: string;
     isSupportRequest?: boolean;
+    isPickedUpBySupport?: boolean;
+    assignedForeman?: string;
+    helperForemanIds?: string[];
     attachmentsCount?: number;
     isActive?: boolean;
     
@@ -178,6 +181,7 @@ export interface MasterTask {
     rejectReason?: string;
     contactName?: string;
     contactPhone?: string;
+    isHelper?: boolean;
 }
 
 export interface Attachment {

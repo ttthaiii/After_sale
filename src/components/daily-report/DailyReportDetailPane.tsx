@@ -104,8 +104,6 @@ export const DailyReportDetailPane: React.FC = () => {
     setActiveModal,
   } = useDailyReport();
 
-
-
   const isAwaitingAdmin = React.useMemo(() => {
     return selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin;
   }, [selectedTaskInfo]);
@@ -667,7 +665,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           selectedTaskInfo.task.history.length > 0
                         ) {
                           const history = selectedTaskInfo.task.history || [];
-                          const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+                          const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
                           const sortedHistory = [...filteredHistory]
                             .filter((h) => h.date)
                             .sort(
@@ -702,7 +700,68 @@ export const DailyReportDetailPane: React.FC = () => {
                             />
                           </div>
                         );
-                      })()}{" "}
+                      })()} 
+
+                      {selectedTaskInfo.task.isHelper ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            padding: "6px 12px",
+                            background: "#f0fdfa",
+                            border: "1px solid #ccfbf1",
+                            borderRadius: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            fontSize: "0.75rem",
+                            fontWeight: 800,
+                            color: "#0d9488",
+                          }}
+                        >
+                          🤝 ท่านเป็นผู้ช่วยงาน
+                        </div>
+                      ) : selectedTaskInfo.task.isSupportRequest ? (
+                        selectedTaskInfo.task.isPickedUpBySupport ? (
+                          <div
+                            style={{
+                              width: "100%",
+                              padding: "6px 12px",
+                              background: "#f0fdf4",
+                              border: "1px solid #bbf7d0",
+                              borderRadius: "12px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                              fontSize: "0.75rem",
+                              fontWeight: 800,
+                              color: "#166534",
+                            }}
+                          >
+                            🤝 มีผู้ช่วยงานแล้ว
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              width: "100%",
+                              padding: "6px 12px",
+                              background: "#fffbeb",
+                              border: "1px solid #fef3c7",
+                              borderRadius: "12px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                              fontSize: "0.75rem",
+                              fontWeight: 800,
+                              color: "#b45309",
+                            }}
+                          >
+                            📢 ส่งขอความช่วยเหลือแล้ว
+                          </div>
+                        )
+                      ) : null}
                       
                       <div
                         style={{
@@ -1527,7 +1586,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           <Edit2 size={14} /> แก้ไขข้อมูล
                         </button>
                       ))}
-                    {isEditingExisting && !isTaskFinished && (
+                    {isEditingExisting && !isTaskFinished && !selectedTaskInfo?.task?.isHelper && (
                        <Fragment>
                         {" "}
                         
@@ -1860,6 +1919,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 <div
                                   onClick={() =>
                                     isEditingExisting &&
+                                    !selectedTaskInfo?.task?.isHelper &&
                                     toggleShift(l.id, "normal")
                                   }
                                   style={{
@@ -1873,10 +1933,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    cursor: isEditingExisting
+                                    cursor: (isEditingExisting && !selectedTaskInfo?.task?.isHelper)
                                       ? "pointer"
                                       : "default",
-                                    opacity: isEditingExisting ? 1 : 0.6,
+                                    opacity: (isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? 1 : 0.6,
                                   }}
                                 >
                                   {l.shifts?.normal && (
@@ -1936,6 +1996,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 : false;
                               const canTickOtMorning =
                                 isEditingExisting &&
+                                !selectedTaskInfo?.task?.isHelper &&
                                 l.shifts?.normal &&
                                 !isOtMorningBlockedByLeave;
                               return (
@@ -2050,6 +2111,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 : false;
                               const canTickOtNoon =
                                 isEditingExisting &&
+                                !selectedTaskInfo?.task?.isHelper &&
                                 l.shifts?.normal &&
                                 !isOtNoonBlockedByLeave;
                               return (
@@ -2157,6 +2219,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 : false;
                               const canTickOtEvening =
                                 isEditingExisting &&
+                                !selectedTaskInfo?.task?.isHelper &&
                                 l.shifts?.normal &&
                                 !isOtEveningBlockedByLeave;
                               return (
@@ -2281,7 +2344,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 
                                 <div
                                   onClick={() => {
-                                    if (!isEditingExisting) return;
+                                    if (!isEditingExisting || selectedTaskInfo?.task?.isHelper) return;
                                     setLabor((prev) =>
                                       prev.map((item) => {
                                         if (item.id === l.id) {
@@ -2367,10 +2430,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    cursor: isEditingExisting
+                                    cursor: (isEditingExisting && !selectedTaskInfo?.task?.isHelper)
                                       ? "pointer"
                                       : "default",
-                                    opacity: isEditingExisting ? 1 : 0.6,
+                                    opacity: (isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? 1 : 0.6,
                                   }}
                                 >
                                   {l.leave?.active && (
@@ -2425,7 +2488,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                             
                                             <Eye size={12} />
                                           </a>
-                                          {isEditingExisting && (
+                                          {(isEditingExisting && !selectedTaskInfo?.task?.isHelper) && (
                                              <button
                                               onClick={() =>
                                                 handleRemoveLeaveCert(l.id)
@@ -2452,8 +2515,8 @@ export const DailyReportDetailPane: React.FC = () => {
                                             </button>
                                           )}
                                         </Fragment>
-                                      ) : isEditingExisting ? (
-                                        uploadingLeaveCertId === l.id ? ( // Loading spinner while uploading
+                                      ) : (isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? (
+                                        uploadingLeaveCertId === l.id ? ( 
                                           
                                           <div
                                             style={{
@@ -2559,7 +2622,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 textAlign: "center",
                               }}
                             >
-                              {isEditingExisting ? (
+                              {(isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? (
                                  <button
                                   onClick={() =>
                                     setLabor(
@@ -2637,232 +2700,243 @@ export const DailyReportDetailPane: React.FC = () => {
                   >
                     {" "}
                     
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "16px",
-                        marginBottom: "1.5rem",
-                      }}
-                    >
-                      {" "}
-                      
-                      <div
-                        style={{
-                          flex: 1,
-                          position: "relative",
-                          opacity: isProgressNotePhotosEditable ? 1 : 0.6,
-                          pointerEvents: isProgressNotePhotosEditable
-                            ? "auto"
-                            : "none",
-                          transition: "all 0.3s",
-                        }}
-                      >
-                        {" "}
-                        
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={progress}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setProgress(
-                              Math.min(
-                                progressBounds.max,
-                                Math.max(progressBounds.min, val),
-                              ),
-                            );
-                          }}
+                    {selectedTaskInfo?.task?.isHelper ? (
+                      <div style={{ textAlign: "center", padding: "1rem 0", color: "#475569", fontWeight: 800, fontSize: "0.88rem" }}>
+                        งานช่วย: ความคืบหน้าถูกล็อกที่ {selectedTaskInfo?.task?.dailyProgress || 0}% (กำหนดโดย Site หลัก)
+                      </div>
+                    ) : (
+                      <Fragment>
+                        <div
                           style={{
-                            width: "100%",
-                            height: "10px",
-                            borderRadius: "6px",
-                            appearance: "none",
-                            background: `linear-gradient(to right, #475569 0%, #475569 ${progressBounds.min}%, #3b82f6 ${progressBounds.min}%, #3b82f6 ${progress}%, #e2e8f0 ${progress}%, #e2e8f0 100%)`,
-                            cursor: "pointer",
-                            outline: "none",
-                            transition: "all 0.2s",
-                          }}
-                        />
-                      </div>{" "}
-                      
-                      <div
-                        style={{
-                          position: "relative",
-                          width: "100px",
-                        }}
-                      >
-                        {" "}
-                        
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={progress}
-                          disabled={!isProgressNotePhotosEditable}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (isNaN(val)) {
-                              setProgress(0);
-                            } else {
-                              setProgress(Math.min(100, Math.max(0, val)));
-                            }
-                          }}
-                          onBlur={() => {
-                            setProgress(
-                              Math.min(
-                                progressBounds.max,
-                                Math.max(progressBounds.min, progress),
-                              ),
-                            );
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "8px 30px 8px 12px",
-                            borderRadius: "10px",
-                            border: "1px solid #3b82f6",
-                            fontSize: "1rem",
-                            fontWeight: 900,
-                            color: "#1e40af",
-                            textAlign: "center",
-                            outline: "none",
-                            boxShadow: "0 2px 4px rgba(59, 130, 246, 0.1)",
-                          }}
-                        />{" "}
-                        
-                        <span
-                          style={{
-                            position: "absolute",
-                            right: "10px",
-                            top: "51%",
-                            transform: "translateY(-50%)",
-                            fontSize: "0.8rem",
-                            fontWeight: 800,
-                            color: "#3b82f6",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "16px",
+                            marginBottom: "1.5rem",
                           }}
                         >
-                          %
-                        </span>
-                      </div>
-                    </div>{" "}
-                    
-                    <div
-                      style={{
-                        marginTop: "1rem",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      {" "}
-                      
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          fontWeight: 800,
-                          color:
-                            progress <= progressBounds.min ||
-                            progress > progressBounds.max
-                              ? "#ef4444"
-                              : "#64748b",
-                        }}
-                      >
-                        {(() => {
-                          const hasDataOnDate =
-                            selectedTaskInfo?.task.history?.some(
-                              (h) => h.date?.split("T")[0] === reportDate,
-                            );
-                          if (hasDataOnDate && !isEditingExisting) {
-                            return `* รายงานนี้ถูกบันทึกไว้แล้วที่ ${progress}%`;
-                          }
-                          if (
-                            reportDate ===
-                             new Date()
-                              .toISOString()
-                              .split("T")[0]
-                          ) {
-                            return `* ความคืบหน้าปัจจุบันต้องระบุมากกว่า ${progressBounds.min}%`;
-                          }
-                          return `* สำหรับวันที่เลือก ต้องระบุระหว่าง ${progressBounds.min + 1}% ถึง ${progressBounds.max}%`;
-                        })()}
-                      </div>
-                      {isProgressNotePhotosEditable && progress > 0 && (
-                         <button
-                          onClick={() => setProgress(0)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#ef4444",
-                            fontSize: "0.75rem",
-                            fontWeight: 800,
-                            cursor: "pointer",
-                          }}
-                        >
-                          ล้างค่า
-                        </button>
-                      )}
-                    </div>{" "}
-                    
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        flexWrap: "wrap",
-                        marginTop: "1rem",
-                        pointerEvents: isProgressNotePhotosEditable
-                          ? "auto"
-                          : "none",
-                        opacity: isProgressNotePhotosEditable ? 1 : 0.6,
-                      }}
-                    >
-                      {[0, 25, 50, 75, 100].map((v) => {
-                        const isLocked =
-                          v < progressBounds.min || v > progressBounds.max;
-                        return (
-                           <button
-                            onClick={() => setProgress(v)}
-                            disabled={isLocked}
+                          {" "}
+                          
+                          <div
                             style={{
                               flex: 1,
-                              padding: "8px 0",
-                              borderRadius: "8px",
-                              border: "1px solid",
-                              borderColor:
-                                progress === v ? "#3b82f6" : "#e2e8f0",
-                              background:
-                                progress === v
-                                  ? "#eff6ff"
-                                  : isLocked
-                                    ? "#f1f5f9"
-                                    : "#fff",
-                              color:
-                                progress === v
-                                  ? "#2563eb"
-                                  : isLocked
-                                    ? "#94a3b8"
-                                    : "#64748b",
+                              position: "relative",
+                              opacity: isProgressNotePhotosEditable ? 1 : 0.6,
+                              pointerEvents: isProgressNotePhotosEditable
+                                ? "auto"
+                                : "none",
+                              transition: "all 0.3s",
+                            }}
+                          >
+                            {" "}
+                            
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="5"
+                              value={progress}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                const allowedMin = progressBounds.min > 0 ? progressBounds.min + 1 : 0;
+                                setProgress(
+                                  Math.min(
+                                    progressBounds.max,
+                                    Math.max(allowedMin, val),
+                                  ),
+                                );
+                              }}
+                              style={{
+                                width: "100%",
+                                height: "10px",
+                                borderRadius: "6px",
+                                appearance: "none",
+                                background: `linear-gradient(to right, #475569 0%, #475569 ${progressBounds.min}%, #3b82f6 ${progressBounds.min}%, #3b82f6 ${progress}%, #e2e8f0 ${progress}%, #e2e8f0 100%)`,
+                                cursor: "pointer",
+                                outline: "none",
+                                transition: "all 0.2s",
+                              }}
+                            />
+                          </div>{" "}
+                          
+                          <div
+                            style={{
+                              position: "relative",
+                              width: "100px",
+                            }}
+                          >
+                            {" "}
+                            
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={progress}
+                              disabled={!isProgressNotePhotosEditable}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                if (isNaN(val)) {
+                                  setProgress(0);
+                                } else {
+                                  setProgress(Math.min(100, Math.max(0, val)));
+                                }
+                              }}
+                              onBlur={() => {
+                                setProgress(
+                                  Math.min(
+                                    progressBounds.max,
+                                    Math.max(progressBounds.min, progress),
+                                  ),
+                                );
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "8px 30px 8px 12px",
+                                borderRadius: "10px",
+                                border: "1px solid #3b82f6",
+                                fontSize: "1rem",
+                                fontWeight: 900,
+                                color: "#1e40af",
+                                textAlign: "center",
+                                outline: "none",
+                                boxShadow: "0 2px 4px rgba(59, 130, 246, 0.1)",
+                              }}
+                            />{" "}
+                            
+                            <span
+                              style={{
+                                position: "absolute",
+                                right: "10px",
+                                top: "51%",
+                                transform: "translateY(-50%)",
+                                fontSize: "0.8rem",
+                                fontWeight: 800,
+                                color: "#3b82f6",
+                              }}
+                            >
+                              %
+                            </span>
+                          </div>
+                        </div>{" "}
+                        
+                        <div
+                          style={{
+                            marginTop: "1rem",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          {" "}
+                          
+                          <div
+                            style={{
                               fontSize: "0.75rem",
                               fontWeight: 800,
-                              cursor: isLocked ? "not-allowed" : "pointer",
-                              transition: "all 0.2s",
-                              opacity: isLocked ? 0.6 : 1,
-                              textDecoration: isLocked
-                                ? "line-through"
-                                : "none",
+                              color:
+                                (progressBounds.min > 0 ? progress <= progressBounds.min : progress < progressBounds.min) ||
+                                progress > progressBounds.max
+                                  ? "#ef4444"
+                                  : "#64748b",
                             }}
-                            key={v}
                           >
-                            {v === 0
-                              ? "ล้าง"
-                              : v === 100
-                                ? "เสร็จสิ้น"
-                                : `${v}%`}
-                          </button>
-                        );
-                      })}
-                    </div>
+                            {(() => {
+                              const hasDataOnDate =
+                                selectedTaskInfo?.task.history?.some(
+                                  (h) => h.date?.split("T")[0] === reportDate,
+                                );
+                              if (hasDataOnDate && !isEditingExisting) {
+                                return `* รายงานนี้ถูกบันทึกไว้แล้วที่ ${progress}%`;
+                              }
+                              if (
+                                reportDate ===
+                                 new Date()
+                                  .toISOString()
+                                  .split("T")[0]
+                              ) {
+                                return `* ความคืบหน้าปัจจุบันต้องระบุมากกว่า ${progressBounds.min}%`;
+                              }
+                              const rangeMin = progressBounds.min > 0 ? progressBounds.min + 1 : 0;
+                              return `* สำหรับวันที่เลือก ต้องระบุระหว่าง ${rangeMin}% ถึง ${progressBounds.max}%`;
+                            })()}
+                          </div>
+                          {isProgressNotePhotosEditable && progress > 0 && progressBounds.min === 0 && (
+                             <button
+                              onClick={() => setProgress(0)}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#ef4444",
+                                fontSize: "0.75rem",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              ล้างค่า
+                            </button>
+                          )}
+                        </div>{" "}
+                        
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            flexWrap: "wrap",
+                            marginTop: "1rem",
+                            pointerEvents: isProgressNotePhotosEditable
+                              ? "auto"
+                              : "none",
+                            opacity: isProgressNotePhotosEditable ? 1 : 0.6,
+                          }}
+                        >
+                          {[0, 25, 50, 75, 100].map((v) => {
+                            const isLocked =
+                              (progressBounds.min > 0 ? v <= progressBounds.min : v < progressBounds.min) ||
+                              v > progressBounds.max;
+                            return (
+                               <button
+                                onClick={() => setProgress(v)}
+                                disabled={isLocked}
+                                style={{
+                                  flex: 1,
+                                  padding: "8px 0",
+                                  borderRadius: "8px",
+                                  border: "1px solid",
+                                  borderColor:
+                                    progress === v ? "#3b82f6" : "#e2e8f0",
+                                  background:
+                                    progress === v
+                                      ? "#eff6ff"
+                                      : isLocked
+                                        ? "#f1f5f9"
+                                        : "#fff",
+                                  color:
+                                    progress === v
+                                      ? "#2563eb"
+                                      : isLocked
+                                        ? "#94a3b8"
+                                        : "#64748b",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 800,
+                                  cursor: isLocked ? "not-allowed" : "pointer",
+                                  transition: "all 0.2s",
+                                  opacity: isLocked ? 0.6 : 1,
+                                  textDecoration: isLocked
+                                    ? "line-through"
+                                    : "none",
+                                }}
+                                key={v}
+                              >
+                                {v === 0
+                                  ? "ล้าง"
+                                  : v === 100
+                                    ? "เสร็จสิ้น"
+                                    : `${v}%`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </Fragment>
+                    )}
                   </div>
                   {progress === 100 &&
                     reportDate !==
@@ -3173,7 +3247,7 @@ export const DailyReportDetailPane: React.FC = () => {
                               onClick={() => setZoomImage(typeof p === "string" ? p : (p instanceof File ? URL.createObjectURL(p) : null))}
                               alt=""
                             />
-                            {isProgressNotePhotosEditable && (
+                            {isProgressNotePhotosEditable && !selectedTaskInfo?.task?.isHelper && (
                                <button
                                 onClick={() => handleRemoveSlotPhoto("site", i)}
                                 style={{
@@ -3198,7 +3272,7 @@ export const DailyReportDetailPane: React.FC = () => {
                             )}
                           </div>
                         ))}
-                        {isProgressNotePhotosEditable && (
+                        {isProgressNotePhotosEditable && !selectedTaskInfo?.task?.isHelper && (
                            <label
                             style={{
                               width: 110,
@@ -3273,6 +3347,8 @@ export const DailyReportDetailPane: React.FC = () => {
                                 <span style={{ color: "#0f172a" }}>ใบงานนี้ดำเนินการเสร็จสมบูรณ์ 100% แล้ว</span>{" "}
                                 <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600 }}>(ไม่มีการแนบรูปภาพหน้างานสำหรับวันที่เลือก)</span>
                               </Fragment>
+                            ) : selectedTaskInfo?.task?.isHelper ? (
+                              <span style={{ color: "#64748b" }}>ไม่มีการแนบรูปภาพหน้างาน (งานช่วย)</span>
                             ) : (
                               "ยังไม่มีรูปภาพหน้างาน — กรุณาแนบอย่างน้อย 2 รูป"
                             )}
@@ -3359,7 +3435,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 if (slotIdx === 1) return hasReachedTime(endT, 17);
                               } else {
                                 if (slotIdx === 0) return hasReachedTime(startT, 8);
-                                if (slotIdx === 1) return hasReachedTime(endT, 12);
+                                if (slotIdx === 1) return hasReachedTime(endT, 17);
                               }
                             } else {
                               if (slotIdx === 0) return hasReachedTime(startT, 8);
@@ -3502,7 +3578,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                         onClick={() => setZoomImage(typeof photoUrl === "string" ? photoUrl : (photoUrl instanceof File ? URL.createObjectURL(photoUrl) : null))}
                                         alt={slotLabel}
                                       />
-                                      {isProgressNotePhotosEditable && (
+                                      {isProgressNotePhotosEditable && !selectedTaskInfo?.task?.isHelper && (
                                          <button
                                           onClick={() =>
                                             handleRemoveSlotPhoto(
@@ -3794,7 +3870,7 @@ export const DailyReportDetailPane: React.FC = () => {
               </div>
               {(() => {
                 const history = selectedTaskInfo.task.history || [];
-                const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt);
+                const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
                 if (filteredHistory.length === 0) return null;
                 return (
                    <div
@@ -3836,7 +3912,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         )
                         .map((h) => {
                           const totalManpower = h.labor.reduce(
-                            (acc, l) => acc + (Number(l.amount) || 1),
+                            (acc: number, l: any) => acc + (Number(l.amount) || 1),
                             0,
                           );
                           return (
@@ -3999,7 +4075,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                   gap: "6px",
                                 }}
                               >
-                                {h.labor.map((l, lIdx) => (
+                                {h.labor.map((l: any, lIdx: number) => (
                                    <span
                                     style={{
                                       fontSize: "0.7rem",
