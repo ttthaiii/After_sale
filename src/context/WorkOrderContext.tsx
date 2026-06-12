@@ -218,6 +218,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
                 if (!subtasksSnap.empty) {
                     for (const subtaskDoc of subtasksSnap.docs) {
+                        const subtaskData = subtaskDoc.data();
+                        if (subtaskData.isSupportRequest !== undefined) {
+                            isSupportRequest = subtaskData.isSupportRequest;
+                        }
+                        if (subtaskData.isPickedUpBySupport !== undefined) {
+                            isPickedUpBySupport = subtaskData.isPickedUpBySupport;
+                        }
                         const revisionsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions'));
                         
                         if (!revisionsSnap.empty) {
