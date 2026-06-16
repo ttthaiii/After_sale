@@ -3305,7 +3305,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                   marginTop: "2px",
                                 }}
                               >
-                                {selectedTaskInfo?.task?.isHelper && tab.id === "site" ? (
+                                {selectedTaskInfo?.task?.isHelper ? (
                                   `อ้างอิงจากงานหลัก ${tab.current} รูป`
                                 ) : (
                                   <React.Fragment>

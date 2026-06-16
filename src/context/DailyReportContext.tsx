@@ -1467,10 +1467,34 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   useEffect(() => {
-    const isRegularActive = labor.some((l) => l.shifts?.normal);
-    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
-    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
-    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
+    const hasPhotosForShift = (shiftKey: string) => {
+      if (!selectedTaskInfo?.task?.isHelper) return false;
+      const mainReport = selectedTaskInfo.task.history?.find((h) => {
+        const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+        const matchesMain = h.isSupportReport !== true;
+        return matchesRevision && h.date?.split("T")[0] === reportDate && matchesMain;
+      });
+      if (!mainReport?.photos) {
+        if (shiftKey === "regular" && mainReport?.laborPhotos) {
+          return mainReport.laborPhotos.filter(Boolean).length > 0;
+        }
+        return false;
+      }
+      if (Array.isArray(mainReport.photos)) {
+        return shiftKey === "regular" && mainReport.photos.filter(Boolean).length > 0;
+      }
+      const pObj = mainReport.photos as any;
+      const dbShift = pObj.laborByShift?.[shiftKey];
+      if (!dbShift) return false;
+      if (Array.isArray(dbShift)) return dbShift.filter(Boolean).length > 0;
+      return !!(dbShift.in || dbShift.lunch || dbShift.afternoon || dbShift.out);
+    };
+
+    const isRegularActive = labor.some((l) => l.shifts?.normal) || hasPhotosForShift("regular");
+    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning) || hasPhotosForShift("otMorning");
+    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon) || hasPhotosForShift("otNoon");
+    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening) || hasPhotosForShift("otEvening");
+
     if (activePhotoTab === "regular" && !isRegularActive)
       setActivePhotoTab("site");
     if (activePhotoTab === "otMorning" && !isOtMorningActive)
@@ -1479,7 +1503,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setActivePhotoTab("site");
     if (activePhotoTab === "otEvening" && !isOtEveningActive)
       setActivePhotoTab("site");
-  }, [labor, activePhotoTab]);
+  }, [labor, activePhotoTab, selectedTaskInfo, reportDate]);
 
   const handleRemoveSlotPhoto = (tab: string, index: number) => {
     if (tab === "site") {
