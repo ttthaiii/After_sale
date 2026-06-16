@@ -550,7 +550,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let active = true;
     const existingReport = selectedTaskInfo.task.history?.find((h) => {
       const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
-      return matchesRevision && h.date?.split("T")[0] === reportDate;
+      const matchesHelper = selectedTaskInfo.task.isHelper ? h.isSupportReport === true : h.isSupportReport !== true;
+      return matchesRevision && h.date?.split("T")[0] === reportDate && matchesHelper;
     });
     if (existingReport) {
       setProgress(existingReport.progress);
@@ -1160,9 +1161,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const hasHistoryForSelectedDate = useMemo(() => {
     if (!selectedTaskInfo) return false;
+    const isHelperMode = selectedTaskInfo.task.isHelper;
     return (
       selectedTaskInfo.task.history?.some(
-        (h) => h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00') && h.date?.split("T")[0] === reportDate,
+        (h) => {
+          const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+          const matchesHelper = isHelperMode ? h.isSupportReport === true : h.isSupportReport !== true;
+          return matchesRevision && h.date?.split("T")[0] === reportDate && matchesHelper;
+        }
       ) || false
     );
   }, [selectedTaskInfo, reportDate]);
@@ -1747,7 +1753,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const history = selectedTaskInfo.task.history || [];
     const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
     const existingHistory = filteredHistory.find(
-      (h) => h.date?.split("T")[0] === reportDate,
+      (h) => {
+        const matchesHelper = selectedTaskInfo.task.isHelper ? h.isSupportReport === true : h.isSupportReport !== true;
+        return h.date?.split("T")[0] === reportDate && matchesHelper;
+      }
     );
     if (existingHistory && !isEditingExisting) {
       alert(
@@ -1821,7 +1830,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const history = selectedTaskInfo.task.history || [];
       const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
       const existingHistory = filteredHistory.find(
-        (h) => h.date?.split("T")[0] === reportDate,
+        (h) => {
+          const matchesHelper = selectedTaskInfo.task.isHelper ? h.isSupportReport === true : h.isSupportReport !== true;
+          return h.date?.split("T")[0] === reportDate && matchesHelper;
+        }
       );
       const laborPayload = labor
         .filter(
@@ -2116,7 +2128,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const history = selectedTaskInfo.task.history || [];
     const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
     const existingReport = filteredHistory.find(
-      (h) => h.date?.split("T")[0] === reportDate,
+      (h) => {
+        const matchesHelper = selectedTaskInfo.task.isHelper ? h.isSupportReport === true : h.isSupportReport !== true;
+        return h.date?.split("T")[0] === reportDate && matchesHelper;
+      }
     );
     if (existingReport) {
       setProgress(existingReport.progress);
