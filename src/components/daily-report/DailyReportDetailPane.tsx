@@ -158,21 +158,97 @@ export const DailyReportDetailPane: React.FC = () => {
     return (pObj.site || []).filter(Boolean).length > 0;
   }, [sitePhotos, selectedTaskInfo, reportDate]);
 
+  const mainReportForShiftPhotos = React.useMemo(() => {
+    if (!selectedTaskInfo?.task?.isHelper) return null;
+    return selectedTaskInfo.task.history?.find((h) => {
+      const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+      const matchesMain = h.isSupportReport !== true;
+      return matchesRevision && h.date?.split("T")[0] === reportDate && matchesMain;
+    });
+  }, [selectedTaskInfo, reportDate]);
+
+  const referenceLabor = React.useMemo(() => {
+    if (labor.length > 0) return labor;
+    if (selectedTaskInfo?.task?.isHelper) {
+      return mainReportForShiftPhotos?.labor || [];
+    }
+    return [];
+  }, [labor, selectedTaskInfo, mainReportForShiftPhotos]);
+
   const displayRegularPhotos = React.useMemo(() => {
-    return laborRegularPhotos.filter(Boolean);
-  }, [laborRegularPhotos]);
+    const ownPhotos = laborRegularPhotos.filter(Boolean);
+    if (ownPhotos.length > 0) return ownPhotos;
+
+    if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
+      const pObj = mainReportForShiftPhotos.photos as any;
+      const dbShift = pObj.laborByShift?.regular;
+      if (dbShift) {
+        if (Array.isArray(dbShift)) {
+          return dbShift.filter(Boolean);
+        }
+        return [
+          dbShift.in || "",
+          dbShift.lunch || "",
+          dbShift.afternoon || "",
+          dbShift.out || "",
+        ].filter(Boolean);
+      }
+    } else if (mainReportForShiftPhotos?.laborPhotos) {
+      return mainReportForShiftPhotos.laborPhotos.filter(Boolean);
+    }
+    return [];
+  }, [laborRegularPhotos, mainReportForShiftPhotos]);
 
   const displayOtMorningPhotos = React.useMemo(() => {
-    return laborOtMorningPhotos.filter(Boolean);
-  }, [laborOtMorningPhotos]);
+    const ownPhotos = laborOtMorningPhotos.filter(Boolean);
+    if (ownPhotos.length > 0) return ownPhotos;
+
+    if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
+      const pObj = mainReportForShiftPhotos.photos as any;
+      const dbShift = pObj.laborByShift?.otMorning;
+      if (dbShift) {
+        if (Array.isArray(dbShift)) {
+          return dbShift.filter(Boolean);
+        }
+        return [dbShift.in || "", dbShift.out || ""].filter(Boolean);
+      }
+    }
+    return [];
+  }, [laborOtMorningPhotos, mainReportForShiftPhotos]);
 
   const displayOtNoonPhotos = React.useMemo(() => {
-    return laborOtNoonPhotos.filter(Boolean);
-  }, [laborOtNoonPhotos]);
+    const ownPhotos = laborOtNoonPhotos.filter(Boolean);
+    if (ownPhotos.length > 0) return ownPhotos;
+
+    if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
+      const pObj = mainReportForShiftPhotos.photos as any;
+      const dbShift = pObj.laborByShift?.otNoon;
+      if (dbShift) {
+        if (Array.isArray(dbShift)) {
+          return dbShift.filter(Boolean);
+        }
+        return [dbShift.in || "", dbShift.out || ""].filter(Boolean);
+      }
+    }
+    return [];
+  }, [laborOtNoonPhotos, mainReportForShiftPhotos]);
 
   const displayOtEveningPhotos = React.useMemo(() => {
-    return laborOtEveningPhotos.filter(Boolean);
-  }, [laborOtEveningPhotos]);
+    const ownPhotos = laborOtEveningPhotos.filter(Boolean);
+    if (ownPhotos.length > 0) return ownPhotos;
+
+    if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
+      const pObj = mainReportForShiftPhotos.photos as any;
+      const dbShift = pObj.laborByShift?.otEvening;
+      if (dbShift) {
+        if (Array.isArray(dbShift)) {
+          return dbShift.filter(Boolean);
+        }
+        return [dbShift.in || "", dbShift.out || ""].filter(Boolean);
+      }
+    }
+    return [];
+  }, [laborOtEveningPhotos, mainReportForShiftPhotos]);
 
   // Helper render functions with lexical scope access
   const renderTimeInput = (id: string, shift: string, rangeStr: string) => {
@@ -3076,8 +3152,8 @@ export const DailyReportDetailPane: React.FC = () => {
                       {
                         id: "regular",
                         label: "กะปกติ",
-                        required: (() => {
-                          const normalLabor = displayLabor.filter((l) => l.shifts?.normal);
+                        required: selectedTaskInfo?.task?.isHelper ? 0 : (() => {
+                          const normalLabor = referenceLabor.filter((l) => l.shifts?.normal);
                           if (normalLabor.length === 0) return 4;
 
                           const parseStartHour = (timeRange: string): number => {
@@ -3115,31 +3191,31 @@ export const DailyReportDetailPane: React.FC = () => {
                         })(),
                         current: displayRegularPhotos.length,
                         isMinimum: false,
-                        show: displayLabor.some((l) => l.shifts?.normal),
+                        show: displayLabor.some((l) => l.shifts?.normal) || (selectedTaskInfo?.task?.isHelper && displayRegularPhotos.length > 0),
                       },
                       {
                         id: "otMorning",
                         label: "OT เช้า",
-                        required: 2,
+                        required: selectedTaskInfo?.task?.isHelper ? 0 : 2,
                         current: displayOtMorningPhotos.length,
                         isMinimum: false,
-                        show: displayLabor.some((l) => l.shifts?.otMorning),
+                        show: displayLabor.some((l) => l.shifts?.otMorning) || (selectedTaskInfo?.task?.isHelper && displayOtMorningPhotos.length > 0),
                       },
                       {
                         id: "otNoon",
                         label: "OT เที่ยง",
-                        required: 2,
+                        required: selectedTaskInfo?.task?.isHelper ? 0 : 2,
                         current: displayOtNoonPhotos.length,
                         isMinimum: false,
-                        show: displayLabor.some((l) => l.shifts?.otNoon),
+                        show: displayLabor.some((l) => l.shifts?.otNoon) || (selectedTaskInfo?.task?.isHelper && displayOtNoonPhotos.length > 0),
                       },
                       {
                         id: "otEvening",
                         label: "OT เย็น",
-                        required: 2,
+                        required: selectedTaskInfo?.task?.isHelper ? 0 : 2,
                         current: displayOtEveningPhotos.length,
                         isMinimum: false,
-                        show: displayLabor.some((l) => l.shifts?.otEvening),
+                        show: displayLabor.some((l) => l.shifts?.otEvening) || (selectedTaskInfo?.task?.isHelper && displayOtEveningPhotos.length > 0),
                       },
                     ]
                       .filter((tab) => tab.show)
@@ -3409,7 +3485,7 @@ export const DailyReportDetailPane: React.FC = () => {
                       (shiftKey) => {
                         if (activePhotoTab !== shiftKey) return null;
                         const getShiftTime = (key: string) => {
-                          const times = labor
+                          const times = referenceLabor
                             .filter(
                               (l) => l.shifts?.[(key === "day" ? "normal" : key) as keyof ShiftConfig],
                             )
@@ -3444,7 +3520,7 @@ export const DailyReportDetailPane: React.FC = () => {
                             const startT = parseStart(dayRange);
                             const endT = parseEnd(dayRange);
 
-                            const normalLabor = labor.filter((l) => l.shifts?.normal);
+                            const normalLabor = referenceLabor.filter((l) => l.shifts?.normal);
                             let requiredCount = 4;
                             let minStartHour = 8;
                             let maxEndHour = 17;
@@ -3574,10 +3650,10 @@ export const DailyReportDetailPane: React.FC = () => {
                           ];
                         }
                         const shiftPhotos = {
-                          regular: laborRegularPhotos,
-                          otMorning: laborOtMorningPhotos,
-                          otNoon: laborOtNoonPhotos,
-                          otEvening: laborOtEveningPhotos,
+                          regular: displayRegularPhotos,
+                          otMorning: displayOtMorningPhotos,
+                          otNoon: displayOtNoonPhotos,
+                          otEvening: displayOtEveningPhotos,
                         }[shiftKey as "regular" | "otMorning" | "otNoon" | "otEvening"] || [];
                         return (
                            <div
