@@ -250,10 +250,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                 const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
                                     const reportData = reportDoc.data();
-                                    if (!dailyreports.some(r => r.id === reportDoc.id || r.date === reportData.date)) {
+                                    if (!dailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
                                         dailyreports.push({
                                             ...reportData,
                                             id: reportDoc.id,
+                                            date: reportData.date || reportDoc.id,
                                             revisionId: revDoc.id
                                         } as unknown as DailyReport);
                                     }
@@ -263,9 +264,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                             subtaskRev = subtaskData.currentRevision || 'rev00';
                             const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', subtaskRev, 'dailyReports'));
                             for (const reportDoc of reportsSnap.docs) {
+                                const reportData = reportDoc.data();
                                 dailyreports.push({
-                                    ...reportDoc.data(),
+                                    ...reportData,
                                     id: reportDoc.id,
+                                    date: reportData.date || reportDoc.id,
                                     revisionId: subtaskRev
                                 } as unknown as DailyReport);
                             }
@@ -314,10 +317,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                     const helpReportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'help', helpDoc.id, 'dailyReports'));
                                     for (const reportDoc of helpReportsSnap.docs) {
                                         const reportData = reportDoc.data();
-                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === reportData.date)) {
+                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
                                             subtaskDailyreports.push({
                                                 ...reportData,
                                                 id: reportDoc.id,
+                                                date: reportData.date || reportDoc.id,
                                                 revisionId: subtaskRev
                                             } as unknown as DailyReport);
                                         }
@@ -331,10 +335,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                     const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
                                     for (const reportDoc of reportsSnap.docs) {
                                         const reportData = reportDoc.data();
-                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === reportData.date)) {
+                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
                                             subtaskDailyreports.push({
                                                 ...reportData,
                                                 id: reportDoc.id,
+                                                date: reportData.date || reportDoc.id,
                                                 revisionId: revDoc.id
                                             } as unknown as DailyReport);
                                         }
@@ -344,10 +349,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                 const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', subtaskRev, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
                                     const reportData = reportDoc.data();
-                                    if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === reportData.date)) {
+                                    if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
                                         subtaskDailyreports.push({
                                             ...reportData,
                                             id: reportDoc.id,
+                                            date: reportData.date || reportDoc.id,
                                             revisionId: subtaskRev
                                         } as unknown as DailyReport);
                                     }
@@ -397,7 +403,14 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     }
                 } else {
                     const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'dailyreport'));
-                    dailyreports = reportsSnap.docs.map(d => ({ ...d.data(), id: d.id }) as DailyReport);
+                    dailyreports = reportsSnap.docs.map(d => {
+                        const rData = d.data();
+                        return {
+                            ...rData,
+                            id: d.id,
+                            date: rData.date || d.id
+                        } as DailyReport;
+                    });
                 }
 
                 // Sort daily reports descending by date
