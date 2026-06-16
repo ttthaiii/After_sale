@@ -4240,6 +4240,91 @@ export const DailyReportDetailPane: React.FC = () => {
                                   </span>
                                 ))}
                               </div>
+
+                              {/* ── Photo Gallery for this history entry ── */}
+                              {(() => {
+                                // Collect all photos from this history entry
+                                const allPhotos: { url: string; label: string }[] = [];
+                                const pObj = h.photos && !Array.isArray(h.photos) ? h.photos as any : null;
+                                const pArr = Array.isArray(h.photos) ? h.photos as string[] : null;
+
+                                // Site photos
+                                const siteUrls: string[] = pObj
+                                  ? (pObj.site || []).filter(Boolean)
+                                  : (pArr || []).filter(Boolean);
+                                siteUrls.forEach((url, i) => allPhotos.push({ url, label: `ไซต์ ${i + 1}` }));
+
+                                // Shift photos (laborByShift)
+                                if (pObj?.laborByShift) {
+                                  const shiftLabels: Record<string, string[]> = {
+                                    regular: ["เข้า", "พักเที่ยง", "เข้าบ่าย", "ออก"],
+                                    otMorning: ["OT เช้า-เข้า", "OT เช้า-ออก"],
+                                    otNoon: ["OT เที่ยง-เข้า", "OT เที่ยง-ออก"],
+                                    otEvening: ["OT เย็น-เข้า", "OT เย็น-ออก"],
+                                  };
+                                  Object.entries(pObj.laborByShift).forEach(([shiftKey, shiftVal]: [string, any]) => {
+                                    if (!shiftVal) return;
+                                    const labels = shiftLabels[shiftKey] || [];
+                                    const urls: string[] = Array.isArray(shiftVal)
+                                      ? shiftVal.filter(Boolean)
+                                      : [shiftVal.in, shiftVal.lunch, shiftVal.afternoon, shiftVal.out, shiftVal.out2].filter(Boolean);
+                                    urls.forEach((url, i) => allPhotos.push({ url, label: labels[i] || `${shiftKey} ${i + 1}` }));
+                                  });
+                                }
+
+                                // Legacy laborPhotos array
+                                if (!pObj && !pArr && h.laborPhotos) {
+                                  (h.laborPhotos as string[]).filter(Boolean).forEach((url: string, i: number) => allPhotos.push({ url, label: `แรงงาน ${i + 1}` }));
+                                }
+
+                                if (allPhotos.length === 0) return null;
+                                return (
+                                  <div
+                                    style={{ marginTop: "10px" }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div style={{ fontSize: "0.72rem", color: "#94a3b8", fontWeight: 700, marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                      📷 รูปถ่าย ({allPhotos.length} รูป)
+                                    </div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                                      {allPhotos.map((p, pIdx) => (
+                                        <div
+                                          key={pIdx}
+                                          onClick={() => setZoomImage(p.url)}
+                                          style={{
+                                            cursor: "pointer",
+                                            borderRadius: "8px",
+                                            overflow: "hidden",
+                                            width: "60px",
+                                            height: "60px",
+                                            position: "relative",
+                                            border: "2px solid #e2e8f0",
+                                            flexShrink: 0,
+                                            transition: "all 0.15s",
+                                          }}
+                                          onMouseOver={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = "#6366f1"; }}
+                                          onMouseOut={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                                          title={p.label}
+                                        >
+                                          <img
+                                            src={p.url}
+                                            alt={p.label}
+                                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                          />
+                                          <div style={{
+                                            position: "absolute", bottom: 0, left: 0, right: 0,
+                                            background: "rgba(0,0,0,0.5)", color: "#fff",
+                                            fontSize: "0.55rem", textAlign: "center", padding: "1px 2px",
+                                            fontWeight: 600, lineHeight: 1.2
+                                          }}>
+                                            {p.label}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })}
