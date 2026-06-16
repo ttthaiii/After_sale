@@ -3999,8 +3999,10 @@ export const DailyReportDetailPane: React.FC = () => {
               </div>
               {(() => {
                 const history = selectedTaskInfo.task.history || [];
+                const isHelperTask = selectedTaskInfo.task.isHelper === true;
                 const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision)
-                  .filter((h) => h.date);
+                  .filter((h) => h.date)
+                  .filter((h) => isHelperTask ? h.isSupportReport === true : h.isSupportReport !== true);
                 if (filteredHistory.length === 0) return null;
                 return (
                    <div
@@ -4073,7 +4075,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     ? "translateY(-2px)"
                                     : "none",
                               }}
-                              key={h.id}
+                              key={`${h.id}-${h.isSupportReport ? 'support' : 'main'}`}
                             >
                               {" "}
                               
@@ -4128,6 +4130,22 @@ export const DailyReportDetailPane: React.FC = () => {
                                   >
                                     Progress: {h.progress}%
                                   </div>
+
+                                  {selectedTaskInfo?.task?.isHelper === true && (
+                                    <div
+                                      style={{
+                                        fontSize: "0.75rem",
+                                        color: h.isSupportReport === true ? "#059669" : "#2563eb",
+                                        background: h.isSupportReport === true ? "#f0fdf4" : "#eff6ff",
+                                        border: `1px solid ${h.isSupportReport === true ? "#bbf7d0" : "#bfdbfe"}`,
+                                        padding: "2px 8px",
+                                        borderRadius: "6px",
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {h.isSupportReport === true ? "งานสนับสนุน" : "งานหลัก"}
+                                    </div>
+                                  )}
                                 </div>{" "}
                                 
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

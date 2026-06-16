@@ -319,7 +319,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                     const helpReportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'help', helpDoc.id, 'dailyReports'));
                                     for (const reportDoc of helpReportsSnap.docs) {
                                         const reportData = reportDoc.data();
-                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
+                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || (r.date === (reportData.date || reportDoc.id) && r.isSupportReport === true))) {
                                             subtaskDailyreports.push({
                                                 ...reportData,
                                                 id: reportDoc.id,
@@ -338,7 +338,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                     const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
                                     for (const reportDoc of reportsSnap.docs) {
                                         const reportData = reportDoc.data();
-                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
+                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || (r.date === (reportData.date || reportDoc.id) && r.isSupportReport === false))) {
                                             subtaskDailyreports.push({
                                                 ...reportData,
                                                 id: reportDoc.id,
@@ -353,7 +353,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                 const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', subtaskRev, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
                                     const reportData = reportDoc.data();
-                                    if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
+                                    if (!subtaskDailyreports.some(r => r.id === reportDoc.id || (r.date === (reportData.date || reportDoc.id) && r.isSupportReport === false))) {
                                         subtaskDailyreports.push({
                                             ...reportData,
                                             id: reportDoc.id,
@@ -984,7 +984,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
         const isHelperReport = isSubtaskId || taskDoc?.helperForemanIds?.includes(report.createdBy) || taskDoc?.assignedForeman === report.createdBy;
 
-        if (isWoaWop) {
+        if (isWoaWop || isSubtaskId) {
             if (isHelperReport) {
                 const helpId = currentRev.replace('rev', 'help');
                 const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId, 'help', helpId);
@@ -1066,7 +1066,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 // Map status values for LB compatibility
                 let lbStatus = isCompleted ? 'for-checking' : 'in-progress';
                 
-                if (isWoaWop) {
+                if (isWoaWop || isSubtaskId) {
                     await updateDoc(taskRef, {
                         dailyProgress: newProgress,
                         status: lbStatus,

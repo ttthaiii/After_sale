@@ -307,6 +307,15 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       .find((t: any) => t.id === selectedTaskInfo.task.id);
     if (!latestTask) return;
 
+    // Deep-compare history: check labor count and progress for the most recent entry
+    // This detects updates when re-submitting the same day (length unchanged but content changed)
+    const latestHistoryEntry = latestTask.history?.[0];
+    const currentHistoryEntry = selectedTaskInfo.task.history?.[0];
+    const historyContentChanged =
+      (latestHistoryEntry?.labor?.length ?? -1) !== (currentHistoryEntry?.labor?.length ?? -1) ||
+      (latestHistoryEntry?.progress ?? -1) !== (currentHistoryEntry?.progress ?? -1) ||
+      (latestHistoryEntry?.date ?? '') !== (currentHistoryEntry?.date ?? '');
+
     const hasTaskChanged =
       latestTask.status !== selectedTaskInfo.task.status ||
       latestTask.dailyProgress !== selectedTaskInfo.task.dailyProgress ||
@@ -315,6 +324,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       latestTask.startDate !== selectedTaskInfo.task.startDate ||
       latestTask.revisionCreatedAt !== selectedTaskInfo.task.revisionCreatedAt ||
       latestTask.history?.length !== selectedTaskInfo.task.history?.length ||
+      historyContentChanged ||
       JSON.stringify(latestTask.responsibleStaffIds) !== JSON.stringify(selectedTaskInfo.task.responsibleStaffIds);
 
     const hasWoChanged =
@@ -1093,8 +1103,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (openingDateStr && dateStr < openingDateStr) {
       return "disabled";
     }
+    const isHelperTask = (task as any).isHelper === true;
     const reported = task.history?.some(
-      (h) => h.revisionId === (task.currentRevision || 'rev00') && h.date?.split("T")[0] === dateStr,
+      (h) => h.revisionId === (task.currentRevision || 'rev00') &&
+             h.date?.split("T")[0] === dateStr &&
+             (isHelperTask ? h.isSupportReport === true : h.isSupportReport !== true),
     );
     if (reported) {
       return "reported";
@@ -1116,7 +1129,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const progressBounds = useMemo(() => {
     if (!selectedTaskInfo) return { min: 0, max: 100, isToday: true };
     const history = selectedTaskInfo.task.history || [];
-    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
+    const isHelperMode = selectedTaskInfo.task.isHelper === true;
+    const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision)
+      .filter((h) => isHelperMode ? h.isSupportReport === true : h.isSupportReport !== true);
     const targetDate = reportDate;
     let min = 0;
     let max = 100;

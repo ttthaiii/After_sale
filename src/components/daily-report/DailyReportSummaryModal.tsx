@@ -70,9 +70,11 @@ export const DailyReportSummaryModal: React.FC = () => {
           const leaveCount = labor.filter((l) => l.leave?.active).length;
           const originalReport =
             isEditingExisting &&
-            selectedTaskInfo?.task?.history?.find(
-              (h) => h.date?.split("T")[0] === reportDate,
-            );
+            selectedTaskInfo?.task?.history?.find((h) => {
+              const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+              const matchesHelper = selectedTaskInfo.task.isHelper ? h.isSupportReport === true : h.isSupportReport !== true;
+              return matchesRevision && h.date?.split("T")[0] === reportDate && matchesHelper;
+            });
           const originalLaborMap =  new Map();
           if (originalReport) {
             if (originalReport.labor) {
@@ -952,7 +954,9 @@ export const DailyReportSummaryModal: React.FC = () => {
                           style={{
                             marginTop: "10px",
                             paddingTop: "10px",
-                            borderTop: "1px dashed #fca5a5",
+                            borderTop: selectedTaskInfo?.task?.isHelper
+                              ? "1px dashed #e2e8f0"
+                              : "1px dashed #fca5a5",
                           }}
                         >
                           {" "}
@@ -962,10 +966,14 @@ export const DailyReportSummaryModal: React.FC = () => {
                               margin: "0 0 6px 0",
                               fontSize: "0.75rem",
                               fontWeight: 800,
-                              color: "#ef4444",
+                              color: selectedTaskInfo?.task?.isHelper
+                                ? "#64748b"
+                                : "#ef4444",
                             }}
                           >
-                            คนงานที่ถูกลบออก ({removedWorkers.length} คน)
+                            {selectedTaskInfo?.task?.isHelper
+                              ? `คนงานหลัก (${removedWorkers.length} คน)`
+                              : `คนงานที่ถูกลบออก (${removedWorkers.length} คน)`}
                           </h5>{" "}
                           
                           <div
@@ -992,10 +1000,16 @@ export const DailyReportSummaryModal: React.FC = () => {
                                     justifyContent: "space-between",
                                     alignItems: "center",
                                     padding: "8px 12px",
-                                    background: "#fef2f2",
+                                    background: selectedTaskInfo?.task?.isHelper
+                                      ? "#f8fafc"
+                                      : "#fef2f2",
                                     borderRadius: "10px",
-                                    border: "1px solid #fca5a5",
-                                    opacity: 0.8,
+                                    border: selectedTaskInfo?.task?.isHelper
+                                      ? "1px solid #e2e8f0"
+                                      : "1px solid #fca5a5",
+                                    opacity: selectedTaskInfo?.task?.isHelper
+                                      ? 1
+                                      : 0.8,
                                   }}
                                   key={rw.staffId}
                                 >
@@ -1016,7 +1030,9 @@ export const DailyReportSummaryModal: React.FC = () => {
                                         width: 24,
                                         height: 24,
                                         borderRadius: 6,
-                                        background: "#fee2e2",
+                                        background: selectedTaskInfo?.task?.isHelper
+                                          ? "#f1f5f9"
+                                          : "#fee2e2",
                                         display: "flex",
                                         alignItems: "center",
                                         justifyContent: "center",
@@ -1025,15 +1041,24 @@ export const DailyReportSummaryModal: React.FC = () => {
                                     >
                                       {" "}
                                       
-                                      <User size={12} color="#ef4444" />
+                                      <User
+                                        size={12}
+                                        color={selectedTaskInfo?.task?.isHelper
+                                          ? "#64748b"
+                                          : "#ef4444"}
+                                      />
                                     </div>{" "}
                                     
                                     <div
                                       style={{
                                         fontSize: "0.8rem",
                                         fontWeight: 800,
-                                        color: "#991b1b",
-                                        textDecoration: "line-through",
+                                        color: selectedTaskInfo?.task?.isHelper
+                                          ? "#334155"
+                                          : "#991b1b",
+                                        textDecoration: selectedTaskInfo?.task?.isHelper
+                                          ? "none"
+                                          : "line-through",
                                         whiteSpace: "nowrap",
                                         overflow: "hidden",
                                         textOverflow: "ellipsis",
@@ -1061,9 +1086,15 @@ export const DailyReportSummaryModal: React.FC = () => {
                                           fontWeight: 800,
                                           padding: "2px 6px",
                                           borderRadius: "6px",
-                                          background: "#fee2e2",
-                                          color: "#991b1b",
-                                          textDecoration: "line-through",
+                                          background: selectedTaskInfo?.task?.isHelper
+                                            ? "#f1f5f9"
+                                            : "#fee2e2",
+                                          color: selectedTaskInfo?.task?.isHelper
+                                            ? "#475569"
+                                            : "#991b1b",
+                                          textDecoration: selectedTaskInfo?.task?.isHelper
+                                            ? "none"
+                                            : "line-through",
                                         }}
                                         key={sIdx}
                                       >
@@ -1077,8 +1108,12 @@ export const DailyReportSummaryModal: React.FC = () => {
                                           fontWeight: 900,
                                           padding: "2px 6px",
                                           borderRadius: "6px",
-                                          background: "#fee2e2",
-                                          color: "#991b1b",
+                                          background: selectedTaskInfo?.task?.isHelper
+                                            ? "#f1f5f9"
+                                            : "#fee2e2",
+                                          color: selectedTaskInfo?.task?.isHelper
+                                            ? "#475569"
+                                            : "#991b1b",
                                         }}
                                       >
                                         จำนวน {rw.amount} คน
