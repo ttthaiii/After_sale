@@ -123,6 +123,18 @@ export const DailyReportDetailPane: React.FC = () => {
     if (ownPhotos.length > 0) return ownPhotos;
 
     if (selectedTaskInfo?.task?.isHelper) {
+      // First: try support report (helper's own site photos)
+      const supportReport = selectedTaskInfo.task.history?.find((h) => {
+        const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+        return matchesRevision && h.isSupportReport === true && h.date?.split("T")[0] === reportDate;
+      });
+      if (supportReport?.photos) {
+        const pObj = !Array.isArray(supportReport.photos) ? supportReport.photos as any : null;
+        const siteUrls = pObj ? (pObj.site || []).filter(Boolean) : (supportReport.photos as string[]).filter(Boolean);
+        if (siteUrls.length > 0) return siteUrls;
+      }
+
+      // Fallback: main foreman's site photos
       const mainReport = selectedTaskInfo.task.history?.find((h) => {
         const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
         const matchesMain = h.isSupportReport !== true;
@@ -167,6 +179,30 @@ export const DailyReportDetailPane: React.FC = () => {
     });
   }, [selectedTaskInfo, reportDate]);
 
+  // For helper tasks: find the support report for the current date to fall back on photos
+  // This handles the case where laborXxxPhotos state may not have loaded yet
+  const supportReportForDate = React.useMemo(() => {
+    if (!selectedTaskInfo?.task?.isHelper) return null;
+    return selectedTaskInfo.task.history?.find((h) => {
+      const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+      return matchesRevision && h.isSupportReport === true && h.date?.split("T")[0] === reportDate;
+    }) || null;
+  }, [selectedTaskInfo, reportDate]);
+
+  // Helper to extract shift photos from a history entry
+  const extractShiftPhotos = (historyEntry: any, shiftKey: 'regular' | 'otMorning' | 'otNoon' | 'otEvening'): (string | null)[] => {
+    if (!historyEntry?.photos) return [];
+    const pObj = historyEntry.photos && !Array.isArray(historyEntry.photos) ? historyEntry.photos as any : null;
+    if (!pObj?.laborByShift) return [];
+    const dbShift = pObj.laborByShift[shiftKey];
+    if (!dbShift) return [];
+    if (Array.isArray(dbShift)) return dbShift.filter(Boolean);
+    if (shiftKey === 'regular') {
+      return [dbShift.in || '', dbShift.lunch || '', dbShift.afternoon || '', dbShift.out || ''].filter(Boolean);
+    }
+    return [dbShift.in || '', dbShift.out || ''].filter(Boolean);
+  };
+
   const referenceLabor = React.useMemo(() => {
     if (labor.length > 0) return labor;
     if (selectedTaskInfo?.task?.isHelper) {
@@ -178,6 +214,10 @@ export const DailyReportDetailPane: React.FC = () => {
   const displayRegularPhotos = React.useMemo(() => {
     const ownPhotos = laborRegularPhotos.filter(Boolean);
     if (ownPhotos.length > 0) return ownPhotos;
+
+    // For helper tasks: try own support report photos first
+    const supportPhotos = extractShiftPhotos(supportReportForDate, 'regular');
+    if (supportPhotos.length > 0) return supportPhotos;
 
     if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
       const pObj = mainReportForShiftPhotos.photos as any;
@@ -197,11 +237,15 @@ export const DailyReportDetailPane: React.FC = () => {
       return mainReportForShiftPhotos.laborPhotos.filter(Boolean);
     }
     return [];
-  }, [laborRegularPhotos, mainReportForShiftPhotos]);
+  }, [laborRegularPhotos, mainReportForShiftPhotos, supportReportForDate]);
 
   const displayOtMorningPhotos = React.useMemo(() => {
     const ownPhotos = laborOtMorningPhotos.filter(Boolean);
     if (ownPhotos.length > 0) return ownPhotos;
+
+    // For helper tasks: try own support report photos first
+    const supportPhotos = extractShiftPhotos(supportReportForDate, 'otMorning');
+    if (supportPhotos.length > 0) return supportPhotos;
 
     if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
       const pObj = mainReportForShiftPhotos.photos as any;
@@ -214,11 +258,15 @@ export const DailyReportDetailPane: React.FC = () => {
       }
     }
     return [];
-  }, [laborOtMorningPhotos, mainReportForShiftPhotos]);
+  }, [laborOtMorningPhotos, mainReportForShiftPhotos, supportReportForDate]);
 
   const displayOtNoonPhotos = React.useMemo(() => {
     const ownPhotos = laborOtNoonPhotos.filter(Boolean);
     if (ownPhotos.length > 0) return ownPhotos;
+
+    // For helper tasks: try own support report photos first
+    const supportPhotos = extractShiftPhotos(supportReportForDate, 'otNoon');
+    if (supportPhotos.length > 0) return supportPhotos;
 
     if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
       const pObj = mainReportForShiftPhotos.photos as any;
@@ -231,11 +279,15 @@ export const DailyReportDetailPane: React.FC = () => {
       }
     }
     return [];
-  }, [laborOtNoonPhotos, mainReportForShiftPhotos]);
+  }, [laborOtNoonPhotos, mainReportForShiftPhotos, supportReportForDate]);
 
   const displayOtEveningPhotos = React.useMemo(() => {
     const ownPhotos = laborOtEveningPhotos.filter(Boolean);
     if (ownPhotos.length > 0) return ownPhotos;
+
+    // For helper tasks: try own support report photos first
+    const supportPhotos = extractShiftPhotos(supportReportForDate, 'otEvening');
+    if (supportPhotos.length > 0) return supportPhotos;
 
     if (mainReportForShiftPhotos?.photos && !Array.isArray(mainReportForShiftPhotos.photos)) {
       const pObj = mainReportForShiftPhotos.photos as any;
@@ -248,7 +300,7 @@ export const DailyReportDetailPane: React.FC = () => {
       }
     }
     return [];
-  }, [laborOtEveningPhotos, mainReportForShiftPhotos]);
+  }, [laborOtEveningPhotos, mainReportForShiftPhotos, supportReportForDate]);
 
   // Helper render functions with lexical scope access
   const renderTimeInput = (id: string, shift: string, rangeStr: string) => {
