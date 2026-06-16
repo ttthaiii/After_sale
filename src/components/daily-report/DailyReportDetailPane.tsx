@@ -119,8 +119,44 @@ export const DailyReportDetailPane: React.FC = () => {
   const displayLabor = labor;
 
   const displaySitePhotos = React.useMemo(() => {
-    return sitePhotos.filter(Boolean);
-  }, [sitePhotos]);
+    const ownPhotos = sitePhotos.filter(Boolean);
+    if (ownPhotos.length > 0) return ownPhotos;
+
+    if (selectedTaskInfo?.task?.isHelper) {
+      const mainReport = selectedTaskInfo.task.history?.find((h) => {
+        const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+        const matchesMain = h.isSupportReport !== true;
+        return matchesRevision && h.date?.split("T")[0] === reportDate && matchesMain;
+      });
+      if (mainReport?.photos) {
+        if (!Array.isArray(mainReport.photos)) {
+          const pObj = mainReport.photos as any;
+          return (pObj.site || []).filter(Boolean);
+        } else {
+          return (mainReport.photos as string[]).filter(Boolean);
+        }
+      }
+    }
+    return [];
+  }, [sitePhotos, selectedTaskInfo, reportDate]);
+
+  const isShowingMainPhotosFallback = React.useMemo(() => {
+    if (sitePhotos.filter(Boolean).length > 0) return false;
+    if (!selectedTaskInfo?.task?.isHelper) return false;
+
+    const mainReport = selectedTaskInfo.task.history?.find((h) => {
+      const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+      const matchesMain = h.isSupportReport !== true;
+      return matchesRevision && h.date?.split("T")[0] === reportDate && matchesMain;
+    });
+    
+    if (!mainReport?.photos) return false;
+    if (Array.isArray(mainReport.photos)) {
+      return mainReport.photos.filter(Boolean).length > 0;
+    }
+    const pObj = mainReport.photos as any;
+    return (pObj.site || []).filter(Boolean).length > 0;
+  }, [sitePhotos, selectedTaskInfo, reportDate]);
 
   const displayRegularPhotos = React.useMemo(() => {
     return laborRegularPhotos.filter(Boolean);
@@ -3000,6 +3036,24 @@ export const DailyReportDetailPane: React.FC = () => {
                     {" "}
                     
                     <Camera size={20} color="#3b82f6" /> รูปถ่ายรายงานผล
+                    {isShowingMainPhotosFallback && (
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          color: "#2563eb",
+                          fontWeight: 700,
+                          marginLeft: "auto",
+                          background: "#eff6ff",
+                          padding: "4px 10px",
+                          borderRadius: "8px",
+                          border: "1px solid #bfdbfe",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        แสดงรูปจากใบงานหลักเพื่ออ้างอิง
+                      </span>
+                    )}
                   </h3>{" "}
                   
                   <div
@@ -3014,9 +3068,9 @@ export const DailyReportDetailPane: React.FC = () => {
                       {
                         id: "site",
                         label: "รูปถ่ายหน้างาน",
-                        required: 2,
+                        required: selectedTaskInfo?.task?.isHelper ? 0 : 2,
                         current: displaySitePhotos.length,
-                        isMinimum: true,
+                        isMinimum: !selectedTaskInfo?.task?.isHelper,
                         show: true,
                       },
                       {
@@ -3175,8 +3229,14 @@ export const DailyReportDetailPane: React.FC = () => {
                                   marginTop: "2px",
                                 }}
                               >
-                                แนบแล้ว {tab.current}/{tab.required} รูป
-                                {tab.isMinimum ? " (ขั้นต่ำ)" : ""}
+                                {selectedTaskInfo?.task?.isHelper && tab.id === "site" ? (
+                                  `อ้างอิงจากงานหลัก ${tab.current} รูป`
+                                ) : (
+                                  <React.Fragment>
+                                    แนบแล้ว {tab.current}/{tab.required} รูป
+                                    {tab.isMinimum ? " (ขั้นต่ำ)" : ""}
+                                  </React.Fragment>
+                                )}
                               </span>
                             </span>{" "}
                             
