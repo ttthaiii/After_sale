@@ -8,11 +8,16 @@ interface AdminAssignHelperModalProps {
     task: MasterTask | null;
     workOrderId: string;
     staffList: Staff[];
-    onAssign: (foremanId: string) => Promise<void>;
+    onAssign: (foremanIds: string[]) => Promise<void>;
 }
 
 const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList, onAssign }: AdminAssignHelperModalProps) => {
-    const [selectedForemanId, setSelectedForemanId] = useState<string>(task?.assignedForeman || '');
+    const [selectedForemanIds, setSelectedForemanIds] = useState<string[]>(() => {
+        if (task?.helperForemanIds && task.helperForemanIds.length > 0) {
+            return task.helperForemanIds;
+        }
+        return task?.assignedForeman ? [task.assignedForeman] : [];
+    });
     const [searchTerm, setSearchTerm] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,15 +29,23 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
         .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                      (s.affiliation || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
+    const handleToggleForeman = (id: string) => {
+        setSelectedForemanIds(prev => 
+            prev.includes(id) 
+                ? prev.filter(item => item !== id) 
+                : [...prev, id]
+        );
+    };
+
     const handleSubmit = async () => {
-        if (!selectedForemanId) {
+        if (selectedForemanIds.length === 0) {
             alert('กรุณาเลือกโฟร์แมนผู้ช่วยอย่างน้อย 1 ท่าน');
             return;
         }
 
         setIsSubmitting(true);
         try {
-            await onAssign(selectedForemanId);
+            await onAssign(selectedForemanIds);
             onClose();
         } catch (error) {
             console.error('Helper assignment failed:', error);
@@ -50,7 +63,11 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
                 <div style={{ padding: '24px', background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>จัดสรรโฟร์แมนผู้ช่วย (Assign Helper)</h2>
-                        <p style={{ margin: '4px 0 0', opacity: 0.8, fontSize: '0.85rem' }}>{task.name} (ใบงาน {workOrderId})</p>
+                        <p style={{ margin: '4px 0 0', opacity: 0.8, fontSize: '0.85rem' }}>
+                            {task.name || (task as any).taskName}
+                            {task.subtaskName && task.subtaskName !== (task.name || (task as any).taskName) && ` (${task.subtaskName})`}
+                            {` (ใบงาน ${workOrderId})`}
+                        </p>
                     </div>
                     <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px', borderRadius: '12px', cursor: 'pointer' }}><X size={20} /></button>
                 </div>
@@ -92,12 +109,12 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
                                 foremen.map(s => (
                                     <div
                                         key={s.id}
-                                        onClick={() => setSelectedForemanId(s.id)}
+                                        onClick={() => handleToggleForeman(s.id)}
                                         style={{
                                             display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '12px',
                                             border: '1px solid',
-                                            borderColor: selectedForemanId === s.id ? '#3b82f6' : '#f1f5f9',
-                                            background: selectedForemanId === s.id ? '#eff6ff' : '#f8fafc',
+                                            borderColor: selectedForemanIds.includes(s.id) ? '#3b82f6' : '#f1f5f9',
+                                            background: selectedForemanIds.includes(s.id) ? '#eff6ff' : '#f8fafc',
                                             cursor: 'pointer', transition: 'all 0.2s'
                                         }}
                                     >
@@ -108,7 +125,13 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
                                             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
                                             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{s.affiliation || 'ส่วนกลาง'}</div>
                                         </div>
-                                        {selectedForemanId === s.id && <CheckCircle2 size={18} color="#3b82f6" />}
+                                        {selectedForemanIds.includes(s.id) ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: '6px', background: '#3b82f6', color: 'white' }}>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                            </div>
+                                        ) : (
+                                            <div style={{ width: '20px', height: '20px', borderRadius: '6px', border: '2px solid #cbd5e1' }} />
+                                        )}
                                     </div>
                                 ))
                             )}

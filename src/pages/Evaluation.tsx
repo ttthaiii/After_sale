@@ -343,28 +343,31 @@ const Evaluation = () => {
                     task={assigningHelperTask}
                     workOrderId={helperTaskWoId}
                     staffList={staff}
-                    onAssign={async (foremanId) => {
+                    onAssign={async (foremanIds) => {
                         const category = workOrders.find(w => w.id === helperTaskWoId)?.categories.find(c => c.tasks.some(t => t.id === assigningHelperTask.id));
-                        if (category) {
+                        if (category && foremanIds.length > 0) {
+                            const primaryForemanId = foremanIds[0];
                             await updateTask(helperTaskWoId, category.id, assigningHelperTask.id, {
                                 isPickedUpBySupport: true,
-                                assignedForeman: foremanId,
-                                helperForemanIds: [foremanId]
+                                assignedForeman: primaryForemanId,
+                                helperForemanIds: foremanIds
                             });
 
-                            // Send notification to the helper foreman
-                            try {
-                                await sendNotification({
-                                    recipientId: foremanId,
-                                    senderId: user?.id || 'admin',
-                                    senderName: user?.name || 'Admin',
-                                    title: 'ได้รับมอบหมายงานช่วย',
-                                    message: `คุณได้รับมอบหมายให้เข้าช่วยงาน: ${assigningHelperTask.name} (ใบงาน ${helperTaskWoId})`,
-                                    type: 'info',
-                                    targetPath: `/daily-report?id=${helperTaskWoId}`
-                                });
-                            } catch (err) {
-                                console.error("Failed to send helper assignment notification:", err);
+                            // Send notification to each helper foreman
+                            for (const foremanId of foremanIds) {
+                                try {
+                                    await sendNotification({
+                                        recipientId: foremanId,
+                                        senderId: user?.id || 'admin',
+                                        senderName: user?.name || 'Admin',
+                                        title: 'ได้รับมอบหมายงานช่วย',
+                                        message: `คุณได้รับมอบหมายให้เข้าช่วยงาน: ${assigningHelperTask.name} (ใบงาน ${helperTaskWoId})`,
+                                        type: 'info',
+                                        targetPath: `/daily-report?id=${helperTaskWoId}`
+                                    });
+                                } catch (err) {
+                                    console.error("Failed to send helper assignment notification:", err);
+                                }
                             }
 
                             setModalAlert({
@@ -565,6 +568,11 @@ const Evaluation = () => {
                                         </div>
                                         <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>
                                             {task.name || (task as any).taskName}
+                                            {task.subtaskName && task.subtaskName !== (task.name || (task as any).taskName) && (
+                                                <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#4f46e5', marginTop: '4px' }}>
+                                                    ชื่องานย่อย: {task.subtaskName}
+                                                </span>
+                                            )}
                                         </h3>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem', color: '#475569' }}>
                                             <div><strong>โครงการ:</strong> {projName}</div>

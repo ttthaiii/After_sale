@@ -290,6 +290,22 @@ export const WorkOrderGroupList: React.FC = () => {
             >
               {formatSubtaskId(task.subtaskId || task.id)}
             </div>
+            {task.isSupportRequest && (
+              <div
+                style={{
+                  fontSize: "0.65rem",
+                  fontWeight: 900,
+                  color: "#0369a1",
+                  background: "#e0f2fe",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  whiteSpace: "nowrap",
+                  border: "1px solid #bae6fd",
+                }}
+              >
+                🤝 งานช่วยเหลือ (Support)
+              </div>
+            )}
             {task.currentRevision && task.currentRevision !== "rev00" && (
               <div
                 style={{
@@ -1188,6 +1204,7 @@ export const WorkOrderGroupList: React.FC = () => {
                             ),
                           ];
                           const isOthersCollapsed = collapsedHelpers[`${wo.id}-others`] !== false;
+                          const containsSupportTask = myTasks.some(({ task }: any) => task.isSupportRequest);
 
                           let groupBorderColor = "#cbd5e1";
                           let groupHeaderBg =
@@ -1197,6 +1214,10 @@ export const WorkOrderGroupList: React.FC = () => {
                             groupBorderColor = "#a5f3fc";
                             groupHeaderBg =
                               "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)";
+                          } else if (containsSupportTask) {
+                            groupBorderColor = "#bae6fd";
+                            groupHeaderBg =
+                              "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)";
                           } else if (globalCompleted > 0 || globalTasks.some((t: any) => (t.dailyProgress ?? t.progress ?? 0) > 0)) {
                             groupBorderColor = "#fef08a";
                             groupHeaderBg =
@@ -1304,7 +1325,26 @@ export const WorkOrderGroupList: React.FC = () => {
                                     }}
                                   >
                                     {wo.id}
-                                  </span>{" "}
+                                  </span>
+                                  {containsSupportTask && (
+                                    <span
+                                      style={{
+                                        marginLeft: "8px",
+                                        fontSize: "0.62rem",
+                                        fontWeight: 900,
+                                        color: "#0369a1",
+                                        background: "#e0f2fe",
+                                        padding: "2px 6px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #bae6fd",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "2px",
+                                      }}
+                                    >
+                                      🤝 งานช่วยเหลือ (Support)
+                                    </span>
+                                  )}{" "}
                                   
                                   <div
                                     style={{

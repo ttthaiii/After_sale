@@ -328,6 +328,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         c.tasks.some((t: any) => t.id === latestTask.id)
       )?.id || selectedTaskInfo.categoryId;
 
+      const isHelper =
+        latestTask.helperForemanIds?.includes(user?.employeeId || user?.id || foremanId) ||
+        latestTask.assignedForeman === (user?.employeeId || user?.id || foremanId);
       const isSubtaskOperator =
         latestTask.subtaskOperatorId === user?.id ||
         (user?.employeeId && latestTask.subtaskOperatorId === user.employeeId) ||
@@ -337,12 +340,12 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         (latestWo.pendingAdminReassign === undefined && latestWo.reviewedByAdmin === false && latestWo.status === 'Rejected');
       const isReadOnly =
         isWoRejectedAwaitingAdmin1 ||
-        (!isSubtaskOperator &&
+        (!isSubtaskOperator && !isHelper &&
           user?.role !== "Admin" &&
           user?.role !== "Manager");
 
       setSelectedTaskInfo({
-        task: { ...latestTask, isReadOnly },
+        task: { ...latestTask, isReadOnly, isHelper },
         wo: latestWo,
         categoryId
       });
@@ -546,7 +549,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!selectedTaskInfo) return;
     let active = true;
     const existingReport = selectedTaskInfo.task.history?.find((h) => {
-      return h.date?.split("T")[0] === reportDate;
+      const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
+      return matchesRevision && h.date?.split("T")[0] === reportDate;
     });
     if (existingReport) {
       setProgress(existingReport.progress);
@@ -609,6 +613,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             time: lv?.leaveTimes?.custom || "08:00 - 17:00",
             medCertFileUrl: lv?.medCertFileUrl || "",
           },
+          recordedBy: l?.recordedBy || lv?.recordedBy || "",
         });
       });
       setLabor(mergedLabor);
@@ -1038,6 +1043,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       historyBeforeToday.length > 0 ? historyBeforeToday[0].progress : 0;
     const currentP = task.dailyProgress || 0;
 
+    const isHelper =
+      task.helperForemanIds?.includes(user?.employeeId || user?.id || foremanId) ||
+      task.assignedForeman === (user?.employeeId || user?.id || foremanId);
     const isSubtaskOperator =
       task.subtaskOperatorId === user?.id ||
       (user?.employeeId && task.subtaskOperatorId === user.employeeId) ||
@@ -1047,11 +1055,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false && wo.status === 'Rejected');
     const isReadOnly =
       isWoRejectedAwaitingAdmin3 ||
-      (!isSubtaskOperator &&
+      (!isSubtaskOperator && !isHelper &&
         user?.role !== "Admin" &&
         user?.role !== "Manager");
 
-    setSelectedTaskInfo({ task: { ...task, isReadOnly }, wo, categoryId });
+    setSelectedTaskInfo({ task: { ...task, isReadOnly, isHelper }, wo, categoryId });
     setProgress(currentP < minP ? minP : currentP);
     setNote("");
     setLabor([]);
@@ -1077,7 +1085,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return "disabled";
     }
     const reported = task.history?.some(
-      (h) => h.date?.split("T")[0] === dateStr,
+      (h) => h.revisionId === (task.currentRevision || 'rev00') && h.date?.split("T")[0] === dateStr,
     );
     if (reported) {
       return "reported";
@@ -1146,7 +1154,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!selectedTaskInfo) return false;
     return (
       selectedTaskInfo.task.history?.some(
-        (h) => h.date?.split("T")[0] === reportDate,
+        (h) => h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00') && h.date?.split("T")[0] === reportDate,
       ) || false
     );
   }, [selectedTaskInfo, reportDate]);
@@ -1205,6 +1213,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               time: "08:00 - 17:00",
               medCertFileUrl: "",
             },
+            recordedBy: user?.employeeId || user?.id || "",
           });
         }
       });
@@ -1232,6 +1241,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               time: "08:00 - 17:00",
               medCertFileUrl: "",
             },
+            recordedBy: user?.employeeId || user?.id || "",
           });
         }
       });
@@ -1750,7 +1760,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
             // Find history entry for this task on the same date
             const reportedOnDate = t.history?.find(
-              (h: any) => h.date?.split("T")[0] === reportDate
+              (h: any) => h.revisionId === (t.currentRevision || 'rev00') && h.date?.split("T")[0] === reportDate
             );
 
             if (reportedOnDate && reportedOnDate.labor) {
@@ -1848,6 +1858,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             otEvening: l.shifts?.otEvening ? 3 : 0,
           },
           amount: l.amount || 1,
+          recordedBy: l.recordedBy || foremanEmpId,
         }));
       const leavePayload = labor
         .filter((l) => l.leave?.active)
@@ -1863,6 +1874,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           },
           medCertFileUrl: l.leave?.medCertFileUrl || "",
           leaveType: l.leave?.medCertFileUrl ? "paid" : "unpaid",
+          recordedBy: l.recordedBy || foremanEmpId,
         }));
       const photosPayload = {
         site: sitePhotos.filter(Boolean),
@@ -2157,6 +2169,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             time: lv?.leaveTimes?.custom || "08:00 - 17:00",
             medCertFileUrl: lv?.medCertFileUrl || "",
           },
+          recordedBy: l?.recordedBy || lv?.recordedBy || "",
         });
       });
       setLabor(mergedLabor);

@@ -115,6 +115,7 @@ export interface DailyReport {
 export interface MasterTask {
     id: string; // master_task_id or taskId
     name: string;
+    subtaskName?: string;
     title?: string;
     status: TaskStatus | 'upcoming' | 'in-progress' | 'for-checking' | 'completed' | 'pending_inspection' | 'approved' | 'rejected';
     beforePhotoUrl?: string;

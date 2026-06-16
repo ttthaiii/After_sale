@@ -41,6 +41,7 @@ export interface LaborEntry {
   shifts?: ShiftConfig;
   shiftTimes?: ShiftTimes;
   leave?: LeaveInfo;
+  recordedBy?: string;
 }
 
 export interface WorkTask {
@@ -120,6 +121,7 @@ export interface HistoryLaborEntry {
   shiftTimes?: ShiftTimes;
   amount?: number;
   affiliation?: string;
+  recordedBy?: string;
 }
 
 export interface HistoryLeaveEntry {
@@ -135,6 +137,7 @@ export interface HistoryLeaveEntry {
   medCertFileUrl?: string;
   leaveType?: string;
   amount?: number;
+  recordedBy?: string;
 }
 
 export interface HistoryPhotos {

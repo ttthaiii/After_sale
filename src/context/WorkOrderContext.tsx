@@ -211,6 +211,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 let currentRevision = 'rev00';
                 let revisionCreatedAt: string | null = null;
                 
+                let subtaskName = taskData.subtaskName || '';
                 let isSupportRequest = taskData.isSupportRequest || false;
                 let isPickedUpBySupport = taskData.isPickedUpBySupport || false;
                 let assignedForeman = taskData.assignedForeman || '';
@@ -219,6 +220,9 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 if (!subtasksSnap.empty) {
                     for (const subtaskDoc of subtasksSnap.docs) {
                         const subtaskData = subtaskDoc.data();
+                        if (subtaskData.subtaskName) {
+                            subtaskName = subtaskData.subtaskName;
+                        }
                         if (subtaskData.isSupportRequest !== undefined) {
                             isSupportRequest = subtaskData.isSupportRequest;
                         }
@@ -357,6 +361,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     id: taskDoc.id, 
                     name,
                     taskName: name,
+                    subtaskName,
                     responsibleStaffIds,
                     status,
                     taskCode,
@@ -388,6 +393,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 const categories = await fetchSubcollections(docSnapshot.id);
                 return {
                     ...baseData,
+                    status: baseData.status || 'In Progress',
                     id: docSnapshot.id,
                     categories
                 };
@@ -446,11 +452,15 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 // ✅ Check match against BOTH system id and employeeId during transition
                 const isReporter = wo.reporterId === user.id || (user.employeeId && wo.reporterId === user.employeeId);
                 
-                // Also check if they are responsible for any task in this WO
+                // Also check if they are responsible or assigned as helper for any task in this WO
                 const isResponsible = wo.categories?.some(cat => 
                     cat.tasks?.some(task => 
                         task.responsibleStaffIds?.includes(user.id) || 
-                        (user.employeeId && task.responsibleStaffIds?.includes(user.employeeId))
+                        (user.employeeId && task.responsibleStaffIds?.includes(user.employeeId)) ||
+                        task.helperForemanIds?.includes(user.id) ||
+                        (user.employeeId && task.helperForemanIds?.includes(user.employeeId)) ||
+                        task.assignedForeman === user.id ||
+                        (user.employeeId && task.assignedForeman === user.employeeId)
                     )
                 );
 
@@ -960,12 +970,17 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const isWoaWop = workOrderId.toUpperCase().includes('WOA') || workOrderId.toUpperCase().includes('WOP');
         const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
         
-        if (!isWoaWop) {
+        // Check if subtasks exist for this task in the database
+        const subtasksRef = collection(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks');
+        const subtasksSnap = await getDocs(subtasksRef);
+        const hasSubtasks = !subtasksSnap.empty;
+
+        if (!isWoaWop && !hasSubtasks) {
             await updateDoc(taskRef, updates);
             return;
         }
 
-        // For WOA/WOP, update the task doc, subtask doc, and write a new revision if revision changed!
+        // For WOA/WOP or tasks that use the subtask structure (e.g., imported tasks), update task, subtasks, and help revisions!
         const taskDocSnap = await getDoc(taskRef);
         if (!taskDocSnap.exists()) {
             await updateDoc(taskRef, updates);
@@ -1002,69 +1017,79 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
         await updateDoc(taskRef, mappedUpdates);
 
-        // Update Subtask
-        const subtaskId = getSubtaskId(taskId);
-        const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
-        
-        const subtaskUpdates: any = {};
-        if (updates.status) subtaskUpdates.status = lbStatus;
-        if (updates.dailyProgress !== undefined) subtaskUpdates.dailyProgress = updates.dailyProgress;
-        if (updates.currentRevision) subtaskUpdates.currentRevision = updates.currentRevision;
-        if (updates.isSupportRequest !== undefined) subtaskUpdates.isSupportRequest = updates.isSupportRequest;
-        if (updates.isPickedUpBySupport !== undefined) subtaskUpdates.isPickedUpBySupport = updates.isPickedUpBySupport;
-        if (updates.assignedForeman !== undefined) subtaskUpdates.assignedForeman = updates.assignedForeman;
-        if (updates.helperForemanIds !== undefined) subtaskUpdates.helperForemanIds = updates.helperForemanIds;
-        if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
-            subtaskUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
-            if (resolvedAssignees) {
-                subtaskUpdates.assignees = resolvedAssignees;
-            }
-        }
-
-        const subtaskDocSnap = await getDoc(subtaskRef);
-        if (subtaskDocSnap.exists()) {
-            await updateDoc(subtaskRef, subtaskUpdates);
-        } else {
-            // Write subtask if it doesn't exist
-            const assignees = taskData.assignees || [];
-            await setDoc(subtaskRef, {
-                subtaskId,
-                subtaskName: taskData.taskName || taskData.name || '',
-                status: lbStatus,
-                dailyProgress: updates.dailyProgress !== undefined ? updates.dailyProgress : (taskData.dailyProgress || 0),
-                assignees,
-                subtaskOperatorId: updates.responsibleStaffIds?.[0] || taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || "",
-                currentRevision: updates.currentRevision || taskData.currentRevision || 'rev00',
-                isActive: true,
-                isSupportRequest: updates.isSupportRequest !== undefined ? updates.isSupportRequest : (taskData.isSupportRequest || false),
-                isPickedUpBySupport: updates.isPickedUpBySupport !== undefined ? updates.isPickedUpBySupport : (taskData.isPickedUpBySupport || false),
-                assignedForeman: updates.assignedForeman !== undefined ? updates.assignedForeman : (taskData.assignedForeman || ""),
-                helperForemanIds: updates.helperForemanIds !== undefined ? updates.helperForemanIds : (taskData.helperForemanIds || [])
+        // Identify which subtask IDs need to be updated. If subtasks exist in Firestore, update all of them!
+        const subtaskIdsToUpdate: string[] = [];
+        if (hasSubtasks) {
+            subtasksSnap.docs.forEach(doc => {
+                subtaskIdsToUpdate.push(doc.id);
             });
+        } else {
+            subtaskIdsToUpdate.push(getSubtaskId(taskId));
         }
 
-        // If currentRevision changed or we have updates like rejectReason/revisionName, write/update revision document
-        const currentRev = updates.currentRevision || taskData.currentRevision || 'rev00';
-        const revisionRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
-        
-        const revisionData: any = {
-            revisionId: currentRev,
-            revisionName: updates.revisionName || updates.notes || taskData.revisionName || 'Revision',
-            status: 'active',
-            createdAt: updates.revisionCreatedAt || taskData.revisionCreatedAt || new Date().toISOString()
-        };
-        await setDoc(revisionRef, revisionData, { merge: true });
+        for (const subtaskId of subtaskIdsToUpdate) {
+            const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
+            
+            const subtaskUpdates: any = {};
+            if (updates.status) subtaskUpdates.status = lbStatus;
+            if (updates.dailyProgress !== undefined) subtaskUpdates.dailyProgress = updates.dailyProgress;
+            if (updates.currentRevision) subtaskUpdates.currentRevision = updates.currentRevision;
+            if (updates.isSupportRequest !== undefined) subtaskUpdates.isSupportRequest = updates.isSupportRequest;
+            if (updates.isPickedUpBySupport !== undefined) subtaskUpdates.isPickedUpBySupport = updates.isPickedUpBySupport;
+            if (updates.assignedForeman !== undefined) subtaskUpdates.assignedForeman = updates.assignedForeman;
+            if (updates.helperForemanIds !== undefined) subtaskUpdates.helperForemanIds = updates.helperForemanIds;
+            if (updates.responsibleStaffIds && updates.responsibleStaffIds.length > 0) {
+                subtaskUpdates.subtaskOperatorId = updates.responsibleStaffIds[0];
+                if (resolvedAssignees) {
+                    subtaskUpdates.assignees = resolvedAssignees;
+                }
+            }
 
-        // If helper assigned, initialize help subcollection
-        if (updates.isPickedUpBySupport === true) {
-            const helpId = currentRev.replace('rev', 'help');
-            const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'help', helpId);
-            await setDoc(helpDocRef, {
-                helpId,
-                createdAt: new Date().toISOString(),
-                assignedForeman: updates.assignedForeman || '',
-                helperForemanIds: updates.helperForemanIds || []
-            }, { merge: true });
+            const subtaskDocSnap = await getDoc(subtaskRef);
+            if (subtaskDocSnap.exists()) {
+                await updateDoc(subtaskRef, subtaskUpdates);
+            } else {
+                // Write subtask if it doesn't exist
+                const assignees = taskData.assignees || [];
+                await setDoc(subtaskRef, {
+                    subtaskId,
+                    subtaskName: taskData.taskName || taskData.name || '',
+                    status: lbStatus,
+                    dailyProgress: updates.dailyProgress !== undefined ? updates.dailyProgress : (taskData.dailyProgress || 0),
+                    assignees,
+                    subtaskOperatorId: updates.responsibleStaffIds?.[0] || taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || "",
+                    currentRevision: updates.currentRevision || taskData.currentRevision || 'rev00',
+                    isActive: true,
+                    isSupportRequest: updates.isSupportRequest !== undefined ? updates.isSupportRequest : (taskData.isSupportRequest || false),
+                    isPickedUpBySupport: updates.isPickedUpBySupport !== undefined ? updates.isPickedUpBySupport : (taskData.isPickedUpBySupport || false),
+                    assignedForeman: updates.assignedForeman !== undefined ? updates.assignedForeman : (taskData.assignedForeman || ""),
+                    helperForemanIds: updates.helperForemanIds !== undefined ? updates.helperForemanIds : (taskData.helperForemanIds || [])
+                });
+            }
+
+            // If currentRevision changed or we have updates like rejectReason/revisionName, write/update revision document
+            const currentRev = updates.currentRevision || taskData.currentRevision || 'rev00';
+            const revisionRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
+            
+            const revisionData: any = {
+                revisionId: currentRev,
+                revisionName: updates.revisionName || updates.notes || taskData.revisionName || 'Revision',
+                status: 'active',
+                createdAt: updates.revisionCreatedAt || taskData.revisionCreatedAt || new Date().toISOString()
+            };
+            await setDoc(revisionRef, revisionData, { merge: true });
+
+            // If helper assigned, initialize/update help subcollection
+            if (updates.isPickedUpBySupport === true) {
+                const helpId = currentRev.replace('rev', 'help');
+                const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'help', helpId);
+                await setDoc(helpDocRef, {
+                    helpId,
+                    createdAt: new Date().toISOString(),
+                    assignedForeman: updates.assignedForeman || '',
+                    helperForemanIds: updates.helperForemanIds || []
+                }, { merge: true });
+            }
         }
 
         // Auto-transition Rejected Work Orders to In Progress if all tasks are resolved (re-assigned)

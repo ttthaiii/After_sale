@@ -42,6 +42,7 @@ const formatSubtaskId = (id: string | undefined): string => {
 export const DailyReportDetailPane: React.FC = () => {
   const {
     selectedTaskInfo,
+    user,
     reportDate,
     progress,
     setProgress,
@@ -107,6 +108,13 @@ export const DailyReportDetailPane: React.FC = () => {
   const isAwaitingAdmin = React.useMemo(() => {
     return selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin;
   }, [selectedTaskInfo]);
+
+  const canEditWorker = React.useCallback((l: any) => {
+    if (user?.role === 'Admin') return true;
+    if (!l.recordedBy) return true; // Legacy fallback
+    const currentForemanId = user?.employeeId || user?.id || '';
+    return l.recordedBy === currentForemanId;
+  }, [user]);
 
   const displayLabor = labor;
 
@@ -634,7 +642,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 t.estimatedSla ||
                                 "24h";
                               const tDurHours = slaHoursMap[tSla] || 24;
-                              let tStart = t.startDate 
+                              let tStart = t.startDate && typeof t.startDate === 'string'
                                 ? `${t.startDate.split('T')[0]}T08:00:00` 
                                 : t.slaStartTime;
                               if (!tStart) {
@@ -687,7 +695,7 @@ export const DailyReportDetailPane: React.FC = () => {
                             
                             <SLACountdown
                               startTime={
-                                (selectedTaskInfo.task.startDate
+                                (selectedTaskInfo.task.startDate && typeof selectedTaskInfo.task.startDate === 'string'
                                   ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00`
                                   : selectedTaskInfo.task.slaStartTime) ||
                                  new Date().toISOString()
@@ -702,26 +710,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         );
                       })()} 
 
-                      {selectedTaskInfo.task.isHelper ? (
-                        <div
-                          style={{
-                            width: "100%",
-                            padding: "6px 12px",
-                            background: "#f0fdfa",
-                            border: "1px solid #ccfbf1",
-                            borderRadius: "12px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "6px",
-                            fontSize: "0.75rem",
-                            fontWeight: 800,
-                            color: "#0d9488",
-                          }}
-                        >
-                          🤝 ท่านเป็นผู้ช่วยงาน
-                        </div>
-                      ) : selectedTaskInfo.task.isSupportRequest ? (
+                      {selectedTaskInfo.task.isHelper ? null : selectedTaskInfo.task.isSupportRequest ? (
                         selectedTaskInfo.task.isPickedUpBySupport ? (
                           <div
                             style={{
@@ -1501,7 +1490,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     }}
                   >
                     {selectedTaskInfo.task.history?.some(
-                      (h) => h.date?.split("T")[0] === reportDate,
+                      (h) => h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00') && h.date?.split("T")[0] === reportDate,
                     ) &&
                       !isTaskFinished &&
                       (isEditingExisting ? (
@@ -1586,7 +1575,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           <Edit2 size={14} /> แก้ไขข้อมูล
                         </button>
                       ))}
-                    {isEditingExisting && !isTaskFinished && !selectedTaskInfo?.task?.isHelper && (
+                    {isEditingExisting && !isTaskFinished && (
                        <Fragment>
                         {" "}
                         
@@ -1919,7 +1908,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 <div
                                   onClick={() =>
                                     isEditingExisting &&
-                                    !selectedTaskInfo?.task?.isHelper &&
+                                    canEditWorker(l) &&
                                     toggleShift(l.id, "normal")
                                   }
                                   style={{
@@ -1933,10 +1922,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    cursor: (isEditingExisting && !selectedTaskInfo?.task?.isHelper)
+                                    cursor: (isEditingExisting && canEditWorker(l))
                                       ? "pointer"
                                       : "default",
-                                    opacity: (isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? 1 : 0.6,
+                                    opacity: (isEditingExisting && canEditWorker(l)) ? 1 : 0.6,
                                   }}
                                 >
                                   {l.shifts?.normal && (
@@ -1996,7 +1985,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 : false;
                               const canTickOtMorning =
                                 isEditingExisting &&
-                                !selectedTaskInfo?.task?.isHelper &&
+                                canEditWorker(l) &&
                                 l.shifts?.normal &&
                                 !isOtMorningBlockedByLeave;
                               return (
@@ -2111,7 +2100,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 : false;
                               const canTickOtNoon =
                                 isEditingExisting &&
-                                !selectedTaskInfo?.task?.isHelper &&
+                                canEditWorker(l) &&
                                 l.shifts?.normal &&
                                 !isOtNoonBlockedByLeave;
                               return (
@@ -2219,7 +2208,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 : false;
                               const canTickOtEvening =
                                 isEditingExisting &&
-                                !selectedTaskInfo?.task?.isHelper &&
+                                canEditWorker(l) &&
                                 l.shifts?.normal &&
                                 !isOtEveningBlockedByLeave;
                               return (
@@ -2344,7 +2333,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 
                                 <div
                                   onClick={() => {
-                                    if (!isEditingExisting || selectedTaskInfo?.task?.isHelper) return;
+                                    if (!isEditingExisting || !canEditWorker(l)) return;
                                     setLabor((prev) =>
                                       prev.map((item) => {
                                         if (item.id === l.id) {
@@ -2430,10 +2419,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    cursor: (isEditingExisting && !selectedTaskInfo?.task?.isHelper)
+                                    cursor: (isEditingExisting && canEditWorker(l))
                                       ? "pointer"
                                       : "default",
-                                    opacity: (isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? 1 : 0.6,
+                                    opacity: (isEditingExisting && canEditWorker(l)) ? 1 : 0.6,
                                   }}
                                 >
                                   {l.leave?.active && (
@@ -2488,7 +2477,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                             
                                             <Eye size={12} />
                                           </a>
-                                          {(isEditingExisting && !selectedTaskInfo?.task?.isHelper) && (
+                                          {(isEditingExisting && canEditWorker(l)) && (
                                              <button
                                               onClick={() =>
                                                 handleRemoveLeaveCert(l.id)
@@ -2515,7 +2504,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                             </button>
                                           )}
                                         </Fragment>
-                                      ) : (isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? (
+                                      ) : (isEditingExisting && canEditWorker(l)) ? (
                                         uploadingLeaveCertId === l.id ? ( 
                                           
                                           <div
@@ -2622,7 +2611,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 textAlign: "center",
                               }}
                             >
-                              {(isEditingExisting && !selectedTaskInfo?.task?.isHelper) ? (
+                              {(isEditingExisting && canEditWorker(l)) ? (
                                  <button
                                   onClick={() =>
                                     setLabor(
@@ -2650,7 +2639,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     color: "#94a3b8",
                                   }}
                                 >
-                                  ล็อกแล้ว
+                                  {!canEditWorker(l) ? "สังกัดอื่น" : "ล็อกแล้ว"}
                                 </span>
                               )}
                             </td>
@@ -2842,7 +2831,7 @@ export const DailyReportDetailPane: React.FC = () => {
                             {(() => {
                               const hasDataOnDate =
                                 selectedTaskInfo?.task.history?.some(
-                                  (h) => h.date?.split("T")[0] === reportDate,
+                                  (h) => h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00') && h.date?.split("T")[0] === reportDate,
                                 );
                               if (hasDataOnDate && !isEditingExisting) {
                                 return `* รายงานนี้ถูกบันทึกไว้แล้วที่ ${progress}%`;
@@ -3870,7 +3859,8 @@ export const DailyReportDetailPane: React.FC = () => {
               </div>
               {(() => {
                 const history = selectedTaskInfo.task.history || [];
-                const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
+                const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision)
+                  .filter((h) => h.date);
                 if (filteredHistory.length === 0) return null;
                 return (
                    <div
@@ -3915,30 +3905,31 @@ export const DailyReportDetailPane: React.FC = () => {
                             (acc: number, l: any) => acc + (Number(l.amount) || 1),
                             0,
                           );
+                          const hDateStr = h.date?.split("T")[0] || "";
                           return (
                              <div
                               onClick={() =>
-                                handleDateChange(h.date.split("T")[0])
+                                handleDateChange(hDateStr)
                               }
                               style={{
                                 padding: "16px",
                                 borderRadius: "16px",
                                 background:
-                                  h.date.split("T")[0] === reportDate
+                                  hDateStr === reportDate
                                     ? "#eff6ff"
                                     : h.type === "Problem"
                                       ? "#fef2f2"
                                       : "#fff",
-                                border: `2px solid ${h.date.split("T")[0] === reportDate ? "#3b82f6" : h.type === "Problem" ? "#fecaca" : "#e2e8f0"}`,
+                                border: `2px solid ${hDateStr === reportDate ? "#3b82f6" : h.type === "Problem" ? "#fecaca" : "#e2e8f0"}`,
                                 boxShadow:
-                                  h.date.split("T")[0] === reportDate
+                                  hDateStr === reportDate
                                     ? "0 4px 12px rgba(59, 130, 246, 0.15)"
                                     : "0 2px 4px rgba(0,0,0,0.02)",
                                 cursor: "pointer",
                                 transition:
                                   "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                                 transform:
-                                  h.date.split("T")[0] === reportDate
+                                  hDateStr === reportDate
                                     ? "translateY(-2px)"
                                     : "none",
                               }}
