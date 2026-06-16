@@ -801,16 +801,24 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           const isHelper =
             task.helperForemanIds?.includes(user?.employeeId || user?.id || foremanId) ||
             task.assignedForeman === (user?.employeeId || user?.id || foremanId);
-          const isAssigned =
-            user?.role === "Admin" ||
-            user?.role === "Manager" ||
-            isWoOwner2 ||
-            isSubtaskOperator ||
-            isHelper ||
-            (wo.reporterId === user?.id &&
-              task.status === "Approved" &&
-              (!task.responsibleStaffIds ||
-                task.responsibleStaffIds.length === 0));
+          let isAssigned = false;
+          if (task.isSupportRequest) {
+            isAssigned =
+              user?.role === "Admin" ||
+              user?.role === "Manager" ||
+              isHelper;
+          } else {
+            isAssigned =
+              user?.role === "Admin" ||
+              user?.role === "Manager" ||
+              isWoOwner2 ||
+              isSubtaskOperator ||
+              isHelper ||
+              (wo.reporterId === user?.id &&
+                task.status === "Approved" &&
+                (!task.responsibleStaffIds ||
+                  task.responsibleStaffIds.length === 0));
+          }
           if (isAssigned) {
             const filteredHistory = filterHistoryByRevision(task.history || [], task.revisionCreatedAt, task.currentRevision);
             const historyMax =
@@ -1693,33 +1701,35 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!selectedTaskInfo) return;
     if (labor.length === 0)
       return alert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
-    if (sitePhotos.filter(Boolean).length < 2)
-      return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
-    const isRegularActive = labor.some((l) => l.shifts?.normal);
-    if (isRegularActive) {
-      const requiredCount = getRequiredRegularPhotoCount(labor);
-      const uploadedCount = laborRegularPhotos.filter(Boolean).length;
-      if (uploadedCount < requiredCount) {
-        if (requiredCount === 2) {
-          return alert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
-        } else {
-          return alert(
-            "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
-          );
+    if (!selectedTaskInfo.task.isHelper) {
+      if (sitePhotos.filter(Boolean).length < 2)
+        return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+      const isRegularActive = labor.some((l) => l.shifts?.normal);
+      if (isRegularActive) {
+        const requiredCount = getRequiredRegularPhotoCount(labor);
+        const uploadedCount = laborRegularPhotos.filter(Boolean).length;
+        if (uploadedCount < requiredCount) {
+          if (requiredCount === 2) {
+            return alert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+          } else {
+            return alert(
+              "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
+            );
+          }
         }
       }
-    }
-    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
-    if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
-      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
-    }
-    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
-    if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
-      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
-    }
-    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
-    if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
-      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+      const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
+      if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
+        return alert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+      }
+      const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
+      if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
+        return alert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+      }
+      const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
+      if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
+        return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+      }
     }
     const allowedMinVal = progressBounds.min > 0 ? progressBounds.min : -1;
     if (progress <= allowedMinVal) {

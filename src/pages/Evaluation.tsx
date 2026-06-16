@@ -175,7 +175,7 @@ const Evaluation = () => {
             
             wo.categories.forEach(cat => {
                 cat.tasks.forEach(t => {
-                    const isPendingSupport = t.isSupportRequest === true && t.isPickedUpBySupport !== true;
+                    const isPendingSupport = t.isSupportRequest === true && t.isPickedUpBySupport !== true && t.isHelper === true;
                     if (isPendingSupport) {
                         const matchesSearch = (t.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                             (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -1,4 +1,4 @@
-import React, { Fragment } from "react";
+import React, { Fragment, useState, useEffect } from "react";
 import {
   ChevronLeft,
   Search,
@@ -36,10 +36,10 @@ export const WorkOrderGroupList: React.FC = () => {
     setIsSidebarOpen,
     collapsedHelpers,
     setCollapsedHelpers,
-    newTasks,
-    inProgressTasks,
-    pendingInspectionTasks,
-    pendingDeliveryWorkOrders,
+    newTasks: rawNewTasks,
+    inProgressTasks: rawInProgressTasks,
+    pendingInspectionTasks: rawPendingInspectionTasks,
+    pendingDeliveryWorkOrders: rawPendingDeliveryWorkOrders,
     handleSelectTask,
     getTaskImage,
     realProjects,
@@ -49,6 +49,41 @@ export const WorkOrderGroupList: React.FC = () => {
     setModalAlert,
     draftedTaskIds,
   } = useDailyReport();
+
+  const [activeTab, setActiveTab] = useState<'internal' | 'support'>('internal');
+
+  useEffect(() => {
+    if (selectedTaskInfo) {
+      const isSupport = selectedTaskInfo.task.isSupportRequest === true || selectedTaskInfo.task.isHelper === true;
+      setActiveTab(isSupport ? 'support' : 'internal');
+    }
+  }, [selectedTaskInfo]);
+
+  // Filter tasks based on activeTab
+  const newTasks = rawNewTasks.filter(item => {
+    const isSupport = item.task.isSupportRequest === true || item.task.isHelper === true;
+    return activeTab === 'support' ? isSupport : !isSupport;
+  });
+
+  const inProgressTasks = rawInProgressTasks.filter(item => {
+    const isSupport = item.task.isSupportRequest === true || item.task.isHelper === true;
+    return activeTab === 'support' ? isSupport : !isSupport;
+  });
+
+  const pendingInspectionTasks = rawPendingInspectionTasks.filter(item => {
+    const isSupport = item.task.isSupportRequest === true || item.task.isHelper === true;
+    return activeTab === 'support' ? isSupport : !isSupport;
+  });
+
+  const pendingDeliveryWorkOrders = rawPendingDeliveryWorkOrders.filter(item => {
+    const hasMatchingTask = item.wo.categories.some((c: any) =>
+      c.tasks.some((t: any) => {
+        const isSupport = t.isSupportRequest === true || t.isHelper === true;
+        return activeTab === 'support' ? isSupport : !isSupport;
+      })
+    );
+    return hasMatchingTask;
+  });
 
   // Helper render function with lexical scope access
   const renderTaskCard = (
@@ -384,7 +419,7 @@ export const WorkOrderGroupList: React.FC = () => {
               WebkitBoxOrient: "vertical",
             }}
           >
-            {task.name}
+            {task.isHelper ? (task.subtaskName || task.name) : task.name}
           </div>
           <div
             style={{
@@ -654,6 +689,54 @@ export const WorkOrderGroupList: React.FC = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+
+            {/* Switcher tabs */}
+            <div
+              style={{
+                display: "flex",
+                background: "#f1f5f9",
+                borderRadius: "12px",
+                padding: "4px",
+                marginTop: "12px",
+              }}
+            >
+              <button
+                onClick={() => setActiveTab('internal')}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeTab === 'internal' ? "#ffffff" : "transparent",
+                  color: activeTab === 'internal' ? "#1e293b" : "#64748b",
+                  fontSize: "0.8rem",
+                  fontWeight: activeTab === 'internal' ? 800 : 600,
+                  cursor: "pointer",
+                  boxShadow: activeTab === 'internal' ? "0 2px 4px rgba(0,0,0,0.05)" : "none",
+                  transition: "all 0.2s",
+                }}
+              >
+                งานภายใน
+              </button>
+              <button
+                onClick={() => setActiveTab('support')}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeTab === 'support' ? "#ffffff" : "transparent",
+                  color: activeTab === 'support' ? "#1e293b" : "#64748b",
+                  fontSize: "0.8rem",
+                  fontWeight: activeTab === 'support' ? 800 : 600,
+                  cursor: "pointer",
+                  boxShadow: activeTab === 'support' ? "0 2px 4px rgba(0,0,0,0.05)" : "none",
+                  transition: "all 0.2s",
+                }}
+              >
+                งานซัพพอร์ทไซต์
+              </button>
+            </div>
           </div>{" "}
           
           <div
@@ -725,7 +808,10 @@ export const WorkOrderGroupList: React.FC = () => {
                         wo.reporterId === user?.id ||
                         (user?.employeeId && wo.reporterId === user.employeeId);
 
-                      const globalTasks = wo.categories.flatMap((c) => c.tasks);
+                      const globalTasks = wo.categories.flatMap((c) => c.tasks).filter((t: any) => {
+                        const isSupport = t.isSupportRequest === true || t.isHelper === true;
+                        return activeTab === 'support' ? isSupport : !isSupport;
+                      });
                       const globalIsAllCompleted =
                         globalTasks.length > 0 &&
                         globalTasks.every(
@@ -1184,7 +1270,10 @@ export const WorkOrderGroupList: React.FC = () => {
 
                           
                           // Calculate global completion status for this Work Order group
-                          const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
+                          const globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+                            const isSupport = t.isSupportRequest === true || t.isHelper === true;
+                            return activeTab === 'support' ? isSupport : !isSupport;
+                          });
                           const globalTotal = globalTasks.length;
                           const globalCompleted = globalTasks.filter(
                             (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
@@ -1195,14 +1284,28 @@ export const WorkOrderGroupList: React.FC = () => {
                           // Compute other tasks (tasks in WO not owned by this foreman, including helper tasks)
                           const myTaskIds = new Set(myTasks.map(({ task }: any) => task.id));
                           const helperTaskIds = new Set(helperTasks.map(({ task }: any) => task.id));
-                          const otherTasks = [
+                          let otherTasks = [
                             ...helperTasks,
                             ...wo.categories.flatMap((c: any) =>
                               c.tasks
                                 .filter((t: any) => !myTaskIds.has(t.id) && !helperTaskIds.has(t.id))
                                 .map((t: any) => ({ task: t, categoryId: c.id }))
                             ),
-                          ];
+                          ].filter(({ task }: any) => {
+                            const isSupport = task.isSupportRequest === true || task.isHelper === true;
+                            return activeTab === 'support' ? isSupport : !isSupport;
+                          });
+
+                          // Filter other tasks list to only include subtasks of the SAME parent task for support WOs
+                          const isSupportWO = wo.categories.some((c: any) => c.tasks.some((t: any) => t.isSupportRequest));
+                          const isSelectedTaskSupport = selectedTaskInfo?.task?.isSupportRequest === true || selectedTaskInfo?.task?.isHelper === true;
+                          if (isSupportWO && isSelectedTaskSupport && selectedTaskInfo && selectedTaskInfo.wo.id === wo.id) {
+                            const selectedParentId = selectedTaskInfo.task.parentTaskId || selectedTaskInfo.task.id.split('-').slice(0, 3).join('-');
+                            otherTasks = otherTasks.filter(({ task }: any) => {
+                              const parentId = task.parentTaskId || task.id.split('-').slice(0, 3).join('-');
+                              return parentId === selectedParentId;
+                            });
+                          }
                           const isOthersCollapsed = collapsedHelpers[`${wo.id}-others`] !== false;
                           const containsSupportTask = myTasks.some(({ task }: any) => task.isSupportRequest);
 
@@ -1651,7 +1754,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                                      whiteSpace: "nowrap",
                                                    }}
                                                  >
-                                                   {task.name || task.taskName || task.description || "-"}
+                                                    {task.isHelper ? (task.subtaskName || task.name || task.taskName || task.description || "-") : (task.name || task.taskName || task.description || "-")}
                                                  </div>
                                                </div>
                                                <span

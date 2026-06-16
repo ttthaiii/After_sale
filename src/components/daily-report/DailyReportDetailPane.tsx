@@ -505,7 +505,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           }}
                         >
                           {" "}
-                          <span>{selectedTaskInfo.task.name || selectedTaskInfo.task.taskName}</span>
+                          <span>{selectedTaskInfo.task.isHelper ? (selectedTaskInfo.task.subtaskName || selectedTaskInfo.task.name) : (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName)}</span>
                           
                           <span
                             style={{
@@ -3090,7 +3090,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     ]
                       .filter((tab) => tab.show)
                       .map((tab) => {
-                        const isComplete = tab.current >= tab.required;
+                        const isComplete = selectedTaskInfo?.task?.isHelper ? true : (tab.current >= tab.required);
                         const isActive = activePhotoTab === tab.id;
                         return (
                            <button
@@ -3596,7 +3596,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                         </button>
                                       )}
                                     </div>
-                                  ) : isProgressNotePhotosEditable ? (
+                                  ) : (isProgressNotePhotosEditable && !selectedTaskInfo?.task?.isHelper) ? (
                                     !isSlotTimeAllowed(slotIdx) ? (
                                       <div
                                         style={{
@@ -3697,14 +3697,18 @@ export const DailyReportDetailPane: React.FC = () => {
                                         borderRadius: 14,
                                         background: "#f8fafc",
                                         display: "flex",
+                                        flexDirection: "column",
                                         alignItems: "center",
                                         justifyContent: "center",
-                                        color: "#e2e8f0",
+                                        color: "#94a3b8",
+                                        gap: "4px"
                                       }}
                                     >
-                                      {" "}
-                                      
-                                      <Camera size={22} />
+                                      {selectedTaskInfo?.task?.isHelper ? (
+                                        <span style={{ fontSize: "0.75rem", fontWeight: 700 }}>ไม่มีรูปถ่าย</span>
+                                      ) : (
+                                        <Camera size={22} />
+                                      )}
                                     </div>
                                   )}{" "}
                                   
