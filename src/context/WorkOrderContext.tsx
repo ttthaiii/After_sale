@@ -264,18 +264,106 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         } else {
                             subtaskRev = subtaskData.currentRevision || 'rev00';
                             const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', subtaskRev, 'dailyReports'));
-                                 for (const reportDoc of reportsSnap.docs) {
-                                     const reportData = reportDoc.data();
-                                     if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
-                                         subtaskDailyreports.push({
-                                             ...reportData,
-                                             id: reportDoc.id,
-                                             date: reportData.date || reportDoc.id,
-                                             isSupportReport: false,
-                                             revisionId: subtaskRev
-                                         } as unknown as DailyReport);
-                                     }
-                                 }
+                            for (const reportDoc of reportsSnap.docs) {
+                                const reportData = reportDoc.data();
+                                dailyreports.push({
+                                    ...reportData,
+                                    id: reportDoc.id,
+                                    date: reportData.date || reportDoc.id,
+                                    isSupportReport: false,
+                                    revisionId: subtaskRev
+                                } as unknown as DailyReport);
+                            }
+                        }
+
+                        // Check help subcollection (งานช่วย)
+                        const helpSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'help'));
+                        let subtaskAssignedForeman = subtaskData.assignedForeman || '';
+                        let subtaskHelperForemanIds: string[] = subtaskData.helperForemanIds || [];
+                        const hasHelpDocs = !helpSnap.empty;
+
+                        // Check trace of foreman assignment from the other system (e.g. Labor)
+                        const supportFms = subtaskData.supportAssignees?.filter((a: any) => a.roleId === 'FM' || a.role === 'Foreman') || [];
+                        if (supportFms.length > 0) {
+                            subtaskHelperForemanIds = supportFms.map((a: any) => a.employeeId || a.id);
+                            subtaskAssignedForeman = subtaskHelperForemanIds[0] || '';
+                        }
+
+                        if (hasHelpDocs) {
+                            const targetHelpId = subtaskRev.replace('rev', 'help');
+                            const helpDoc = helpSnap.docs.find(d => d.id === targetHelpId) || helpSnap.docs[0];
+                            if (helpDoc) {
+                                const helpData = helpDoc.data();
+                                // Prioritize trace of foreman assignment in help document's assignees
+                                const helpFms = helpData.assignees?.filter((a: any) => a.roleId === 'FM' || a.role === 'Foreman') || [];
+                                if (helpFms.length > 0) {
+                                    subtaskHelperForemanIds = helpFms.map((a: any) => a.employeeId || a.id);
+                                    subtaskAssignedForeman = subtaskHelperForemanIds[0] || '';
+                                } else {
+                                    if (helpData.assignedForeman) subtaskAssignedForeman = helpData.assignedForeman;
+                                    if (helpData.helperForemanIds) subtaskHelperForemanIds = helpData.helperForemanIds;
+                                }
+                            }
+                        }
+
+                        const subtaskIsSupport = subtaskData.isSupportRequest === true || hasHelpDocs;
+                        const subtaskIsPickedUp = subtaskData.isPickedUpBySupport === true || !!subtaskAssignedForeman || subtaskHelperForemanIds.length > 0;
+
+                        if (subtaskIsSupport) {
+                            // Fetch daily reports specifically for this helper subtask
+                            let subtaskDailyreports: DailyReport[] = [];
+                            
+                            // Check help dailyReports first (where helper daily reports are written)
+                            if (hasHelpDocs) {
+                                for (const helpDoc of helpSnap.docs) {
+                                    const helpReportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'help', helpDoc.id, 'dailyReports'));
+                                    for (const reportDoc of helpReportsSnap.docs) {
+                                        const reportData = reportDoc.data();
+                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
+                                            subtaskDailyreports.push({
+                                                ...reportData,
+                                                id: reportDoc.id,
+                                                date: reportData.date || reportDoc.id,
+                                                isSupportReport: true,
+                                                revisionId: subtaskRev
+                                            } as unknown as DailyReport);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Also fetch revision daily reports (if any, like from Labor source system)
+                            if (!revisionsSnap.empty) {
+                                for (const revDoc of revisionsSnap.docs) {
+                                    const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
+                                    for (const reportDoc of reportsSnap.docs) {
+                                        const reportData = reportDoc.data();
+                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
+                                            subtaskDailyreports.push({
+                                                ...reportData,
+                                                id: reportDoc.id,
+                                                date: reportData.date || reportDoc.id,
+                                                isSupportReport: false,
+                                                revisionId: revDoc.id
+                                            } as unknown as DailyReport);
+                                        }
+                                    }
+                                }
+                            } else {
+                                const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', subtaskRev, 'dailyReports'));
+                                for (const reportDoc of reportsSnap.docs) {
+                                    const reportData = reportDoc.data();
+                                    if (!subtaskDailyreports.some(r => r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id))) {
+                                        subtaskDailyreports.push({
+                                            ...reportData,
+                                            id: reportDoc.id,
+                                            date: reportData.date || reportDoc.id,
+                                            isSupportReport: false,
+                                            revisionId: subtaskRev
+                                        } as unknown as DailyReport);
+                                    }
+                                }
+                            }
 
                             subtaskDailyreports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
                             const subtaskMappedReports = subtaskDailyreports.map(report => {
