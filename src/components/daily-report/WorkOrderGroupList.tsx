@@ -1286,15 +1286,43 @@ export const WorkOrderGroupList: React.FC = () => {
 
                           
                           // Calculate global completion status for this Work Order group
-                          const globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+                          let globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
                             const isSupport = t.isSupportRequest === true || t.isHelper === true;
                             return activeTab === 'support' ? isSupport : !isSupport;
                           });
+
+                          const isSupportWO = wo.categories.some((c: any) => c.tasks.some((t: any) => t.isSupportRequest));
+                          const activeParentTaskIds = new Set<string>();
+
+                          if (isSupportWO && activeTab === 'support') {
+                            // Add parent task IDs of tasks in myTasks and helperTasks
+                            [...myTasks, ...helperTasks].forEach(({ task }: any) => {
+                              const parentId = task.parentTaskId || task.id.split('-').slice(0, 3).join('-');
+                              if (parentId) {
+                                activeParentTaskIds.add(parentId);
+                              }
+                            });
+
+                            // If selectedTaskInfo is active and belongs to this WO, also include its parent ID to prevent it from disappearing if clicked
+                            if (selectedTaskInfo && selectedTaskInfo.wo.id === wo.id) {
+                              const selParentId = (selectedTaskInfo.task as any).parentTaskId || selectedTaskInfo.task.id.split('-').slice(0, 3).join('-');
+                              if (selParentId) {
+                                activeParentTaskIds.add(selParentId);
+                              }
+                            }
+
+                            if (activeParentTaskIds.size > 0) {
+                              globalTasks = globalTasks.filter((t: any) => {
+                                const parentId = t.parentTaskId || t.id.split('-').slice(0, 3).join('-');
+                                return activeParentTaskIds.has(parentId);
+                              });
+                            }
+                          }
+
                           const globalTotal = globalTasks.length;
                           const globalCompleted = globalTasks.filter(
                             (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
                           ).length;
-                          const globalRemaining = globalTotal - globalCompleted;
                           const isAllCompleted = globalTotal > 0 && globalCompleted === globalTotal;
 
                           // Compute other tasks (tasks in WO not owned by this foreman, including helper tasks)
@@ -1313,17 +1341,56 @@ export const WorkOrderGroupList: React.FC = () => {
                           });
 
                           // Filter other tasks list to only include subtasks of the SAME parent task for support WOs
-                          const isSupportWO = wo.categories.some((c: any) => c.tasks.some((t: any) => t.isSupportRequest));
-                          const isSelectedTaskSupport = selectedTaskInfo?.task?.isSupportRequest === true || selectedTaskInfo?.task?.isHelper === true;
-                          if (isSupportWO && isSelectedTaskSupport && selectedTaskInfo && selectedTaskInfo.wo.id === wo.id) {
-                            const selectedParentId = selectedTaskInfo.task.parentTaskId || selectedTaskInfo.task.id.split('-').slice(0, 3).join('-');
+                          if (isSupportWO && activeTab === 'support' && activeParentTaskIds.size > 0) {
                             otherTasks = otherTasks.filter(({ task }: any) => {
                               const parentId = task.parentTaskId || task.id.split('-').slice(0, 3).join('-');
-                              return parentId === selectedParentId;
+                              return activeParentTaskIds.has(parentId);
                             });
                           }
                           const isOthersCollapsed = collapsedHelpers[`${wo.id}-others`] !== false;
                           const containsSupportTask = myTasks.some(({ task }: any) => task.isSupportRequest);
+
+                          // Calculate average progress of all tasks/subtasks in this WO
+                           const totalProgress = globalTasks.reduce((acc: number, t: any) => acc + (t.dailyProgress ?? t.progress ?? 0), 0);
+                           const averageProgress = globalTotal > 0 ? Math.round(totalProgress / globalTotal) : 0;
+
+                           const progressBadge = (
+                             <span
+                               style={{
+                                 fontSize: "0.62rem",
+                                 fontWeight: 900,
+                                 color: isAllCompleted ? "#0f766e" : "#854d0e",
+                                 background: isAllCompleted ? "#ccfbf1" : "#fef9c3",
+                                 border: `1px solid ${isAllCompleted ? "#99f6e4" : "#fef08a"}`,
+                                 padding: "2px 6px",
+                                 borderRadius: "4px",
+                                 display: "inline-flex",
+                                 alignItems: "center",
+                                 gap: "2px",
+                               }}
+                             >
+                               {isAllCompleted ? "✓" : "⏳"} เสร็จ {globalCompleted}/{globalTotal}
+                             </span>
+                           );
+
+                           const avgProgressBadge = (
+                             <span
+                               style={{
+                                 fontSize: "0.62rem",
+                                 fontWeight: 900,
+                                 color: "#2563eb",
+                                 background: "#eff6ff",
+                                 border: "1px solid #bfdbfe",
+                                 padding: "2px 6px",
+                                 borderRadius: "4px",
+                                 display: "inline-flex",
+                                 alignItems: "center",
+                                 gap: "2px",
+                               }}
+                             >
+                               📊 {averageProgress}%
+                             </span>
+                           );
 
                           let groupBorderColor = "#cbd5e1";
                           let groupHeaderBg =
@@ -1343,65 +1410,6 @@ export const WorkOrderGroupList: React.FC = () => {
                               "linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%)";
                           }
 
-                          let statusBadge = null;
-                          if (isAllCompleted) {
-                            statusBadge = (
-                              <span
-                                style={{
-                                  fontSize: "0.62rem",
-                                  fontWeight: 900,
-                                  color: "#0891b2",
-                                  background: "#cffafe",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "2px",
-                                }}
-                              >
-                                ✓ {globalTotal} เสร็จ
-                              </span>
-                            );
-                          } else {
-                            statusBadge = (
-                              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                {globalRemaining > 0 && (
-                                  <span
-                                    style={{
-                                      fontSize: "0.62rem",
-                                      fontWeight: 900,
-                                      color: "#854d0e",
-                                      background: "#fef9c3",
-                                      padding: "2px 6px",
-                                      borderRadius: "4px",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "2px",
-                                    }}
-                                  >
-                                    ⏳ {globalRemaining}
-                                  </span>
-                                )}
-                                {globalCompleted > 0 && (
-                                  <span
-                                    style={{
-                                      fontSize: "0.62rem",
-                                      fontWeight: 900,
-                                      color: "#0f766e",
-                                      background: "#ccfbf1",
-                                      padding: "2px 6px",
-                                      borderRadius: "4px",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "2px",
-                                    }}
-                                  >
-                                    ✓ {globalCompleted}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          }
                           return (
                              <div
                               style={{
@@ -1472,7 +1480,8 @@ export const WorkOrderGroupList: React.FC = () => {
                                       gap: "6px",
                                     }}
                                   >
-                                    {statusBadge}
+                                     {globalTotal > 0 && avgProgressBadge}
+                                     {globalTotal > 0 && progressBadge}
                                     {isAllCompleted &&
                                       (() => {
                                         const isWoOwner =
