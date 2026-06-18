@@ -170,6 +170,8 @@ export interface HistoryEntry {
   serverTimestamp?: string;
   editHistory?: EditHistoryRecord[];
   projectLocationId?: string;
+  isSupportReport?: boolean;
+  revisionId?: string;
 }
 
 export interface EditHistoryRecord {

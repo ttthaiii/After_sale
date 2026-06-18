@@ -110,6 +110,9 @@ export interface DailyReport {
     laborPhotos?: string[]; // ✅ New: Support for labor proof photos
     createdAt: string;
     createdBy: string;
+    isSupportReport?: boolean; // ✅ Added for helper tasks compatibility
+    revisionId?: string;       // ✅ Added for helper tasks compatibility
+    editHistory?: any[];       // ✅ Added for helper tasks compatibility
 }
 
 export interface MasterTask {

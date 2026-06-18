@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { WorkOrder, Category, MasterTask, DailyReport, Project, Staff, Contractor } from '../types';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+
 import { TaskAssignee } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -319,7 +320,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                     const helpReportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'help', helpDoc.id, 'dailyReports'));
                                     for (const reportDoc of helpReportsSnap.docs) {
                                         const reportData = reportDoc.data();
-                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || (r.date === (reportData.date || reportDoc.id) && r.isSupportReport === true))) {
+                                        if (!subtaskDailyreports.some(r => (r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id)) && r.isSupportReport === true)) {
                                             subtaskDailyreports.push({
                                                 ...reportData,
                                                 id: reportDoc.id,
@@ -338,7 +339,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                     const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
                                     for (const reportDoc of reportsSnap.docs) {
                                         const reportData = reportDoc.data();
-                                        if (!subtaskDailyreports.some(r => r.id === reportDoc.id || (r.date === (reportData.date || reportDoc.id) && r.isSupportReport === false))) {
+                                        if (!subtaskDailyreports.some(r => (r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id)) && r.isSupportReport === false)) {
                                             subtaskDailyreports.push({
                                                 ...reportData,
                                                 id: reportDoc.id,
@@ -353,7 +354,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                 const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', subtaskRev, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
                                     const reportData = reportDoc.data();
-                                    if (!subtaskDailyreports.some(r => r.id === reportDoc.id || (r.date === (reportData.date || reportDoc.id) && r.isSupportReport === false))) {
+                                    if (!subtaskDailyreports.some(r => (r.id === reportDoc.id || r.date === (reportData.date || reportDoc.id)) && r.isSupportReport === false)) {
                                         subtaskDailyreports.push({
                                             ...reportData,
                                             id: reportDoc.id,
@@ -401,7 +402,20 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                 revisionCreatedAt: subtaskRevCreatedAt,
                                 dailyreports: subtaskMappedReports,
                                 history: subtaskMappedReports,
-                                responsibleStaffIds: taskData.responsibleStaffIds || []
+                                responsibleStaffIds: taskData.responsibleStaffIds || [],
+                                dueDate: subtaskData.dueDate 
+                                    ? (typeof subtaskData.dueDate.toDate === 'function' 
+                                        ? subtaskData.dueDate.toDate().toISOString() 
+                                        : (subtaskData.dueDate.seconds 
+                                            ? new Date(subtaskData.dueDate.seconds * 1000).toISOString() 
+                                            : subtaskData.dueDate))
+                                    : (taskData.dueDate 
+                                        ? (typeof taskData.dueDate.toDate === 'function' 
+                                            ? taskData.dueDate.toDate().toISOString() 
+                                            : (taskData.dueDate.seconds 
+                                                ? new Date(taskData.dueDate.seconds * 1000).toISOString() 
+                                                : taskData.dueDate))
+                                        : null)
                             } as unknown as MasterTask);
                             didPushSupportSubtask = true;
                         }
@@ -990,9 +1004,39 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId, 'help', helpId);
                 await setDoc(helpDocRef, { helpId, createdAt: new Date().toISOString() }, { merge: true });
 
+                const parentWO = allWorkOrders.find(w => w?.id === workOrderId);
+                const projectId = parentWO?.projectId || '';
+                const projectObj = projects.find(p => p.id === projectId);
+                const projectName = projectObj?.name || '';
+
+                // Construct Firestore Timestamps for helper daily reports to match the Labor system
+                let createdAtVal: any = Timestamp.now();
+                if (report.createdAt) {
+                    if (typeof report.createdAt === 'string') {
+                        createdAtVal = Timestamp.fromDate(new Date(report.createdAt));
+                    } else {
+                        createdAtVal = report.createdAt;
+                    }
+                }
+                const updatedAtVal = Timestamp.now();
+                const reportDateVal = Timestamp.fromDate(new Date(reportDate + 'T00:00:00'));
+
+                const helperFinalReport = {
+                    ...finalReport,
+                    createdAt: createdAtVal,
+                    updatedAt: updatedAtVal,
+                    reportDate: reportDateVal,
+                    projectId: projectId,
+                    projectName: projectName,
+                    status: 'submitted',
+                    isSupportReport: true,
+                    editHistory: (report as any).editHistory || []
+                };
+
                 // Save helper daily report
                 const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId, 'help', helpId, 'dailyReports', reportDate);
-                await setDoc(reportRef, finalReport);
+                await setDoc(reportRef, helperFinalReport);
+
 
                 // Step 2: Trigger daily report sync API immediately after successful write
                 try {

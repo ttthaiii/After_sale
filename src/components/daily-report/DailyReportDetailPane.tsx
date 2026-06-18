@@ -771,41 +771,49 @@ export const DailyReportDetailPane: React.FC = () => {
                           "7-14d": 336,
                           "14-30d": 720,
                         };
-                        const slaDuration =
-                          (selectedTaskInfo.task.slaCategory && slaHoursMap[selectedTaskInfo.task.slaCategory]) || 24;
+                        const isHelperTask = selectedTaskInfo.task.isHelper === true;
+                        const slaDuration = (selectedTaskInfo.task.slaCategory && slaHoursMap[selectedTaskInfo.task.slaCategory]) || 24;
                         let globalDeadlineTime: number | undefined = undefined;
                         const woId = selectedTaskInfo.wo.id;
-                        const fullWo = workOrders.find((w) => w.id === woId);
-                        if (fullWo) {
-                          const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
-                          let maxDl = 0;
-                          fullWo.categories.forEach((cat: any) => {
-                            cat.tasks.forEach((t: any) => {
-                              if (isWoaWop && !t.slaCategory) return;
-                              const tSla =
-                                t.slaCategory ||
-                                t.baselineSla ||
-                                t.estimatedSla ||
-                                "24h";
-                              const tDurHours = slaHoursMap[tSla] || 24;
-                              let tStart = t.startDate && typeof t.startDate === 'string'
-                                ? `${t.startDate.split('T')[0]}T08:00:00` 
-                                : t.slaStartTime;
-                              if (!tStart) {
-                                tStart =
-                                  fullWo.createdAt ||
-                                   new Date().toISOString();
-                              }
-                              const tDeadline =
-                                new Date(tStart).getTime() +
-                                tDurHours * 60 * 60 * 1e3;
-                              if (tDeadline > maxDl) {
-                                maxDl = tDeadline;
-                              }
+                        
+                        if (isHelperTask) {
+                          const helperDue = selectedTaskInfo.task.dueDate ? new Date(selectedTaskInfo.task.dueDate).getTime() : 0;
+                          if (helperDue > 0) {
+                            globalDeadlineTime = helperDue;
+                          }
+                        } else {
+                          const fullWo = workOrders.find((w) => w.id === woId);
+                          if (fullWo) {
+                            const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
+                            let maxDl = 0;
+                            fullWo.categories.forEach((cat: any) => {
+                              cat.tasks.forEach((t: any) => {
+                                if (isWoaWop && !t.slaCategory) return;
+                                const tSla =
+                                  t.slaCategory ||
+                                  t.baselineSla ||
+                                  t.estimatedSla ||
+                                  "24h";
+                                const tDurHours = slaHoursMap[tSla] || 24;
+                                let tStart = t.startDate && typeof t.startDate === 'string'
+                                  ? `${t.startDate.split('T')[0]}T08:00:00` 
+                                  : t.slaStartTime;
+                                if (!tStart) {
+                                  tStart =
+                                    fullWo.createdAt ||
+                                     new Date().toISOString();
+                                }
+                                const tDeadline =
+                                  new Date(tStart).getTime() +
+                                  tDurHours * 60 * 60 * 1e3;
+                                if (tDeadline > maxDl) {
+                                  maxDl = tDeadline;
+                                }
+                              });
                             });
-                          });
-                          if (maxDl > 0) {
-                            globalDeadlineTime = maxDl;
+                            if (maxDl > 0) {
+                              globalDeadlineTime = maxDl;
+                            }
                           }
                         }
                         const isCompleted100 =
@@ -841,16 +849,19 @@ export const DailyReportDetailPane: React.FC = () => {
                             
                             <SLACountdown
                               startTime={
-                                (selectedTaskInfo.task.startDate && typeof selectedTaskInfo.task.startDate === 'string'
-                                  ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00`
-                                  : selectedTaskInfo.task.slaStartTime) ||
-                                 new Date().toISOString()
+                                isHelperTask
+                                  ? (selectedTaskInfo.task.dueDate || new Date().toISOString())
+                                  : ((selectedTaskInfo.task.startDate && typeof selectedTaskInfo.task.startDate === 'string'
+                                      ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00`
+                                      : selectedTaskInfo.task.slaStartTime) ||
+                                     new Date().toISOString())
                               }
-                              durationHours={slaDuration}
+                              durationHours={isHelperTask ? 0 : slaDuration}
                               appointmentDate={appointmentDateVal || void 0}
                               actualStartDate={actualStartVal || void 0}
                               isCompleted={isCompleted100}
                               groupDeadline={globalDeadlineTime}
+                              isHelper={isHelperTask}
                             />
                           </div>
                         );

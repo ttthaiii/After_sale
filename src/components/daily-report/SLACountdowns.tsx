@@ -9,18 +9,43 @@ export const formatDeadline = (timestamp: number | string | undefined) => {
   return formatDateTime(timestamp);
 };
 
-export const SLACountdown: React.FC<SLACountdownProps> = ({
+export const SLACountdown: React.FC<SLACountdownProps & { isHelper?: boolean }> = ({
   startTime,
   durationHours = 24,
   appointmentDate,
   actualStartDate,
   isCompleted,
   groupDeadline,
+  isHelper = false,
 }) => {
   const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
 
   useEffect(() => {
     const calculateTimeLeft = () => {
+      if (isHelper && groupDeadline) {
+        const end = new Date(groupDeadline).getTime();
+        const now = new Date().getTime();
+        const diff = end - now;
+        if (diff < 0) {
+          const overdueDiff = Math.abs(diff);
+          const days = Math.floor(overdueDiff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor(
+            (overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+          );
+          const minutes = Math.floor(
+            (overdueDiff % (1000 * 60 * 60)) / (1000 * 60),
+          );
+          setTimeLeft({ days, hours, minutes, isOverdue: true });
+        } else {
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor(
+            (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+          );
+          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          setTimeLeft({ days, hours, minutes, isOverdue: false });
+        }
+        return;
+      }
       const start2 = new Date(startTime).getTime();
       const end = start2 + durationHours * 60 * 60 * 1000;
       const now = new Date().getTime();
@@ -77,6 +102,63 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
   deadlineMidnight.setHours(0, 0, 0, 0);
   const timeDiff = deadlineMidnight.getTime() - today.getTime();
   const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+  if (isHelper) {
+    const formattedDeadline = groupDeadline ? formatDate(groupDeadline) : "-";
+    const totalHours = timeLeft ? (timeLeft.days * 24 + timeLeft.hours) : 0;
+    
+    let timeText = "";
+    let textColor = "#10b981"; 
+    if (isCompleted) {
+      timeText = "✅ เสร็จสมบูรณ์ 100%";
+      textColor = "#0891b2";
+    } else if (timeLeft?.isOverdue) {
+      timeText = `🚨 เกินกำหนดมา ${timeLeft.days > 0 ? `${timeLeft.days} วัน ` : ""}${timeLeft.hours} ชม.`;
+      textColor = "#ef4444";
+    } else if (timeLeft) {
+      if (timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes === 0) {
+        timeText = "⏳ ครบกำหนดวันนี้!";
+        textColor = "#d97706";
+      } else {
+        timeText = `⏳ เหลืออีก ${timeLeft.days > 0 ? `${timeLeft.days} วัน ` : ""}${timeLeft.hours} ชม.`;
+        textColor = "#10b981";
+      }
+    }
+
+    return (
+      <div
+        style={{
+          background: "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.95) 100%)",
+          backdropFilter: "blur(8px)",
+          padding: "10px 14px",
+          borderRadius: "16px",
+          border: "1.5px solid rgba(226,232,240,0.9)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.02)",
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", borderBottom: "1px solid #f1f5f9", paddingBottom: "6px" }}>
+          <Clock size={13} style={{ color: textColor }} />
+          <span style={{ fontSize: "0.75rem", fontWeight: 900, color: "#334155" }}>
+            กำหนดเวลา (งานช่วยเหลือ)
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.72rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "#64748b", fontWeight: 800 }}>กำหนดส่งมอบ:</span>
+            <span style={{ fontWeight: 900, color: "#1e293b" }}>{formattedDeadline}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2px" }}>
+            <span style={{ color: "#64748b", fontWeight: 800 }}>เวลาคงเหลือ:</span>
+            <span style={{ fontWeight: 900, color: textColor }}>{timeText}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -254,12 +336,13 @@ export const SLACountdown: React.FC<SLACountdownProps> = ({
 // Sub-Component: GroupSLACountdown
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
+export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: boolean }> = ({
   globalDeadline,
   subtaskDeadline,
   isCompleted,
   originalDeadline,
   isRevision = false,
+  isHelper = false,
 }) => {
   const [timeLeftGlobal, setTimeLeftGlobal] = useState<TimeLeft | null>(null);
   const [timeLeftSub, setTimeLeftSub] = useState<TimeLeft | null>(null);
@@ -372,6 +455,65 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps> = ({
   }
 
   const hasSubtaskDifference = globalDeadline > subtaskDeadline;
+
+  if (isHelper) {
+    const formattedDate = formatDate(globalDeadline);
+    const totalHours = timeLeftGlobal ? (timeLeftGlobal.days * 24 + timeLeftGlobal.hours) : 0;
+    
+    let timeText = "";
+    if (isCompleted) {
+      timeText = "เสร็จสมบูรณ์ 100%";
+    } else if (timeLeftGlobal?.isOverdue) {
+      timeText = `เกินกำหนด: ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
+    } else {
+      if (totalHours < 24) {
+        timeText = `ด่วน! เหลือ ${timeLeftGlobal?.hours} ชม. ${timeLeftGlobal?.minutes} น.`;
+      } else {
+        timeText = `เหลือ ${timeLeftGlobal?.days > 0 ? `${timeLeftGlobal?.days} วัน ` : ""}${timeLeftGlobal?.hours} ชม.`;
+      }
+    }
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "5px",
+          width: "100%",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}>
+            กำหนดส่งมอบ (ลูกค้า):
+          </span>
+          <span style={{ fontSize: "0.68rem", fontWeight: 900, color: "#1e293b" }}>
+            {formattedDate}
+          </span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1px" }}>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}>
+            เวลาคงเหลือ (ลูกค้า):
+          </span>
+          <span
+            style={{
+              fontSize: "0.68rem",
+              fontWeight: 900,
+              color: globalBadgeColor,
+              background: globalBadgeBg,
+              padding: "1px 6px",
+              borderRadius: "4px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "2px",
+              border: `1.5px solid ${globalBorderColor}`,
+            }}
+          >
+            {isCompleted ? "✅" : "⏳"} {timeText}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
