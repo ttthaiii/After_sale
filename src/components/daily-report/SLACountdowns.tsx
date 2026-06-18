@@ -343,6 +343,7 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
   originalDeadline,
   isRevision = false,
   isHelper = false,
+  completedAtTime,
 }) => {
   const [timeLeftGlobal, setTimeLeftGlobal] = useState<TimeLeft | null>(null);
   const [timeLeftSub, setTimeLeftSub] = useState<TimeLeft | null>(null);
@@ -431,10 +432,48 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
   const totalGlobalHours = timeLeftGlobal.days * 24 + timeLeftGlobal.hours;
 
   if (isCompleted) {
-    globalBadgeColor = "#0891b2";
-    globalBadgeBg = "#ecfeff";
-    globalBorderColor = "#a5f3fc";
-    globalLabelText = "เสร็จสมบูรณ์ 100%";
+    if (completedAtTime) {
+      const compDate = new Date(completedAtTime);
+      const day = String(compDate.getDate()).padStart(2, "0");
+      const month = String(compDate.getMonth() + 1).padStart(2, "0");
+      const year = compDate.getFullYear();
+      const formattedCompletedDate = `${day}/${month}/${year}`;
+      
+      const baseline = originalDeadline || globalDeadline;
+      
+      const getStartOfDay = (timeMs: number) => {
+        const d = new Date(timeMs);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      };
+      
+      const compStart = getStartOfDay(completedAtTime);
+      const baselineStart = getStartOfDay(baseline);
+      
+      const diffDays = Math.round((baselineStart - compStart) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays > 0) {
+        globalLabelText = `${formattedCompletedDate} (เสร็จก่อนกำหนด ${diffDays} วัน)`;
+        globalBadgeColor = "#0891b2";
+        globalBadgeBg = "#ecfeff";
+        globalBorderColor = "#a5f3fc";
+      } else if (diffDays === 0) {
+        globalLabelText = `${formattedCompletedDate} (เสร็จตามกำหนด)`;
+        globalBadgeColor = "#059669";
+        globalBadgeBg = "#f0fdf4";
+        globalBorderColor = "#a7f3d0";
+      } else {
+        const overdueDays = Math.abs(diffDays);
+        globalLabelText = `${formattedCompletedDate} (เลยกำหนด ${overdueDays} วัน)`;
+        globalBadgeColor = "#ef4444";
+        globalBadgeBg = "#fef2f2";
+        globalBorderColor = "#fca5a5";
+      }
+    } else {
+      globalBadgeColor = "#0891b2";
+      globalBadgeBg = "#ecfeff";
+      globalBorderColor = "#a5f3fc";
+      globalLabelText = "เสร็จสมบูรณ์ 100%";
+    }
   } else if (timeLeftGlobal.isOverdue) {
     globalBadgeColor = "#ef4444";
     globalBadgeBg = "#fef2f2";
@@ -462,7 +501,7 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
     
     let timeText = "";
     if (isCompleted) {
-      timeText = "เสร็จสมบูรณ์ 100%";
+      timeText = globalLabelText;
     } else if (timeLeftGlobal?.isOverdue) {
       timeText = `เกินกำหนด: ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
     } else {
@@ -492,7 +531,7 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1px" }}>
           <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}>
-            เวลาคงเหลือ (ลูกค้า):
+            {isCompleted ? "เสร็จสิ้นเมื่อ:" : "เวลาคงเหลือ (ลูกค้า):"}
           </span>
           <span
             style={{
@@ -592,7 +631,7 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
         <span
           style={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569" }}
         >
-          เวลาคงเหลือ (ลูกค้า):
+          {isCompleted ? "เสร็จสิ้นเมื่อ:" : "เวลาคงเหลือ (ลูกค้า):"}
         </span>
         <span
           style={{

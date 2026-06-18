@@ -25,6 +25,35 @@ const formatSubtaskId = (id: string | undefined): string => {
   return cleanId;
 };
 
+const getCompletedAtTime = (wo: any, tasks: any[]): number | null => {
+  const isAllCompleted = tasks.length > 0 && tasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+  if (!isAllCompleted) return null;
+  
+  if (wo.completedAt) {
+    return new Date(wo.completedAt).getTime();
+  }
+  
+  const inspectionSubmittedAt = wo.inspectionTimeline?.inspectionSubmittedAt;
+  if (inspectionSubmittedAt) {
+    return new Date(inspectionSubmittedAt).getTime();
+  }
+  
+  const taskUpdates = tasks
+    .filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100)
+    .map((t: any) => t.updatedAt)
+    .filter(Boolean);
+    
+  if (taskUpdates.length > 0) {
+    return Math.max(...taskUpdates.map((d: string) => new Date(d).getTime()));
+  }
+  
+  if (wo.createdAt) {
+    return new Date(wo.createdAt).getTime();
+  }
+  
+  return new Date().getTime();
+};
+
 export const WorkOrderGroupList: React.FC = () => {
   const {
     workOrders,
@@ -51,6 +80,8 @@ export const WorkOrderGroupList: React.FC = () => {
   } = useDailyReport();
 
   const [activeTab, setActiveTab] = useState<'internal' | 'support'>('internal');
+  const [sortBy, setSortBy] = useState<'deadline' | 'delivery' | 'id'>('deadline');
+
 
   useEffect(() => {
     if (selectedTaskInfo) {
@@ -84,6 +115,90 @@ export const WorkOrderGroupList: React.FC = () => {
     );
     return hasMatchingTask;
   });
+
+  const mappedPendingDeliveries = pendingDeliveryWorkOrders.map(item => {
+    const wo = item.wo;
+    const globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+      const isSupport = t.isSupportRequest === true || t.isHelper === true;
+      return activeTab === 'support' ? isSupport : !isSupport;
+    });
+
+    const isWoaWop = wo.id.toUpperCase().includes('WOA') || wo.id.toUpperCase().includes('WOP');
+    let maxDl = 0;
+    let maxDlOriginal = 0;
+    let minSubDl = Infinity;
+
+    const slaHoursMap = {
+      Immediately: 4,
+      "24h": 24,
+      "1-3d": 72,
+      "3-7d": 168,
+      "7-14d": 336,
+      "14-30d": 720,
+    };
+
+    wo.categories.forEach((cat: any) => {
+      cat.tasks.forEach((t: any) => {
+        if (isWoaWop && !t.slaCategory) return;
+        const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
+        const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
+        let tStart = t.startDate 
+           ? `${t.startDate.split('T')[0]}T08:00:00` 
+           : t.slaStartTime;
+        if (!tStart) {
+          tStart = wo.createdAt || new Date().toISOString();
+        }
+        const tDeadline = new Date(tStart).getTime() + tDurHours * 60 * 60 * 1e3;
+        if (tDeadline > maxDl) {
+          maxDl = tDeadline;
+        }
+
+        const tRawInit1 = (t as any).initialStartDate;
+        const tRevAt1 = (t as any).revisionCreatedAt;
+        const tValidInit1 = tRawInit1 && tRevAt1
+          ? (new Date(tRawInit1) < new Date(tRevAt1) ? tRawInit1 : null)
+          : (tRawInit1 || null);
+        const originalSla = (tValidInit1 ? (t as any).initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
+        const tDurHoursOriginal = slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24;
+        const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
+        const tStartOriginal = tValidInit1
+          ? `${tStartOriginalRaw.split('T')[0]}T08:00:00`
+          : tStartOriginalRaw;
+        const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
+        if (tDeadlineOriginal > maxDlOriginal) {
+          maxDlOriginal = tDeadlineOriginal;
+        }
+
+        if (t.deadline) {
+          const subDl = new Date(t.deadline).getTime();
+          if (subDl < minSubDl) {
+            minSubDl = subDl;
+          }
+        }
+      });
+    });
+
+    const globalDeadline = maxDl > 0 ? maxDl : new Date().getTime();
+    const subtaskDeadline = minSubDl !== Infinity ? minSubDl : globalDeadline;
+    const completedAtTime = getCompletedAtTime(wo, globalTasks);
+
+    return {
+      ...item,
+      globalTasks,
+      globalDeadline,
+      subtaskDeadline,
+      originalDeadline: maxDlOriginal,
+      completedAtTime,
+    };
+  });
+
+  mappedPendingDeliveries.sort((a: any, b: any) => {
+    if (sortBy === 'id') {
+      return a.wo.id.localeCompare(b.wo.id);
+    }
+    return a.globalDeadline - b.globalDeadline;
+  });
+
 
   // Helper render function with lexical scope access
   const renderTaskCard = (
@@ -737,7 +852,60 @@ export const WorkOrderGroupList: React.FC = () => {
                 งานซัพพอร์ทไซต์
               </button>
             </div>
-          </div>{" "}
+
+            {/* Sorting Bar */}
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                marginTop: "12px",
+                background: "#f8fafc",
+                padding: "6px 8px",
+                borderRadius: "12px",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              {[
+                { id: 'deadline', label: '⏰ ตามเดดไลน์', title: 'เรียงตามเดดไลน์ที่เลยกำหนดนานที่สุด' },
+                { id: 'delivery', label: '📦 รอ QR Code', title: 'ดึงงานเสร็จ 100% ขึ้นก่อน' },
+                { id: 'id', label: '🔢 รหัสใบงาน', title: 'เรียงตามลำดับรหัสใบงาน' }
+              ].map((opt) => {
+                const isActive = sortBy === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSortBy(opt.id as any)}
+                    title={opt.title}
+                    style={{
+                      flex: 1,
+                      padding: "6px 4px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: isActive ? "#ffffff" : "transparent",
+                      color: isActive ? "#2563eb" : "#64748b",
+                      fontSize: "0.68rem",
+                      fontWeight: isActive ? 900 : 700,
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "2px",
+                      boxShadow: isActive ? "0 2px 4px rgba(0, 0, 0, 0.05)" : "none",
+                    }}
+                    onMouseOver={(el) => {
+                      if (!isActive) el.currentTarget.style.color = "#1e293b";
+                    }}
+                    onMouseOut={(el) => {
+                      if (!isActive) el.currentTarget.style.color = "#64748b";
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div> 
           
           <div
             style={{
@@ -801,80 +969,19 @@ export const WorkOrderGroupList: React.FC = () => {
                       />{" "}
                       งานที่รอส่งมอบภาพรวม (Delivery)
                     </h3>
-                    {pendingDeliveryWorkOrders.map(({ wo }) => {
+                    {mappedPendingDeliveries.map((item: any) => {
+                      const { wo, globalTasks, globalDeadline, subtaskDeadline, originalDeadline, completedAtTime } = item;
                       const isWoOwner =
                         wo.woOwnerId === user?.id ||
                         (user?.employeeId && wo.woOwnerId === user.employeeId) ||
                         wo.reporterId === user?.id ||
                         (user?.employeeId && wo.reporterId === user.employeeId);
 
-                      const globalTasks = wo.categories.flatMap((c) => c.tasks).filter((t: any) => {
-                        const isSupport = t.isSupportRequest === true || t.isHelper === true;
-                        return activeTab === 'support' ? isSupport : !isSupport;
-                      });
                       const globalIsAllCompleted =
                         globalTasks.length > 0 &&
                         globalTasks.every(
                           (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100,
                         );
-                      
-                      // Calculate global deadlines
-                      const isWoaWop = wo.id.toUpperCase().includes('WOA') || wo.id.toUpperCase().includes('WOP');
-                      let maxDl = 0;
-                      let maxDlOriginal = 0;
-                      let minSubDl = Infinity;
-                      wo.categories.forEach((cat) => {
-                        cat.tasks.forEach((t) => {
-                          if (isWoaWop && !t.slaCategory) return;
-                          const slaHoursMap = {
-                            Immediately: 4,
-                            "24h": 24,
-                            "1-3d": 72,
-                            "3-7d": 168,
-                            "7-14d": 336,
-                            "14-30d": 720,
-                          };
-                          const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
-                          const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
-                          let tStart = t.startDate 
-                             ? `${t.startDate.split('T')[0]}T08:00:00` 
-                             : t.slaStartTime;
-                          if (!tStart) {
-                            tStart = wo.createdAt || new Date().toISOString();
-                          }
-                          const tDeadline = new Date(tStart).getTime() + tDurHours * 60 * 60 * 1e3;
-                          if (tDeadline > maxDl) {
-                            maxDl = tDeadline;
-                          }
-
-                          // Original Deadline Calculation — locked to first assignment
-                          // Validate: initialStartDate must be BEFORE revisionCreatedAt (else it was set after rejection — invalid)
-                          const tRawInit1 = (t as any).initialStartDate;
-                          const tRevAt1 = (t as any).revisionCreatedAt;
-                          const tValidInit1 = tRawInit1 && tRevAt1
-                            ? (new Date(tRawInit1) < new Date(tRevAt1) ? tRawInit1 : null)
-                            : (tRawInit1 || null);
-                          const originalSla = (tValidInit1 ? (t as any).initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
-                          const tDurHoursOriginal = slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24;
-                          const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
-                          const tStartOriginal = tValidInit1
-                            ? `${tStartOriginalRaw.split('T')[0]}T08:00:00`
-                            : tStartOriginalRaw;
-                          const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
-                          if (tDeadlineOriginal > maxDlOriginal) {
-                            maxDlOriginal = tDeadlineOriginal;
-                          }
-
-                          if (t.deadline) {
-                            const subDl = new Date(t.deadline).getTime();
-                            if (subDl < minSubDl) {
-                              minSubDl = subDl;
-                            }
-                          }
-                        });
-                      });
-                      const globalDeadline = maxDl > 0 ? maxDl : new Date().getTime();
-                      const subtaskDeadline = minSubDl !== Infinity ? minSubDl : globalDeadline;
 
                       const isSelected = selectedTaskInfo?.wo.id === wo.id;
 
@@ -912,11 +1019,11 @@ export const WorkOrderGroupList: React.FC = () => {
                             if (globalTasks.length > 0) {
                               // Select the first rejected task, or first unfinished task, or first task
                               const activeTask =
-                                globalTasks.find((t) => t.evaluationStatus === 'Rejected') ||
-                                globalTasks.find((t) => (t.dailyProgress || 0) < 100) ||
+                                globalTasks.find((t: any) => t.evaluationStatus === 'Rejected') ||
+                                globalTasks.find((t: any) => (t.dailyProgress || 0) < 100) ||
                                 globalTasks[0];
-                              const catId = wo.categories.find((c) =>
-                                c.tasks.some((t) => t.id === activeTask.id)
+                              const catId = wo.categories.find((c: any) =>
+                                c.tasks.some((t: any) => t.id === activeTask.id)
                               )?.id || wo.categories[0]?.id;
                               handleSelectTask(activeTask, wo, catId);
                             }
@@ -1065,9 +1172,10 @@ export const WorkOrderGroupList: React.FC = () => {
                                 globalDeadline={globalDeadline}
                                 subtaskDeadline={subtaskDeadline}
                                 isCompleted={globalIsAllCompleted}
-                                originalDeadline={maxDlOriginal}
+                                originalDeadline={originalDeadline}
                                 isRevision={!!wo.categories.flatMap((c: any) => c.tasks).find((t: any) => t.currentRevision && t.currentRevision !== 'rev00')}
                                 isHelper={wo.categories.flatMap((c: any) => c.tasks).some((t: any) => t.isHelper === true)}
+                                completedAtTime={completedAtTime}
                               />
                             </div>
                           </div>
@@ -1084,9 +1192,9 @@ export const WorkOrderGroupList: React.FC = () => {
                                 gap: "8px",
                               }}
                             >
-                              {globalTasks.map((task) => {
-                                const categoryId = wo.categories.find((c) =>
-                                  c.tasks.some((t) => t.id === task.id)
+                              {globalTasks.map((task: any) => {
+                                const categoryId = wo.categories.find((c: any) =>
+                                  c.tasks.some((t: any) => t.id === task.id)
                                 )?.id;
                                 return renderTaskCard(task, wo, categoryId, false);
                               })}
@@ -1245,6 +1353,73 @@ export const WorkOrderGroupList: React.FC = () => {
                       groups[woId].myTasks.push(item);
                     }
                   });
+                  // Post-process groups to calculate globalTasks, isAllCompleted, globalTotal, and globalCompleted
+                  const processedGroups = Object.values(groups).map((g: any) => {
+                    let globalTasks = g.wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+                      const isSupport = t.isSupportRequest === true || t.isHelper === true;
+                      return activeTab === 'support' ? isSupport : !isSupport;
+                    });
+
+                    const isSupportWO = g.wo.categories.some((c: any) => c.tasks.some((t: any) => t.isSupportRequest));
+                    const activeParentTaskIds = new Set<string>();
+
+                    if (isSupportWO && activeTab === 'support') {
+                      // Add parent task IDs of tasks in myTasks and helperTasks
+                      [...g.myTasks, ...g.helperTasks].forEach(({ task }: any) => {
+                        const parentId = task.parentTaskId || task.id.split('-').slice(0, 3).join('-');
+                        if (parentId) {
+                          activeParentTaskIds.add(parentId);
+                        }
+                      });
+
+                      // If selectedTaskInfo is active and belongs to this WO, also include its parent ID to prevent it from disappearing if clicked
+                      if (selectedTaskInfo && selectedTaskInfo.wo.id === g.wo.id) {
+                        const selParentId = (selectedTaskInfo.task as any).parentTaskId || selectedTaskInfo.task.id.split('-').slice(0, 3).join('-');
+                        if (selParentId) {
+                          activeParentTaskIds.add(selParentId);
+                        }
+                      }
+
+                      if (activeParentTaskIds.size > 0) {
+                        globalTasks = globalTasks.filter((t: any) => {
+                          const parentId = t.parentTaskId || t.id.split('-').slice(0, 3).join('-');
+                          return activeParentTaskIds.has(parentId);
+                        });
+                      }
+                    }
+
+                    const globalTotal = globalTasks.length;
+                    const globalCompleted = globalTasks.filter(
+                      (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
+                    ).length;
+
+                    const isAllCompleted = globalTotal > 0 && globalCompleted === globalTotal;
+                    const completedAtTime = getCompletedAtTime(g.wo, globalTasks);
+
+                    return {
+                      ...g,
+                      globalTasks,
+                      globalTotal,
+                      globalCompleted,
+                      isAllCompleted,
+                      completedAtTime,
+                      activeParentTaskIds,
+                      isSupportWO,
+                    };
+                  });
+
+                  // Sort groups based on sortBy state
+                  processedGroups.sort((a: any, b: any) => {
+                    if (sortBy === 'id') {
+                      return a.wo.id.localeCompare(b.wo.id);
+                    }
+                    if (sortBy === 'delivery') {
+                      if (a.isAllCompleted && !b.isAllCompleted) return -1;
+                      if (!a.isAllCompleted && b.isAllCompleted) return 1;
+                    }
+                    return a.globalDeadline - b.globalDeadline;
+                  });
+
                   return (
                      <div
                       style={{
@@ -1274,56 +1449,21 @@ export const WorkOrderGroupList: React.FC = () => {
                         <LayoutDashboard size={12} color="#475569" />{" "}
                         รายการใบงานแยกกลุ่ม (Work Orders)
                       </h3>
-                      {Object.values(groups).map(
+                      {processedGroups.map(
                         ({
                           wo,
                           myTasks,
                           helperTasks,
                           globalDeadline,
                           subtaskDeadline,
-                          isHelper,
+                          globalTasks,
+                          globalTotal,
+                          globalCompleted,
+                          isAllCompleted,
+                          completedAtTime,
+                          activeParentTaskIds,
+                          isSupportWO,
                         }) => {
-
-                          
-                          // Calculate global completion status for this Work Order group
-                          let globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
-                            const isSupport = t.isSupportRequest === true || t.isHelper === true;
-                            return activeTab === 'support' ? isSupport : !isSupport;
-                          });
-
-                          const isSupportWO = wo.categories.some((c: any) => c.tasks.some((t: any) => t.isSupportRequest));
-                          const activeParentTaskIds = new Set<string>();
-
-                          if (isSupportWO && activeTab === 'support') {
-                            // Add parent task IDs of tasks in myTasks and helperTasks
-                            [...myTasks, ...helperTasks].forEach(({ task }: any) => {
-                              const parentId = task.parentTaskId || task.id.split('-').slice(0, 3).join('-');
-                              if (parentId) {
-                                activeParentTaskIds.add(parentId);
-                              }
-                            });
-
-                            // If selectedTaskInfo is active and belongs to this WO, also include its parent ID to prevent it from disappearing if clicked
-                            if (selectedTaskInfo && selectedTaskInfo.wo.id === wo.id) {
-                              const selParentId = (selectedTaskInfo.task as any).parentTaskId || selectedTaskInfo.task.id.split('-').slice(0, 3).join('-');
-                              if (selParentId) {
-                                activeParentTaskIds.add(selParentId);
-                              }
-                            }
-
-                            if (activeParentTaskIds.size > 0) {
-                              globalTasks = globalTasks.filter((t: any) => {
-                                const parentId = t.parentTaskId || t.id.split('-').slice(0, 3).join('-');
-                                return activeParentTaskIds.has(parentId);
-                              });
-                            }
-                          }
-
-                          const globalTotal = globalTasks.length;
-                          const globalCompleted = globalTasks.filter(
-                            (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
-                          ).length;
-                          const isAllCompleted = globalTotal > 0 && globalCompleted === globalTotal;
 
                           // Compute other tasks (tasks in WO not owned by this foreman, including helper tasks)
                           const myTaskIds = new Set(myTasks.map(({ task }: any) => task.id));
@@ -1589,6 +1729,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                     isCompleted={isAllCompleted}
                                     originalDeadline={groups[wo.id]?.originalDeadline}
                                     isRevision={!!(wo as any).categories?.flatMap((c: any) => c.tasks).find((t: any) => t.currentRevision && t.currentRevision !== 'rev00')}
+                                    completedAtTime={completedAtTime}
                                   />
                                 </div>
                               </div>{" "}

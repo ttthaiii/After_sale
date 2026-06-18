@@ -285,6 +285,7 @@ export interface GroupSLACountdownProps {
   isCompleted: boolean;
   originalDeadline?: number;
   isRevision?: boolean; // true เมื่อ currentRevision !== 'rev00'
+  completedAtTime?: number | null;
 }
 
 export interface BatchAddModalProps {
