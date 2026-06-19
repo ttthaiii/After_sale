@@ -452,7 +452,14 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         newWorkOrder.categories = categories;
 
         // ✅ IMPORTANT: Await the creation to ensure data is saved before notifying
-        await addWorkOrder(newWorkOrder);
+        try {
+            await addWorkOrder(newWorkOrder);
+        } catch (saveError) {
+            console.error('Failed to save work order:', saveError);
+            alert('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (saveError instanceof Error ? saveError.message : String(saveError)) + ')');
+            setIsSubmitting(false);
+            return;
+        }
 
         if (isDraft) {
             onClose();
