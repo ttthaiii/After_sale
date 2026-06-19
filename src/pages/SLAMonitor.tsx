@@ -55,9 +55,21 @@ const SLAMonitor = () => {
     const getThaiStatusBadge = (t: any) => {
         const progress = t.dailyProgress || 0;
         let status: any = t.status;
-        if (progress >= 100 && status !== 'Completed' && status !== 'Verified') {
-            status = 'for-checking';
+        const hasQrToken = !!t.woDeliveryQrToken;
+
+        if (!hasQrToken && (progress >= 100 || status === 'Completed' || status === 'completed' || status === 'for-checking')) {
+            if (status !== 'Verified') {
+                status = 'in-progress';
+            }
+        } else if (progress >= 100 && status !== 'Completed' && status !== 'completed' && status !== 'Verified') {
+            if (hasQrToken) {
+                status = 'for-checking';
+            } else {
+                status = 'in-progress';
+            }
         } else if (progress > 0 && progress < 100 && (status === 'Pending' || status === 'Assigned' || status === 'upcoming')) {
+            status = 'in-progress';
+        } else if (status === 'for-checking' && !hasQrToken) {
             status = 'in-progress';
         }
 
@@ -77,6 +89,7 @@ const SLAMonitor = () => {
                 return <span style={{ color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอลูกค้าประเมิน</span>;
             case 'Verified':
             case 'Completed':
+            case 'completed':
                 return <span style={{ color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>สำเร็จ</span>;
             case 'Rejected':
                 return <span style={{ color: '#b91c1c', background: '#fee2e2', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอมอบหมายใหม่</span>;
@@ -377,7 +390,8 @@ const SLAMonitor = () => {
                         woProjectId: wo.projectId,
                         woLocation: wo.locationName,
                         woCreatedAt: wo.createdAt,
-                        woAppointmentDate: wo.appointmentDate,
+                         woAppointmentDate: wo.appointmentDate,
+                        woDeliveryQrToken: wo.deliveryQrToken,
                         taskStartDate: t.startDate,
                         categoryName: cat.name,
                         slaScore: score,
@@ -576,17 +590,30 @@ const SLAMonitor = () => {
                     const columnTasks = flattenedTasks.filter((t) => {
                         let effectiveStatus: string = t.status;
                         const progress = t.dailyProgress || 0;
+                        const hasQrToken = !!t.woDeliveryQrToken;
 
-                        if (progress >= 100 && effectiveStatus !== 'Completed' && effectiveStatus !== 'Verified') {
-                            effectiveStatus = 'Completed';
+                        if (!hasQrToken && (progress >= 100 || effectiveStatus === 'Completed' || effectiveStatus === 'completed' || effectiveStatus === 'for-checking')) {
+                            if (effectiveStatus !== 'Verified') {
+                                effectiveStatus = 'in-progress';
+                            }
+                        } else if (progress >= 100 && effectiveStatus !== 'Completed' && effectiveStatus !== 'completed' && effectiveStatus !== 'Verified') {
+                            if (hasQrToken) {
+                                effectiveStatus = 'Completed';
+                            } else {
+                                effectiveStatus = 'in-progress';
+                            }
                         } else if (progress > 0 && progress < 100 && (effectiveStatus === 'Pending' || effectiveStatus === 'Assigned' || effectiveStatus === 'upcoming')) {
+                            effectiveStatus = 'in-progress';
+                        }
+
+                        if (effectiveStatus === 'for-checking' && !hasQrToken) {
                             effectiveStatus = 'in-progress';
                         }
 
                         if (column.id === 'pending-eval') return effectiveStatus === 'Pending' || effectiveStatus === 'Rejected';
                         if (column.id === 'assigned-unstarted') return (effectiveStatus === 'Assigned' || effectiveStatus === 'Approved' || effectiveStatus === 'upcoming') && progress === 0;
                         if (column.id === 'in-progress') return effectiveStatus === 'In Progress' || effectiveStatus === 'in-progress';
-                        if (column.id === 'for-checking') return effectiveStatus === 'Completed' || effectiveStatus === 'for-checking';
+                        if (column.id === 'for-checking') return effectiveStatus === 'Completed' || effectiveStatus === 'completed' || effectiveStatus === 'for-checking';
                         if (column.id === 'completed') return effectiveStatus === 'Verified';
 
                         return false;

@@ -9,6 +9,7 @@ import Evaluation from './pages/Evaluation';
 import History from './pages/History';
 import Login from './pages/Login';
 import OwnerReview from './pages/OwnerReview';
+import CustomerHandover from './pages/CustomerHandover';
 import { AuthProvider } from './context/AuthContext';
 import { WorkOrderProvider } from './context/WorkOrderContext';
 
@@ -23,6 +24,7 @@ function App() {
                         <Routes>
                             <Route path="/login" element={<Login />} />
                             <Route path="/owner-review" element={<OwnerReview />} />
+                            <Route path="/handover" element={<CustomerHandover />} />
 
                             <Route path="/" element={<MainLayout />}>
                                 <Route index element={<Navigate to="/dashboard" replace />} />

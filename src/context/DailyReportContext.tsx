@@ -693,8 +693,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           const categoryId = selectedTaskInfo.categoryId;
           const taskId = selectedTaskInfo.task.id;
           const getSubtaskId = (tId: string): string => {
-            if (tId && tId.startsWith("LR-")) {
-              return tId.substring(3);
+            if (tId) {
+              return tId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
             }
             return tId;
           };
@@ -2033,8 +2033,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const categoryId = selectedTaskInfo.categoryId;
         const taskId = selectedTaskInfo.task.id;
         const getSubtaskId = (tId: string): string => {
-          if (tId && tId.startsWith("LR-")) {
-            return tId.substring(3);
+          if (tId) {
+            return tId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
           }
           return tId;
         };
@@ -2101,8 +2101,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const categoryId = selectedTaskInfo.categoryId;
       const taskId = selectedTaskInfo.task.id;
       const getSubtaskId = (tId: string): string => {
-        if (tId && tId.startsWith("LR-")) {
-          return tId.substring(3);
+        if (tId) {
+          return tId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
         }
         return tId;
       };

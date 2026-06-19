@@ -17,7 +17,7 @@ import { MOCK_STAFF } from "../../data/mockData";
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
-  const cleanId = id.startsWith('LR-') ? id.substring(3) : id;
+  const cleanId = id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
   const parts = cleanId.split('-');
   if (parts.length === 5) {
     return parts.slice(0, 4).join('-');
@@ -81,6 +81,9 @@ export const WorkOrderGroupList: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'internal' | 'support'>('internal');
   const [sortBy, setSortBy] = useState<'deadline' | 'delivery' | 'id'>('deadline');
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrModalWo, setQrModalWo] = useState<any>(null);
+  const [ipOverride, setIpOverride] = useState('');
 
 
   useEffect(() => {
@@ -1117,8 +1120,8 @@ export const WorkOrderGroupList: React.FC = () => {
                                             return;
                                           }
                                         }
-                                        setMockupWorkOrder(wo);
-                                        setIsCustomerMockupOpen(true);
+                                        setQrModalWo(wo);
+                                        setShowQrModal(true);
                                       } catch (err) {
                                         console.error(err);
                                         alert("เกิดข้อผิดพลาดในการเปิดการส่งมอบ");
@@ -1657,8 +1660,8 @@ export const WorkOrderGroupList: React.FC = () => {
                                                     return;
                                                   }
                                                 }
-                                                setMockupWorkOrder(wo);
-                                                setIsCustomerMockupOpen(true);
+                                                setQrModalWo(wo);
+                                                setShowQrModal(true);
                                               } catch (err) {
                                                 console.error(err);
                                                 alert(
@@ -1954,6 +1957,138 @@ export const WorkOrderGroupList: React.FC = () => {
               </Fragment>
             )}
           </div>
+          
+          {/* Handover QR Code Modal */}
+          {showQrModal && qrModalWo && (() => {
+            const qrBaseUrl = ipOverride ? (ipOverride.startsWith('http') ? ipOverride : `http://${ipOverride}:5173`) : window.location.origin;
+            return (
+              <div 
+                onClick={() => setShowQrModal(false)}
+                style={{
+                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(12px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 9999, padding: '20px'
+                }}
+              >
+                <div 
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    background: '#ffffff', width: '100%', maxWidth: '420px',
+                    borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                    padding: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px',
+                    border: '1px solid #e2e8f0'
+                  }}
+                >
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', padding: '4px 12px', borderRadius: '50px', border: '1px solid #d1fae5', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 900, color: '#065f46', letterSpacing: '0.05em' }}>ハンドオーバー / HANDOVER</span>
+                    </div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>คิวอาร์โค้ดส่งมอบงาน (Handover)</h3>
+                    <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                      ให้ลูกค้าใช้มือถือสแกนคิวอาร์โค้ดนี้เพื่อเปิดหน้าจอตรวจรับงานในวง Wi-Fi เดียวกัน
+                    </p>
+                  </div>
+
+                  {/* Local Network IP Helper for localhost */}
+                  {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                    <div style={{ width: '100%', padding: '14px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#b45309', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span>⚠️ ตรวจพบการใช้งานผ่าน Localhost</span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#78350f', lineHeight: 1.4, textAlign: 'left' }}>
+                        มือถือภายนอกจะไม่สามารถสแกนคิวอาร์โค้ดที่ชี้ไปที่ <code>localhost</code> ได้โดยตรง กรุณากรอก IP คอมพิวเตอร์ของคุณเพื่อเปลี่ยนเส้นทางลิงก์:
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                        <input 
+                          type="text" 
+                          placeholder="เช่น 192.168.61.130"
+                          value={ipOverride}
+                          onChange={(e) => setIpOverride(e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#334155',
+                            background: '#ffffff'
+                          }}
+                        />
+                        <button
+                          onClick={() => setIpOverride('192.168.61.130')}
+                          style={{
+                            padding: '6px 10px',
+                            background: '#fbbf24',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '0.72rem',
+                            fontWeight: 900,
+                            color: '#78350f',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ดึงค่าด่วน
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: '#9a3412', fontStyle: 'italic', marginTop: '2px', textAlign: 'left' }}>
+                        *ลิงก์ QR จะเปลี่ยนเป็น: <code style={{ wordBreak: 'break-all' }}>{qrBaseUrl}/handover?woId={qrModalWo.id}</code>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* QR Code image */}
+                  <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '18px', border: '1px dashed #cbd5e1' }}>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrBaseUrl + '/handover?woId=' + qrModalWo.id)}`} 
+                      alt="Handover QR Code"
+                      style={{ width: '200px', height: '200px', display: 'block' }}
+                    />
+                  </div>
+
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${qrBaseUrl}/handover?woId=${qrModalWo.id}`);
+                        alert('คัดลอกลิงก์ส่งมอบเรียบร้อย!');
+                      }}
+                      style={{
+                        width: '100%', padding: '10px', background: '#f1f5f9', border: '1px solid #cbd5e1',
+                        borderRadius: '12px', fontSize: '0.82rem', fontWeight: 900, color: '#334155', cursor: 'pointer'
+                      }}
+                    >
+                      📋 คัดลอกลิงก์ส่งมอบ
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setShowQrModal(false);
+                        setMockupWorkOrder(qrModalWo);
+                        setIsCustomerMockupOpen(true);
+                      }}
+                      style={{
+                        width: '100%', padding: '10px', background: '#3b82f6', border: 'none',
+                        borderRadius: '12px', fontSize: '0.82rem', fontWeight: 900, color: '#ffffff', cursor: 'pointer'
+                      }}
+                    >
+                      💻 เปิดหน้าจอตรวจรับ (จำลองบนเครื่องนี้)
+                    </button>
+                    
+                    <button
+                      onClick={() => setShowQrModal(false)}
+                      style={{
+                        width: '100%', padding: '10px', background: 'transparent', border: 'none',
+                        fontSize: '0.82rem', fontWeight: 800, color: '#64748b', cursor: 'pointer', marginTop: '4px'
+                      }}
+                    >
+                      ปิดหน้าต่าง
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
   );
 };

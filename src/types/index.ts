@@ -186,6 +186,7 @@ export interface MasterTask {
     contactName?: string;
     contactPhone?: string;
     isHelper?: boolean;
+    customerApprovedAt?: string;
 }
 
 export interface Attachment {

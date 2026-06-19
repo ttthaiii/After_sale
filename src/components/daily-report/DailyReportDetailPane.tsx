@@ -31,7 +31,7 @@ import { formatDate } from "../../utils/date";
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
-  const cleanId = id.startsWith('LR-') ? id.substring(3) : id;
+  const cleanId = id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
   const parts = cleanId.split('-');
   if (parts.length === 5) {
     return parts.slice(0, 4).join('-');

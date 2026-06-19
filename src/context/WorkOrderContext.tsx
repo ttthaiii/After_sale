@@ -91,6 +91,7 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
 
     // Parse WO ID — e.g. ART-2026-WOA-0002
     const parts = woId.split('-');
+    const projectPrefix = parts.length > 0 ? parts[0].toUpperCase() : 'LR';
     const jobCode     = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA'; // "WOA"
     const woSeq       = parts.length >= 1 ? parts[parts.length - 1] : '0001';
 
@@ -107,14 +108,14 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
         const position = listIndex >= 0 ? listIndex + 1 : catIndex + 1;
         const formattedPosition = String(position).padStart(4, '0');
 
-        // Category ID: LR-[ProjectCode]-[CategorySeq]-[WOSeq] (e.g. LR-WOA-0003-0001)
-        const computedCatId = `LR-${jobCode}-${formattedPosition}-${formattedWoSeq}`;
+        // Category ID: [ProjectPrefix]-[ProjectCode]-[CategorySeq]-[WOSeq] (e.g. LR-WOA-0003-0001)
+        const computedCatId = `${projectPrefix}-${jobCode}-${formattedPosition}-${formattedWoSeq}`;
 
-        // Task ID: LR-[ProjectCode]-[CategorySeq]-[WOSeq]-[TaskCount 4 digits] (e.g. LR-WOA-0003-0001-0001)
+        // Task ID: [ProjectPrefix]-[ProjectCode]-[CategorySeq]-[WOSeq]-[TaskCount 4 digits] (e.g. LR-WOA-0003-0001-0001)
         const tasks = cat.tasks ? cat.tasks.map((task: any) => {
             taskCounter++;
             const taskSeq = String(taskCounter).padStart(4, '0');
-            const computedTaskId = `LR-${jobCode}-${formattedPosition}-${formattedWoSeq}-${taskSeq}`;
+            const computedTaskId = `${projectPrefix}-${jobCode}-${formattedPosition}-${formattedWoSeq}-${taskSeq}`;
             const computedSubtaskId = `${jobCode}-${formattedPosition}-${formattedWoSeq}-${taskSeq}`;
             return {
                 ...task,
@@ -138,9 +139,9 @@ const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
 
 // Helper function to resolve subtask ID from task ID
 const getSubtaskId = (taskId: string): string => {
-    // Strip "LR-" prefix if present → e.g. "LR-WOA-0003-0001-0001" → "WOA-0003-0001-0001"
-    if (taskId && taskId.startsWith('LR-')) {
-        return taskId.substring(3);
+    // Strip project prefix if present → e.g. "LR-WOA-0003-0001-0001" → "WOA-0003-0001-0001"
+    if (taskId) {
+        return taskId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
     }
     return taskId;
 };
@@ -1498,10 +1499,12 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId), {
                         status: 'completed', // LB completed = Verified
                         evaluationStatus: 'Approved',
+                        customerApprovedAt: now,
                         updatedAt: now
                     });
                     await setDoc(subtaskRef, {
-                        status: 'completed'
+                        status: 'completed',
+                        customerApprovedAt: now
                     }, { merge: true });
                     
                     // Close the current active revision

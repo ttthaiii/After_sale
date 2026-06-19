@@ -21,8 +21,8 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
     const [selectedRevisions, setSelectedRevisions] = useState<Record<string, string>>({});
 
     const getSubtaskId = (tId: string): string => {
-        if (tId && tId.startsWith('LR-')) {
-            return tId.substring(3);
+        if (tId) {
+            return tId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
         }
         return tId;
     };
@@ -44,26 +44,14 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
         if (!report || !report.photos) return null;
         const p = report.photos;
         if (Array.isArray(p)) {
-            return p.find(Boolean) || null;
+            const arr = p.filter(Boolean);
+            return arr.length > 0 ? arr[arr.length - 1] : null;
         }
         if (typeof p === 'object') {
-            // Priority 1: regular shift photos (last regular shift photo represents sign-out/after state)
-            if (p.laborByShift?.regular && Array.isArray(p.laborByShift.regular)) {
-                const regPhotos = p.laborByShift.regular.filter(Boolean);
-                if (regPhotos.length > 0) return regPhotos[regPhotos.length - 1];
-            }
-            // Priority 2: site photos
+            // Strictly site photos (latest site photo represents the after state)
             if (p.site && Array.isArray(p.site)) {
                 const siteP = p.site.filter(Boolean);
-                if (siteP.length > 0) return siteP[0];
-            }
-            // Priority 3: ot shift photos
-            for (const shift of ['otEvening', 'otNoon', 'otMorning']) {
-                const ot = p.laborByShift?.[shift];
-                if (ot) {
-                    if (ot.out) return ot.out;
-                    if (ot.in) return ot.in;
-                }
+                if (siteP.length > 0) return siteP[siteP.length - 1];
             }
         }
         return null;
@@ -905,7 +893,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                 const latestRevId = taskRevisions[task.id]?.[0]?.id || task.currentRevision || 'rev00';
                                 const isSelectedRevRejected = selectedRevId !== latestRevId && (taskRevisions[task.id]?.length ?? 0) > 1;
                                 const revRejectReason = (currentRevObj as any).rejectReason || task.rejectReason;
-                                const isCompleted = task.status === 'Completed' || task.dailyProgress === 100;
+                                const isCompleted = task.status === 'Completed' || task.status === 'completed' || task.dailyProgress === 100;
                                 const isUserContributor = currentUserId && (
                                     (task.responsibleStaffIds && task.responsibleStaffIds.includes(currentUserId)) ||
                                     (task.history && task.history.some(h =>
@@ -1038,9 +1026,16 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', display: 'flex', gap: '12px' }}>
-                                                    <span><strong>หมวดงาน:</strong> {(task as any).categoryName}</span>
-                                                    <span>ประเภท SLA: {task.slaCategory || 'ทั่วไป'}</span>
+                                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                                        <span><strong>หมวดงาน:</strong> {(task as any).categoryName}</span>
+                                                        <span>ประเภท SLA: {task.slaCategory || 'ทั่วไป'}</span>
+                                                    </div>
+                                                    {isCompleted && (currentRevObj?.approvedAt || task.customerApprovedAt || (currentRevObj?.status === 'closed_approved' ? currentRevObj?.updatedAt : null)) && (
+                                                        <div style={{ color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                            <span><strong>วันที่ลูกค้าตรวจรับ:</strong> {formatDateTime(currentRevObj?.approvedAt || task.customerApprovedAt || (currentRevObj?.status === 'closed_approved' ? currentRevObj?.updatedAt : null))} น.</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {isSelectedRevRejected && revRejectReason && (
                                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#fff1f2', border: '1px solid #ffe4e6', borderRadius: '10px', padding: '8px 12px' }}>

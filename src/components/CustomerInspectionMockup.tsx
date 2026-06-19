@@ -27,27 +27,25 @@ interface CustomerInspectionMockupProps {
 }
 
 const getAfterPhotos = (task: any): string[] => {
-    const photosList = [];
+    const photosList: string[] = [];
     if (task.history && task.history.length > 0) {
-        const entry100 = task.history.find((h) => h.progress === 100) 
-                      || [...task.history].sort((a, b) => (b.progress || 0) - (a.progress || 0))[0];
-        if (entry100 && entry100.photos) {
-            const photos = entry100.photos;
-            if (Array.isArray(photos)) {
-                photos.forEach((p) => { if (p) photosList.push(p); });
-            } else if (typeof photos === 'object') {
-                const siteArr = photos.site;
-                if (Array.isArray(siteArr)) {
-                    siteArr.forEach((p) => { if (p) photosList.push(p); });
+        const entry100 = task.history.find((h: any) => Number(h.progress) === 100 || Number(h.dailyProgress) === 100);
+        if (entry100) {
+            const h = entry100;
+            if (h.photos) {
+                const photos = h.photos;
+                if (Array.isArray(photos)) {
+                    photos.forEach((p: any) => { if (p) photosList.push(p); });
+                } else if (typeof photos === 'object') {
+                    const siteArr = photos.site;
+                    if (Array.isArray(siteArr)) {
+                        siteArr.forEach((p: any) => { if (p) photosList.push(p); });
+                    }
                 }
             }
         }
     }
-    if (photosList.length === 0) {
-        if (task.latestPhotoUrl) photosList.push(task.latestPhotoUrl);
-        else if (task.afterPhotoUrl) photosList.push(task.afterPhotoUrl);
-    }
-    return photosList;
+    return Array.from(new Set(photosList.filter(Boolean)));
 };
 
 export default function CustomerInspectionMockup({
@@ -137,7 +135,7 @@ export default function CustomerInspectionMockup({
         );
         
         if (incompleteRejectTask && incompleteRejectTask.id !== taskId) {
-            alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนทำการประเมินรายการอื่น`);
+            alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ "${incompleteRejectTask.name || incompleteRejectTask.taskName}" ก่อนทำการประเมินรายการอื่น`);
             return;
         }
 
@@ -289,7 +287,7 @@ export default function CustomerInspectionMockup({
         }
     };
 
-    const hasRejections = Object.values(approvals).some(a => a.status === 'rejected');
+    const isAllApproved = eligibleTasks.length > 0 && eligibleTasks.every((task: any) => approvals[task.id]?.status === 'approved');
 
     const renderRatingSelector = (label: string, value: number, onChange: (val: number) => void) => (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -640,7 +638,7 @@ export default function CustomerInspectionMockup({
                     </div>
 
                     {/* Overall Satisfaction Survey (Appears ONLY if ALL items are approved) */}
-                    {!hasRejections && eligibleTasks.length > 0 && Object.keys(approvals).length === eligibleTasks.length && (
+                    {isAllApproved && (
                         <div style={{ background: '#ffffff', borderRadius: '20px', padding: '1.5rem', border: '2px solid #86efac', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 6px 12px rgba(34,197,94,0.04)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534' }}>
                                 <Sparkles size={20} style={{ color: '#22c55e' }} />
