@@ -2528,6 +2528,25 @@ const Dashboard = () => {
                                                         lastWoId = task.woId;
                                                         const p = task.dailyProgress || 0;
                                                         const isCancelled = task.woStatus === 'Cancelled' || task.woStatus === 'Rejected';
+                                                        const woStatusMap: Record<string, { label: string; color: string }> = {
+                                                            'Pending':           { label: 'รอประเมิน',          color: '#94a3b8' },
+                                                            'Evaluating':        { label: 'รอประเมิน',          color: '#94a3b8' },
+                                                            'Assigned':          { label: 'มอบหมายแล้ว',        color: '#6366f1' },
+                                                            'Approved':          { label: 'มอบหมายแล้ว',        color: '#6366f1' },
+                                                            'Partially Approved':{ label: 'มอบหมายบางส่วน',    color: '#a78bfa' },
+                                                            'In Progress':       { label: 'กำลังดำเนินการ',     color: '#3b82f6' },
+                                                            'in-progress':       { label: 'กำลังดำเนินการ',     color: '#3b82f6' },
+                                                            'pending_delivery':  { label: 'รอลูกค้าประเมิน',   color: '#d97706' },
+                                                            'for-checking':      { label: 'รอลูกค้าประเมิน',   color: '#d97706' },
+                                                            'Completed':         { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
+                                                            'completed':         { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
+                                                            'Verified':          { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
+                                                            'Rejected':          { label: 'ส่งคืนแก้ไข',       color: '#ef4444' },
+                                                            'Cancelled':         { label: 'ยกเลิก',             color: '#64748b' },
+                                                        };
+                                                        const woStatusInfo = woStatusMap[task.woStatus] ?? { label: task.woStatus || '-', color: '#94a3b8' };
+                                                        const woStatusLabel = woStatusInfo.label;
+                                                        const woStatusColor = woStatusInfo.color;
                                                         const nextTask = flatTasks[index + 1];
                                                         const isLastInGroup = !nextTask || nextTask.woId !== task.woId;
 
@@ -2577,7 +2596,7 @@ const Dashboard = () => {
                                                                                     </div>
                                                                                 </div>
                                                                                 <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
-                                                                                    สถานะใบงาน: <span style={{ color: isCancelled ? '#ef4444' : '#10b981' }}>{task.woStatus}</span>
+                                                                                    สถานะใบงาน: <span style={{ color: woStatusColor, fontWeight: 800 }}>{woStatusLabel}</span>
                                                                                 </div>
                                                                             </div>
                                                                         </td>

@@ -667,6 +667,10 @@ const History = () => {
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#10b981', background: '#ecfdf5', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #d1fae5' }}>
                                                     <CheckCircle size={14} /> สำเร็จสมบูรณ์
                                                 </div>
+                                            ) : wo.status === 'pending_delivery' ? (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', background: '#fef3c7', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fde68a' }}>
+                                                    <Clock size={14} /> รอลูกค้าประเมิน
+                                                </div>
                                             ) : (task.status as string)?.toLowerCase() === 'completed' ? (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', background: '#fffbeb', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fef3c7' }}>
                                                     <Clock size={14} /> รอ Owner ตรวจรับ
