@@ -535,43 +535,80 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             {history.map((log: any, idx: number) => {
                                 const logDate = new Date(log.date);
-                                const totalLabor = (log.labor || []).reduce((acc: number, l: any) => acc + (l.amount || 0), 0);
+                                const prevProgress = idx < history.length - 1 ? (history[idx + 1].progress || 0) : 0;
+                                const totalWorkers = (log.labor || []).reduce((acc: number, l: any) => acc + (l.amount || 1), 0);
+                                const isProblem = log.type === 'Problem';
                                 return (
-                                    <div key={idx} style={{ padding: '20px', background: '#f8fafc', borderRadius: '24px', border: '1px solid #e2e8f0' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <div style={{ fontSize: '1rem', fontWeight: 900, color: log.type === 'Problem' ? '#ef4444' : '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                {formatDateTime(logDate)}
-                                                {log.type === 'Problem' && <AlertCircle size={18} color="#ef4444" />}
+                                    <div key={idx} style={{ background: isProblem ? '#fff1f2' : '#f8fafc', borderRadius: '20px', border: `1px solid ${isProblem ? '#fca5a5' : '#e2e8f0'}`, overflow: 'hidden' }}>
+                                        {/* Header row */}
+                                        <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', background: isProblem ? '#fef2f2' : '#fff' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                {isProblem && <AlertCircle size={16} color="#ef4444" />}
+                                                <span style={{ fontSize: '1rem', fontWeight: 900, color: isProblem ? '#dc2626' : '#0f172a' }}>
+                                                    {logDate.getDate().toString().padStart(2,'0')}/{(logDate.getMonth()+1).toString().padStart(2,'0')}/{logDate.getFullYear()+543}
+                                                </span>
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                                                    {logDate.getHours().toString().padStart(2,'0')}:{logDate.getMinutes().toString().padStart(2,'0')} น.
+                                                </span>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                {log.type === 'Problem' && (
-                                                    <span style={{ padding: '4px 12px', background: '#fef2f2', color: '#ef4444', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fee2e2' }}>🚨 พบปัญหาหน้างาน</span>
-                                                )}
-                                                <span style={{ padding: '4px 12px', background: '#e0e7ff', color: '#4338ca', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800 }}>Progress: {log.progress}%</span>
-                                                <span style={{ padding: '4px 12px', background: '#f1f5f9', color: '#475569', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800 }}>คนงาน: {totalLabor} คน</span>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                {isProblem && <span style={{ padding: '3px 10px', background: '#fef2f2', color: '#ef4444', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 900, border: '1px solid #fee2e2' }}>🚨 พบปัญหา</span>}
+                                                {/* Progress from → to */}
+                                                <span style={{ padding: '3px 12px', background: '#e0e7ff', color: '#4338ca', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900 }}>
+                                                    {prevProgress}% → {log.progress}%
+                                                </span>
+                                                <span style={{ padding: '3px 10px', background: '#f1f5f9', color: '#475569', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 800 }}>
+                                                    👷 {totalWorkers} คน
+                                                </span>
                                             </div>
                                         </div>
-                                        {log.taskName && (
-                                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#6366f1', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <Activity size={14} />{log.taskName}
+                                        {/* Labor detail rows */}
+                                        {(log.labor || []).length > 0 && (
+                                            <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {(log.labor || []).map((l: any, lIdx: number) => {
+                                                    const name = l.workerName || l.staffName || l.workerId || '—';
+                                                    const timeRange = l.shiftTimes?.day || null;
+                                                    const otTimes = [
+                                                        l.shiftTimes?.otMorning ? `OT เช้า: ${l.shiftTimes.otMorning}` : null,
+                                                        l.shiftTimes?.otNoon   ? `OT เที่ยง: ${l.shiftTimes.otNoon}`  : null,
+                                                        l.shiftTimes?.otEvening? `OT เย็น: ${l.shiftTimes.otEvening}` : null,
+                                                    ].filter(Boolean);
+                                                    const eh = l.expectedHours || {};
+                                                    const totalHrs = (eh.normal||0) + (eh.otNoon||0) + (eh.otEvening||0) + (eh.otMorning||0);
+                                                    const isMember = l.membership === 'Internal';
+                                                    return (
+                                                        <div key={lIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 14px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                                                            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: isMember ? '#ede9fe' : '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                                <span style={{ fontSize: '0.7rem', fontWeight: 900, color: isMember ? '#6d28d9' : '#a16207' }}>{isMember ? 'DC' : 'OT'}</span>
+                                                            </div>
+                                                            <div style={{ flex: 1 }}>
+                                                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>{name}</div>
+                                                                <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                                    {timeRange && (
+                                                                        <span style={{ fontSize: '0.75rem', color: '#0891b2', fontWeight: 700, background: '#ecfeff', padding: '2px 8px', borderRadius: '6px' }}>
+                                                                            🕐 {timeRange}
+                                                                        </span>
+                                                                    )}
+                                                                    {otTimes.map((ot, i) => (
+                                                                        <span key={i} style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700, background: '#fefce8', padding: '2px 8px', borderRadius: '6px' }}>{ot}</span>
+                                                                    ))}
+                                                                    {totalHrs > 0 && (
+                                                                        <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: 800 }}>{totalHrs} ชม.</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
-                                        <div style={{ marginBottom: '12px' }}>
-                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>รายละเอียดคนงาน:</div>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                {(log.labor || []).length > 0
-                                                    ? (log.labor || []).map((l: any, lIdx: number) => (
-                                                        <span key={lIdx} style={{ padding: '4px 10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700 }}>
-                                                            {l.role || l.skill || l.affiliation}: {l.amount} คน
-                                                        </span>
-                                                    ))
-                                                    : <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>ไม่มีรายละเอียดรายคน</span>}
+                                        {/* Note */}
+                                        {log.note && (
+                                            <div style={{ padding: '10px 20px 14px', borderTop: '1px solid #e2e8f0' }}>
+                                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>หมายเหตุ: </span>
+                                                <span style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>{log.note}</span>
                                             </div>
-                                        </div>
-                                        <div style={{ padding: '12px 16px', background: log.type === 'Problem' ? '#fff1f2' : '#fff', border: log.type === 'Problem' ? '2px solid #fca5a5' : '1px solid #e2e8f0', borderRadius: '16px', boxShadow: log.type === 'Problem' ? '0 4px 6px -1px rgba(239, 68, 68, 0.1)' : 'none' }}>
-                                            <div style={{ fontSize: '0.7rem', color: log.type === 'Problem' ? '#ef4444' : '#94a3b8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>หมายเหตุ:</div>
-                                            <div style={{ fontSize: '0.875rem', color: log.type === 'Problem' ? '#991b1b' : '#334155', fontWeight: 600, minHeight: '1.2em' }}>{log.note || '-'}</div>
-                                        </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -642,6 +679,7 @@ const Dashboard = () => {
     const opListRef = useRef<HTMLDivElement>(null);
     const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
     const [donutFilter, setDonutFilter] = useState<string | null>(null);
+    const [showInsightDetails, setShowInsightDetails] = useState(false);
 
     const getProjectName = (id: string) => projects.find((p: any) => p.id === id)?.name || id;
 
@@ -2184,30 +2222,127 @@ const Dashboard = () => {
                     ) : (
                         /* Insights Mode */
                         <>
-                            {/* Stat Cards */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-                                <StatCard
-                                    title="งานทั้งหมดที่ดูแล (Total Jobs)"
-                                    value={stats.totalInMonth}
-                                    icon={<Activity size={24} />}
-                                    color="#3b82f6"
-                                    gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)"
-                                    subtext={isForeman
-                                        ? (<span>ใหม่ <b style={{ fontSize: '0.9rem' }}>{stats.newThisMonth}</b> / ค้าง <b style={{ fontSize: '0.9rem' }}>{stats.carriedOver}</b></span>)
-                                        : (<span>ใหม่ <b style={{ fontSize: '0.9rem' }}>{stats.newThisMonth}</b> / ค้าง <b style={{ fontSize: '0.9rem' }}>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>)
-                                    }
-                                />
-                                <StatCard
-                                    title="งานที่ปิดจบสำเร็จ (Successfully Closed)"
-                                    value={stats.closed}
-                                    icon={<CheckCircle2 size={24} />}
-                                    color="#10b981"
-                                    gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                                    subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้"
-                                />
-                                <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={`${stats.slaScore}%`} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : 'ควรปรับปรุงความเร็ว'} />
-                                <StatCard title="ชั่วโมงการทำงานรวม" value={`${stats.totalHours.toLocaleString()} ชม.`} icon={<Activity size={24} />} color="#8b5cf6" gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)" subtext="ลงแรงงานจริงสะสมรายเดือน" />
-                            </div>
+                            {/* Performance Hero Card — Foreman only */}
+                            {isForeman ? (() => {
+                                const slaColor = stats.slaScore >= 80 ? '#10b981' : stats.slaScore >= 50 ? '#f59e0b' : '#ef4444';
+                                const slaBg   = stats.slaScore >= 80 ? '#f0fdf4' : stats.slaScore >= 50 ? '#fffbeb' : '#fef2f2';
+                                const closeRate = stats.totalInMonth > 0 ? Math.round(stats.closed / stats.totalInMonth * 100) : 0;
+                                return (
+                                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0', borderLeft: `5px solid ${slaColor}`, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', padding: '1.5rem 2rem', marginBottom: '1rem' }}>
+                                    {/* Top row: gauge + stats */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
+                                        {/* SLA Gauge */}
+                                        <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                                            <svg viewBox="0 0 120 120" width="110" height="110">
+                                                <circle cx="60" cy="60" r="50" fill="none" stroke="#f1f5f9" strokeWidth="10"/>
+                                                <circle cx="60" cy="60" r="50" fill="none"
+                                                    stroke={slaColor}
+                                                    strokeWidth="10" strokeLinecap="round"
+                                                    strokeDasharray={`${(stats.slaScore / 100) * 314.2} 314.2`}
+                                                    transform="rotate(-90 60 60)"
+                                                    style={{ transition: 'stroke-dasharray 1s ease' }}
+                                                />
+                                                <text x="60" y="55" textAnchor="middle" fill="#1e293b" fontSize="20" fontWeight="bold">{stats.slaScore}%</text>
+                                                <text x="60" y="72" textAnchor="middle" fill="#94a3b8" fontSize="10" fontWeight="600">SLA เดือนนี้</text>
+                                            </svg>
+                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: slaBg, border: `1px solid ${slaColor}`, color: slaColor, padding: '3px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 800 }}>
+                                                {stats.slaScore >= 80 ? <CheckCircle2 size={13}/> : <Activity size={13}/>}
+                                                {stats.slaScore >= 80 ? 'ดีมาก' : stats.slaScore >= 50 ? 'พอใช้' : 'ควรปรับปรุง'}
+                                            </div>
+                                        </div>
+
+                                        {/* Divider */}
+                                        <div style={{ width: '1px', alignSelf: 'stretch', minHeight: '70px', background: '#e2e8f0', flexShrink: 0 }} />
+
+                                        {/* Stats */}
+                                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', rowGap: '0.75rem' }}>
+                                            {[
+                                                { label: 'งานทั้งหมด', value: stats.totalInMonth, sub: `ใหม่ ${stats.newThisMonth} · ค้าง ${stats.carriedOver}`, color: '#2563eb' },
+                                                { label: 'ปิดจบสำเร็จ', value: stats.closed, sub: `${closeRate}% ของทั้งหมด`, color: '#059669' },
+                                                { label: 'ชั่วโมงทำงาน', value: stats.totalHours.toLocaleString(), sub: 'ชม. แรงงานจริง', color: '#7c3aed' },
+                                                { label: 'โครงการที่ดูแล', value: stats.laborByProject?.length ?? 0, sub: 'โครงการ', color: '#ea580c' },
+                                            ].map(s => (
+                                                <div key={s.label} style={{ textAlign: 'center', padding: '0 0.25rem' }}>
+                                                    <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{s.label}</div>
+                                                    <div style={{ fontSize: '2rem', fontWeight: 900, color: s.color, lineHeight: 1, marginBottom: '3px' }}>{s.value}</div>
+                                                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{s.sub}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Close rate bar */}
+                                    <div style={{ marginTop: '1.25rem', height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${closeRate}%`, background: `linear-gradient(90deg, #6366f1, ${slaColor})`, borderRadius: '99px', transition: 'width 1s ease' }} />
+                                    </div>
+                                    <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>อัตราปิดงาน {closeRate}%</span>
+                                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>เป้าหมาย 100%</span>
+                                    </div>
+
+                                    {/* CTA row */}
+                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                        <button
+                                            onClick={() => document.getElementById('analytics-detail-section')?.scrollIntoView({ behavior: 'smooth' })}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '12px', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}
+                                        >
+                                            <TrendingUp size={14} /> ดูรายละเอียด SLA รายโครงการ ↓
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('operations')}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', background: stats.totalInMonth - stats.closed > 0 ? '#fef2f2' : '#f0fdf4', color: stats.totalInMonth - stats.closed > 0 ? '#dc2626' : '#059669', border: `1px solid ${stats.totalInMonth - stats.closed > 0 ? '#fecaca' : '#bbf7d0'}`, borderRadius: '12px', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}
+                                        >
+                                            <Activity size={14} />
+                                            {stats.totalInMonth - stats.closed > 0
+                                                ? `ใบงานค้างอยู่ ${stats.totalInMonth - stats.closed} รายการ →`
+                                                : 'ปิดครบทุกใบงานแล้ว ✓'}
+                                        </button>
+                                    </div>
+                                </div>
+                                );
+                            })() : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                    <StatCard title="งานทั้งหมดที่ดูแล" value={stats.totalInMonth} icon={<Activity size={24} />} color="#3b82f6" gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)" subtext={<span>ใหม่ <b>{stats.newThisMonth}</b> / ค้าง <b>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>} />
+                                    <StatCard title="งานที่ปิดจบสำเร็จ" value={stats.closed} icon={<CheckCircle2 size={24} />} color="#10b981" gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)" subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้" />
+                                    <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={`${stats.slaScore}%`} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : 'ควรปรับปรุงความเร็ว'} />
+                                    <StatCard title="ชั่วโมงการทำงานรวม" value={`${stats.totalHours.toLocaleString()} ชม.`} icon={<Activity size={24} />} color="#8b5cf6" gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)" subtext="ลงแรงงานจริงสะสมรายเดือน" />
+                                </div>
+                            )}
+
+                            {/* Activity Calendar Section */}
+                            {(isForeman || isAdminOrManager) && (
+                                <div id="activity-calendar-section" className={highlightedSection === 'activity-calendar-section' ? 'section-highlight' : ''} style={{ marginBottom: '2rem', transition: 'all 0.5s', borderRadius: '32px' }}>
+                                    {(!isForeman && !selectedForemanId) ? (
+                                        <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0', padding: '4rem 2rem', textAlign: 'center', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                                            <div style={{ background: '#f5f3ff', width: '80px', height: '80px', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6', margin: '0 auto 1.5rem auto' }}>
+                                                <Clock size={40} />
+                                            </div>
+                                            <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b', marginBottom: '12px' }}>ปฏิทินกิจกรรมการทำงาน</h3>
+                                            <p style={{ color: '#64748b', fontWeight: 600, maxWidth: '500px', margin: '0 auto', fontSize: '1rem', lineHeight: 1.6 }}>
+                                                กรุณาเลือก <span style={{ color: '#4f46e5', fontWeight: 800 }}>"รายชื่อพนักงาน"</span> จากตัวกรองด้านบน <br />
+                                                เพื่อดูปฏิทินงานรายวัน ตรวจสอบรายชื่อคนงาน และบันทึกรายละเอียด
+                                            </p>
+                                            <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+                                                <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <Users size={16} /> ตรวจสอบรายชื่อคนงานรายวัน
+                                                </div>
+                                                <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <TrendingUp size={16} /> คลิกวันเพื่อแก้ไขข้อมูล
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <ForemanCalendar
+                                            workOrders={workOrders}
+                                            currentUserId={isForeman ? (user?.id || '') : (selectedForemanId || '')}
+                                            projects={selectableProjects}
+                                            highlightProjectId={selectedSCurveProject || null}
+                                            highlightedWOId={highlightedWOId}
+                                            selectedMonth={selectedMonth}
+                                        />
+                                    )}
+                                </div>
+                            )}
 
                             {/* SLA Analysis Section - MOVED TO TOP */}
                             <div id="analytics-detail-section" className={highlightedSection === 'analytics-detail-section' ? 'section-highlight' : ''} style={{ background: '#ffffff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', marginBottom: '2.5rem', transition: 'all 0.5s' }}>
@@ -2259,14 +2394,47 @@ const Dashboard = () => {
                                         )}
                                     </div>
                                 )}
-                                {!drillDownProject && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 60px', marginBottom: '12px', position: 'sticky', top: 0, zIndex: 10, background: '#fff' }}>
-                                        <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 900 }}>← ล่าช้ากว่ากำหนด (DELAY)</div>
-                                        <div style={{ color: '#475569', fontSize: '12px', fontWeight: 900, textAlign: 'center' }}>มาตรฐาน SLA (On-Time)</div>
-                                        <div style={{ color: '#10b981', fontSize: '11px', fontWeight: 900, textAlign: 'right' }}>ไวกว่ากำหนด (เสร็จเร็ว) →</div>
+                                {/* Overview: Project Cards — แทน deviation chart */}
+                                {!(selectedSCurveProject || drillDownProject) && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+                                        {stats.laborByProject.map((p: any) => {
+                                            const sla = p.slaScore ?? 100;
+                                            const slaColor = sla >= 80 ? '#10b981' : sla >= 50 ? '#f59e0b' : '#ef4444';
+                                            const slaBg = sla >= 80 ? '#ecfdf5' : sla >= 50 ? '#fffbeb' : '#fef2f2';
+                                            const onTime = Math.round(sla * (p.taskCount ?? 0) / 100);
+                                            return (
+                                                <div
+                                                    key={p.name}
+                                                    onClick={() => p.id ? setSelectedSCurveProject(p.id) : setDrillDownProject(p.name)}
+                                                    style={{ background: '#fff', border: `1.5px solid #e2e8f0`, borderRadius: '20px', padding: '1.25rem 1.5rem', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: '12px' }}
+                                                    onMouseOver={(e) => { e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = slaColor; }}
+                                                    onMouseOut={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                                                        <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b', lineHeight: 1.3, flex: 1 }}>{p.name}</div>
+                                                        <div style={{ background: slaBg, color: slaColor, fontWeight: 900, fontSize: '1.05rem', padding: '4px 10px', borderRadius: '10px', flexShrink: 0 }}>{sla}%</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>SLA ทันกำหนด</span>
+                                                            <span style={{ fontSize: '0.75rem', color: slaColor, fontWeight: 800 }}>{onTime} / {p.taskCount ?? 0} งาน</span>
+                                                        </div>
+                                                        <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+                                                            <div style={{ height: '100%', width: `${sla}%`, background: `linear-gradient(90deg, ${slaColor}88, ${slaColor})`, borderRadius: '4px' }} />
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid #f8fafc' }}>
+                                                        <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontWeight: 700 }}>คลิกดูรายใบงาน →</span>
+                                                        <span style={{ fontSize: '0.8rem', fontWeight: 900, color: slaColor }}>{sla >= 80 ? 'On Track' : sla >= 50 ? 'ระวัง' : 'ล่าช้า'}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
-                                <div style={{ height: (selectedSCurveProject || drillDownProject) ? '400px' : '500px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', border: '1px solid #f1f5f9', borderRadius: '12px' }}>
+                                {/* Drill-down: Deviation Chart (เดิม) */}
+                                {(selectedSCurveProject || drillDownProject) && (
+                                <div style={{ height: '400px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', border: '1px solid #f1f5f9', borderRadius: '12px' }}>
                                     <ResponsiveContainer width="100%" height={(selectedSCurveProject || drillDownProject) ? '100%' : Math.max(stats.laborByProject.length * 50, 400)}>
                                         <BarChart
                                             data={(selectedSCurveProject || drillDownProject)
@@ -2455,11 +2623,22 @@ const Dashboard = () => {
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
-                                {!(selectedSCurveProject || drillDownProject) && <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.8rem', color: '#94a3b8', fontWeight: 700 }}>* คลิกที่แท่งของแต่ละโครงการเพื่อเจาะดูรายละเอียดรายใบงาน (Drill-down)</div>}
+                                )}
                             </div>
 
-                            {/* Charts Row */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', marginBottom: '2.5rem' }}>
+                            {/* Collapsed Detail Section — Charts Row + S-Curve */}
+                            <div style={{ marginBottom: '2.5rem' }}>
+                                <button
+                                    onClick={() => setShowInsightDetails(v => !v)}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '14px 20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', color: '#475569', transition: 'all 0.2s' }}
+                                >
+                                    <TrendingUp size={18} />
+                                    {showInsightDetails ? '▲ ซ่อนรายละเอียด — คนงาน/ความคืบหน้ารายวัน' : '▼ ดูรายละเอียดเพิ่มเติม — สถิติการเปิด-ปิดงาน และกราฟคนงาน vs คืบหน้า'}
+                                </button>
+                            </div>
+                            {showInsightDetails && (
+                            <>
+                            {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', marginBottom: '2.5rem' }}>
                                 <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
                                     <SectionHeader
                                         title="สถิติการเปิด-ปิดรายการงาน (Task Statistics)"
@@ -2546,7 +2725,7 @@ const Dashboard = () => {
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
-                            </div>
+                            </div>}
 
                             {/* S-Curve Chart */}
                             <div style={{ gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
@@ -2556,8 +2735,8 @@ const Dashboard = () => {
                                             <TrendingUp size={28} />
                                         </div>
                                         <div>
-                                            <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>วิเคราะห์ความสัมพันธ์ แรงงาน vs ความคืบหน้า (S-Curve)</h3>
-                                            <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>เปรียบเทียบการลงแรงงานรายวันเทียบกับการสะสมงานของโครงการรายเดือน</p>
+                                            <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>คนงานต่อวัน vs ความคืบหน้ารวม</h3>
+                                            <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>แท่งแดง = จำนวนคนงานที่ใช้จริงรายวัน · เส้นน้ำเงิน = % งานรวมทั้งหมดที่ทำเสร็จแล้วสะสม</p>
                                         </div>
                                     </div>
                                 </div>
@@ -2642,49 +2821,13 @@ const Dashboard = () => {
                                     </ResponsiveContainer>
                                 </div>
                             </div>
-
-
-
-
-                            {/* Activity Calendar Section */}
-                            {(isForeman || isAdminOrManager) && (
-                                <div id="activity-calendar-section" className={highlightedSection === 'activity-calendar-section' ? 'section-highlight' : ''} style={{ marginBottom: '2.5rem', transition: 'all 0.5s', borderRadius: '32px' }}>
-                                    {(!isForeman && !selectedForemanId) ? (
-                                        <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0', padding: '4rem 2rem', textAlign: 'center', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                                            <div style={{ background: '#f5f3ff', width: '80px', height: '80px', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6', margin: '0 auto 1.5rem auto' }}>
-                                                <Clock size={40} />
-                                            </div>
-                                            <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b', marginBottom: '12px' }}>ประวัติการเข้าปฏิบัติงาน (Activity Calendar)</h3>
-                                            <p style={{ color: '#64748b', fontWeight: 600, maxWidth: '500px', margin: '0 auto', fontSize: '1rem', lineHeight: 1.6 }}>
-                                                กรุณาเลือก <span style={{ color: '#4f46e5', fontWeight: 800 }}>"รายชื่อพนักงาน"</span> จากตัวกรองด้านบน <br />
-                                                เพื่อเรียกดูปฏิทินการทำงาน รายละเอียดชั่วโมง Normal/OT และรูปภาพหน้างานย่อย
-                                            </p>
-                                            <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                                                <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <Users size={16} /> ติดตามประสิทธิภาพรายบุคคล
-                                                </div>
-                                                <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <TrendingUp size={16} /> ตรวจสอบความคืบหน้ารายวัน
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <ForemanCalendar
-                                            workOrders={workOrders}
-                                            currentUserId={isForeman ? (user?.id || '') : (selectedForemanId || '')}
-                                            projects={selectableProjects}
-                                            highlightProjectId={selectedSCurveProject || null}
-                                            highlightedWOId={highlightedWOId}
-                                            selectedMonth={selectedMonth}
-                                        />
-                                    )}
-                                </div>
+                            </>
                             )}
 
                             {/* Bottom Grid: Category + Project Track + Job Details + Executive Summary */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                                 <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
-                                    <SectionHeader title="สถิติแยกตามหมวดหมู่ (Category Analysis)" icon={<BarChart3 size={20} />} subtitle="สัดส่วนจำนวนงานที่ได้รับมอบหมายแยกตามประเภท" />
+                                    <SectionHeader title="งานที่รับผิดชอบแยกตามหมวด" icon={<BarChart3 size={20} />} subtitle="หมวดงานที่ทำมากสุด — ใช้ติดตามปัญหาซ้ำและวิเคราะห์ต้นเหตุ" />
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                         {categoryData.map((cat: any, idx: number) => (
                                             <div key={cat.name} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -2763,13 +2906,21 @@ const Dashboard = () => {
                                     <div style={{ overflowX: 'auto' }}>
                                         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                                             <thead>
-                                                <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                                                    <th style={{ padding: '0 1.5rem' }}>รายการงาน</th>
-                                                    <th>ตำแหน่ง / สถานที่</th>
-                                                    <th>หมวดหมู่</th>
+                                                <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                    <th style={{ padding: '0 0.75rem', minWidth: '140px' }}>รายการงาน</th>
+                                                    <th style={{ minWidth: '100px' }}>ตำแหน่ง</th>
+                                                    <th style={{ minWidth: '100px' }}>หมวดหมู่</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>วันนัดดำเนินการ</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>SLA</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>กำหนดส่ง</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>วันเสร็จ</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>ช่วงเวลาที่ใช้</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>วันทำจริง</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>+/- วัน</th>
+                                                    <th>REV.</th>
+                                                    <th style={{ whiteSpace: 'nowrap' }}>ชม.</th>
                                                     <th>สถานะ</th>
-                                                    <th>ความคืบหน้า</th>
-                                                    <th style={{ textAlign: 'right', paddingRight: '1.5rem' }}>จัดการ</th>
+                                                    <th style={{ textAlign: 'right', paddingRight: '0.75rem' }}>จัดการ</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -2778,7 +2929,7 @@ const Dashboard = () => {
                                                     if (flatTasks.length === 0) {
                                                         return (
                                                             <tr>
-                                                                <td colSpan={6} style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8' }}>
+                                                                <td colSpan={14} style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8' }}>
                                                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
                                                                         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                             <AlertCircle size={40} opacity={0.3} />
@@ -2820,11 +2971,72 @@ const Dashboard = () => {
                                                         const nextTask = flatTasks[index + 1];
                                                         const isLastInGroup = !nextTask || nextTask.woId !== task.woId;
 
+                                                        // ── Deadline & performance calculations ───────────────────
+                                                        const _slaHrs: Record<string,number> = {'Immediately':4,'24h':24,'1-3d':72,'3-7d':168,'7-14d':336,'14-30d':720};
+                                                        const _slaLabel: Record<string,string> = {'Immediately':'ด่วน','24h':'1วัน','1-3d':'3วัน','3-7d':'7วัน','7-14d':'14วัน','14-30d':'30วัน'};
+                                                        const wo = task.parentWO;
+                                                        const isWoCompleted = task.woStatus === 'Completed' || task.woStatus === 'completed' || task.woStatus === 'Verified';
+
+                                                        // Task deadline
+                                                        const taskStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00') : null;
+                                                        const tSlaKey = task.slaCategory || '24h';
+                                                        const tSlaHrs = _slaHrs[tSlaKey] || 24;
+                                                        const tStartMs = task.startDate
+                                                            ? new Date(task.startDate.split('T')[0] + 'T08:00:00').getTime()
+                                                            : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
+                                                        const tDeadlineMs = tStartMs + tSlaHrs * 3600000;
+                                                        const tDeadlineDate = new Date(tDeadlineMs);
+
+                                                        // Completion date (task or WO level)
+                                                        const woCompletedAt = wo.completedAt ? new Date(wo.completedAt) : null;
+                                                        const taskCompletedAt = task.completedAt
+                                                            ? new Date(task.completedAt)
+                                                            : (isWoCompleted && woCompletedAt ? woCompletedAt : null);
+
+                                                        // Calendar days from startDate to completion
+                                                        const tStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00') : null;
+                                                        const calDaysUsed = (tStartDate && taskCompletedAt)
+                                                            ? Math.max(1, Math.ceil((taskCompletedAt.getTime() - tStartDate.getTime()) / 86400000)) : null;
+
+                                                        // Distinct workdays from labor logs
+                                                        const logDaysSet = new Set(
+                                                            (task.history || []).map((h: any) =>
+                                                                h.date || h.workDate || (h.createdAt ? h.createdAt.split('T')[0] : null)
+                                                            ).filter(Boolean)
+                                                        );
+                                                        const logDaysCount = logDaysSet.size;
+
+                                                        // +/- days vs task deadline
+                                                        const taskDaysDiff = (isWoCompleted && taskCompletedAt)
+                                                            ? Math.round((taskCompletedAt.getTime() - tDeadlineMs) / 86400000) : null;
+
+                                                        // REV (field is string 'rev1', 'rev2', etc.)
+                                                        const revNum = task.currentRevision
+                                                            ? parseInt(String(task.currentRevision).replace(/[^0-9]/g, '')) || 0 : 0;
+
+                                                        // Total labor hours — history[].labor[].expectedHours (ไม่คูณ amount)
+                                                        const totalLaborHrs = (task.history || []).reduce((sum: number, h: any) =>
+                                                            sum + ((h.labor || []).reduce((s: number, l: any) => {
+                                                                const eh = l.expectedHours || {};
+                                                                return s + (eh.normal || 0) + (eh.otNoon || 0) + (eh.otEvening || 0) + (eh.otMorning || 0);
+                                                            }, 0)), 0);
+                                                        // วันทำจริง: ≥8ชม. = วัน, <8ชม. = แสดงเป็นชม.
+                                                        const workDaysVal = totalLaborHrs >= 8 ? Math.round(totalLaborHrs / 8) : null;
+                                                        const workHrsOnly = totalLaborHrs > 0 && totalLaborHrs < 8 ? totalLaborHrs : null;
+
+                                                        const fmtDeadline = (d: Date) => {
+                                                            const dd = d.getDate().toString().padStart(2,'0');
+                                                            const mm = (d.getMonth()+1).toString().padStart(2,'0');
+                                                            const yy = (d.getFullYear()+543).toString().slice(-2);
+                                                            return `${dd}/${mm}/${yy}`;
+                                                        };
+                                                        const _dash = <span style={{ color: '#cbd5e1', fontSize: '0.8rem' }}>—</span>;
+
                                                         return (
                                                             <React.Fragment key={`${task.woId}-${task.id}`}>
                                                                 {showHeader && (
                                                                     <tr>
-                                                                        <td colSpan={6} style={{ padding: '12px 12px 4px 12px' }}>
+                                                                        <td colSpan={14} style={{ padding: '12px 12px 4px 12px' }}>
                                                                             <div style={{ 
                                                                                 display: 'flex', 
                                                                                 alignItems: 'center', 
@@ -2866,7 +3078,7 @@ const Dashboard = () => {
                                                                                     </div>
                                                                                 </div>
                                                                                 <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
-                                                                                    สถานะใบงาน: <span style={{ color: woStatusColor, fontWeight: 800 }}>{woStatusLabel}</span>
+                                                                                    สถานะ: <span style={{ color: woStatusColor, fontWeight: 800 }}>{woStatusLabel}</span>
                                                                                 </div>
                                                                             </div>
                                                                         </td>
@@ -2917,12 +3129,12 @@ const Dashboard = () => {
                                                                         </div>
                                                                     </td>
                                                                     <td>
-                                                                        <div style={{ 
+                                                                        <div style={{
                                                                             display: 'inline-flex',
-                                                                            padding: '6px 12px', 
-                                                                            background: '#f1f5f9', 
-                                                                            color: '#475569', 
-                                                                            borderRadius: '10px', 
+                                                                            padding: '6px 12px',
+                                                                            background: '#f1f5f9',
+                                                                            color: '#475569',
+                                                                            borderRadius: '10px',
                                                                             fontSize: '0.75rem',
                                                                             fontWeight: 700,
                                                                             border: '1px solid #e2e8f0'
@@ -2930,9 +3142,71 @@ const Dashboard = () => {
                                                                             {task.categoryName}
                                                                         </div>
                                                                     </td>
-                                                                    <td>
-                                                                        <span style={{ 
-                                                                            padding: '6px 14px', 
+
+                                                                    {/* วันนัดดำเนินการ — task.startDate */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                                                                        {taskStartDate ? fmtDeadline(taskStartDate) : _dash}
+                                                                    </td>
+
+                                                                    {/* SLA */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px' }}>
+                                                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#6366f1', background: '#eef2ff', padding: '2px 7px', borderRadius: '6px' }}>
+                                                                            {_slaLabel[tSlaKey] || tSlaKey}
+                                                                        </span>
+                                                                    </td>
+
+                                                                    {/* กำหนดส่ง */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                                                                        {fmtDeadline(tDeadlineDate)}
+                                                                    </td>
+
+                                                                    {/* วันเสร็จ */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                                                                        {taskCompletedAt ? fmtDeadline(taskCompletedAt) : _dash}
+                                                                    </td>
+
+                                                                    {/* ระยะเวลาทั้งหมด — วันนัด → วันเสร็จ (calendar) */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
+                                                                        {calDaysUsed !== null
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>{calDaysUsed}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>วัน</span></span>
+                                                                            : _dash}
+                                                                    </td>
+
+                                                                    {/* วันทำจริง — ชม.รวม ÷ 8, ถ้า < 8ชม. แสดงเป็นชม. */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
+                                                                        {workDaysVal !== null
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0891b2' }}>{workDaysVal}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>วัน</span></span>
+                                                                            : workHrsOnly !== null
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0891b2' }}>{workHrsOnly}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>ชม.</span></span>
+                                                                            : _dash}
+                                                                    </td>
+
+                                                                    {/* +/- วัน: + = เลยกำหนด = แดง, - = ก่อนกำหนด = เขียว */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
+                                                                        {taskDaysDiff !== null ? (
+                                                                            taskDaysDiff > 0
+                                                                                ? <span style={{ fontSize: '0.78rem', fontWeight: 900, padding: '2px 7px', borderRadius: '6px', background: '#fef2f2', color: '#dc2626' }}>+{taskDaysDiff}</span>
+                                                                                : <span style={{ fontSize: '0.78rem', fontWeight: 900, padding: '2px 7px', borderRadius: '6px', background: '#f0fdf4', color: '#059669' }}>{taskDaysDiff}</span>
+                                                                        ) : _dash}
+                                                                    </td>
+
+                                                                    {/* REV. */}
+                                                                    <td style={{ padding: '0 6px', textAlign: 'center' }}>
+                                                                        {revNum > 0
+                                                                            ? <span style={{ fontSize: '0.72rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#fef3c7', color: '#d97706' }}>REV.{revNum}</span>
+                                                                            : _dash}
+                                                                    </td>
+
+                                                                    {/* ชม. — แสดงทุก task ที่มีข้อมูล */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
+                                                                        {totalLaborHrs > 0
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#7c3aed' }}>{totalLaborHrs}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>ชม.</span></span>
+                                                                            : _dash}
+                                                                    </td>
+
+                                                                    <td style={{ padding: '0 4px' }}>
+                                                                        <span style={{
+                                                                            padding: '5px 10px',
                                                                             background: p === 100 ? '#ecfdf5' : p > 0 ? '#eff6ff' : '#f8fafc',
                                                                             color: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#64748b',
                                                                             borderRadius: '12px',
@@ -2947,26 +3221,7 @@ const Dashboard = () => {
                                                                             {p === 100 ? 'เสร็จสมบูรณ์' : p > 0 ? 'กำลังดำเนินการ' : 'ยังไม่เริ่ม'}
                                                                         </span>
                                                                     </td>
-                                                                    <td style={{ width: '180px' }}>
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>PROGRESS</span>
-                                                                                <span style={{ fontSize: '0.8rem', fontWeight: 900, color: p === 100 ? '#10b981' : '#1e293b' }}>{p}%</span>
-                                                                            </div>
-                                                                            <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '10px', overflow: 'hidden' }}>
-                                                                                <div 
-                                                                                    style={{ 
-                                                                                        width: `${p}%`, 
-                                                                                        height: '100%', 
-                                                                                        background: p === 100 ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)', 
-                                                                                        borderRadius: '10px',
-                                                                                        transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)'
-                                                                                    }} 
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    </td>
-                                                                    <td style={{ textAlign: 'right', paddingRight: '1rem' }}>
+                                                                    <td style={{ textAlign: 'right', paddingRight: '0.75rem' }}>
                                                                         <button 
                                                                             onClick={() => {
                                                                                 setSelectedTaskHistory({ 
