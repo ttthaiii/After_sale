@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { WorkOrder, Category, MasterTask, DailyReport, Project, Staff, Contractor } from '../types';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where } from 'firebase/firestore';
 
 import { TaskAssignee } from '../types';
 import { useAuth } from './AuthContext';
@@ -524,21 +524,43 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             return;
         }
 
-        const unsubscribeWO = onSnapshot(collection(db, 'workOrders'), async (snapshot) => {
-            const ordersPromises = snapshot.docs.map(async (docSnapshot) => {
-                const baseData = docSnapshot.data() as WorkOrder;
-                const categories = await fetchSubcollections(docSnapshot.id);
-                return {
-                    ...baseData,
-                    status: baseData.status || 'In Progress',
-                    id: docSnapshot.id,
-                    categories
-                };
+        const unsubscribeWO = onSnapshot(collection(db, 'workOrders'), (snapshot) => {
+            const changes = snapshot.docChanges();
+            const toFetch = changes.filter(c => c.type === 'added' || c.type === 'modified');
+            const toRemove = changes.filter(c => c.type === 'removed').map(c => c.doc.id);
+
+            // Step 1: แสดง UI ทันทีด้วย base data (ไม่รอ subcollections)
+            const baseWOs = toFetch.map((change) => ({
+                ...(change.doc.data() as WorkOrder),
+                status: (change.doc.data() as WorkOrder).status || 'In Progress',
+                id: change.doc.id,
+                categories: [] as any[]
+            }));
+
+            setAllWorkOrders(prev => {
+                let result = [...prev];
+                if (toRemove.length > 0) result = result.filter(wo => !toRemove.includes(wo.id));
+                for (const wo of baseWOs) {
+                    const idx = result.findIndex(w => w.id === wo.id);
+                    if (idx >= 0) result[idx] = wo;
+                    else result.push(wo);
+                }
+                return result;
             });
-            
-            const fullOrders = await Promise.all(ordersPromises);
-            setAllWorkOrders(fullOrders);
-            setLoading(false);
+            setLoading(false); // UI โชว์ทันที
+
+            // Step 2: โหลด subcollections ใน background ทีละใบ อัพเดต state เมื่อพร้อม
+            for (const change of toFetch) {
+                fetchSubcollections(change.doc.id).then(categories => {
+                    setAllWorkOrders(prev => {
+                        const idx = prev.findIndex(w => w.id === change.doc.id);
+                        if (idx < 0) return prev;
+                        const result = [...prev];
+                        result[idx] = { ...result[idx], categories };
+                        return result;
+                    });
+                });
+            }
         });
 
         onSnapshot(collection(db, 'projects'), s => setProjects(s.docs.map(d => ({ ...d.data(), id: d.id }) as Project)));
