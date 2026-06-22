@@ -1,0 +1,192 @@
+{
+  "variables": {
+    "MOCK_PROJECTS": {
+      "source": "src/data/mockData.ts",
+      "line": 3
+    },
+    "MOCK_CONTRACTORS": {
+      "source": "src/data/mockData.ts",
+      "line": 28
+    },
+    "MOCK_STAFF": {
+      "source": "src/data/mockData.ts",
+      "line": 44
+    },
+    "MOCK_WORK_ORDERS": {
+      "source": "src/data/mockData.ts",
+      "line": 55
+    },
+    "db": {
+      "source": "src/lib/firebase.ts",
+      "line": 21
+    },
+    "auth": {
+      "source": "src/lib/firebase.ts",
+      "line": 22
+    },
+    "storage": {
+      "source": "src/lib/firebase.ts",
+      "line": 23
+    },
+    "logService": {
+      "source": "src/services/logService.ts",
+      "line": 84
+    },
+    "migrateProjects": {
+      "source": "src/services/migrationService.ts",
+      "line": 10
+    },
+    "migrateStaff": {
+      "source": "src/services/migrationService.ts",
+      "line": 17
+    },
+    "migrateContractors": {
+      "source": "src/services/migrationService.ts",
+      "line": 24
+    },
+    "migrateWorkOrders": {
+      "source": "src/services/migrationService.ts",
+      "line": 31
+    },
+    "migrateStaffFields": {
+      "source": "src/services/migrationService.ts",
+      "line": 38
+    },
+    "migrateAll": {
+      "source": "src/services/migrationService.ts",
+      "line": 68
+    },
+    "performUniversalStaffMigration": {
+      "source": "src/services/staffSystemMigration.ts",
+      "line": 8
+    },
+    "clearAllNotifications": {
+      "source": "src/services/staffSystemMigration.ts",
+      "line": 134
+    },
+    "SLAStatus": {
+      "source": "src/types/dashboard.ts",
+      "line": 1
+    },
+    "DashboardTask": {
+      "source": "src/types/dashboard.ts",
+      "line": 11
+    },
+    "DashboardWorkOrder": {
+      "source": "src/types/dashboard.ts",
+      "line": 24
+    },
+    "DashboardStats": {
+      "source": "src/types/dashboard.ts",
+      "line": 43
+    },
+    "UserRole": {
+      "source": "src/types/index.ts",
+      "line": 1
+    },
+    "User": {
+      "source": "src/types/index.ts",
+      "line": 3
+    },
+    "TaskStatus": {
+      "source": "src/types/index.ts",
+      "line": 11
+    },
+    "LaborRecord": {
+      "source": "src/types/index.ts",
+      "line": 13
+    },
+    "TaskUpdate": {
+      "source": "src/types/index.ts",
+      "line": 38
+    },
+    "DailyReport": {
+      "source": "src/types/index.ts",
+      "line": 49
+    },
+    "MasterTask": {
+      "source": "src/types/index.ts",
+      "line": 70
+    },
+    "Attachment": {
+      "source": "src/types/index.ts",
+      "line": 107
+    },
+    "Contractor": {
+      "source": "src/types/index.ts",
+      "line": 114
+    },
+    "Staff": {
+      "source": "src/types/index.ts",
+      "line": 122
+    },
+    "Category": {
+      "source": "src/types/index.ts",
+      "line": 136
+    },
+    "WorkOrderType": {
+      "source": "src/types/index.ts",
+      "line": 142
+    },
+    "Project": {
+      "source": "src/types/index.ts",
+      "line": 144
+    },
+    "WorkOrder": {
+      "source": "src/types/index.ts",
+      "line": 153
+    },
+    "ActivityLog": {
+      "source": "src/types/index.ts",
+      "line": 186
+    },
+    "compressImage": {
+      "source": "src/utils/imageCompression.ts",
+      "line": 1
+    },
+    "AnalogTimePicker": {
+      "source": "src/components/AnalogTimePicker.tsx",
+      "line": 9
+    },
+    "StatCard": {
+      "source": "src/pages/OverviewContent.tsx",
+      "line": 35
+    },
+    "SectionHeader": {
+      "source": "src/pages/OverviewContent.tsx",
+      "line": 80
+    },
+    "AuthProvider": {
+      "source": "src/context/AuthContext.tsx",
+      "line": 17
+    },
+    "useAuth": {
+      "source": "src/context/AuthContext.tsx",
+      "line": 168
+    },
+    "Notification": {
+      "source": "src/context/NotificationContext.tsx",
+      "line": 17
+    },
+    "NotificationProvider": {
+      "source": "src/context/NotificationContext.tsx",
+      "line": 42
+    },
+    "useNotifications": {
+      "source": "src/context/NotificationContext.tsx",
+      "line": 178
+    },
+    "WorkOrderProvider": {
+      "source": "src/context/WorkOrderContext.tsx",
+      "line": 26
+    },
+    "useWorkOrders": {
+      "source": "src/context/WorkOrderContext.tsx",
+      "line": 237
+    },
+    "WOGroupCard": {
+      "source": "src/pages/OverviewContent.tsx",
+      "line": 212
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "session_id": "session_003_daily_report_sync_fix",
+  "associated_tasks": ["T-003-001-01"],
+  "status": "completed",
+  "estimated_tokens": 15000,
+  "summary_context": "ปรับปรุงฟังก์ชัน syncDailyReport ใน cloud-functions/laborSync.ts ให้ดึงข้อมูล taskName ที่แท้จริง (จากเดิมที่ดึง .name ซึ่งเป็น undefined และ fallback เป็น taskId) และเพิ่มการ parse หา subtaskId เพื่อดึง subtaskName เพิ่มเติมมาเก็บบันทึกใน workLogs ใน DailyEmployeeTimesheets อย่างละเอียด",
+  "History": []
+}
