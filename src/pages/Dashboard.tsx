@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -639,7 +639,9 @@ const Dashboard = () => {
     const [selectedTaskHistory, setSelectedTaskHistory] = useState<any>(null);
     const [selectedComparisonCategory, setSelectedComparisonCategory] = useState<string | null>(null);
     const [selectedOpCategory, setSelectedOpCategory] = useState('urgent');
+    const opListRef = useRef<HTMLDivElement>(null);
     const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
+    const [donutFilter, setDonutFilter] = useState<string | null>(null);
 
     const getProjectName = (id: string) => projects.find((p: any) => p.id === id)?.name || id;
 
@@ -928,13 +930,22 @@ const Dashboard = () => {
         let highRisk = 0, slaMetCount = 0, totalTaskCount = 0;
 
         // ✅ Count tasks instead of Work Orders for core metrics
+        // "evaluating" = Foreman done, waiting for customer on-site — NOT yet Completed/Verified by customer
+        const isForCustomerEval = (wo: any) => {
+            if (['Completed', 'Verified'].includes(wo.status)) return false;
+            if (wo.status === 'pending_delivery') return true;
+            const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
+            return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+        };
+        // Count evaluating at WO level (not task level) — avoids collision with closed++ when all tasks are 100%
+        evaluating = allAccessibleWOs.filter(isForCustomerEval).length;
         allAccessibleWOs.forEach((wo: any) => {
+            if (isForCustomerEval(wo)) return; // skip — counted above as evaluating
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
                     const isCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
                     if (isCompleted) closed++;
-                    else if (wo.status === 'Evaluating') evaluating++;
-                    else if (['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) open++;
+                    else if (['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected', 'Evaluating'].includes(wo.status)) open++;
                 });
             });
         });
@@ -1196,7 +1207,7 @@ const Dashboard = () => {
             if (highlightedWOId && isFocusMatch) {
                 closed = isWorkOrderCompleted(wo) ? 1 : 0;
                 open = (!isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) ? 1 : 0;
-                evaluating = wo.status === 'Evaluating' ? 1 : 0;
+                evaluating = isForCustomerEval(wo) ? 1 : 0;
             }
 
             const taskMapByDate: any = {};
@@ -1491,6 +1502,114 @@ const Dashboard = () => {
         </div>
     );
 
+    const ProgressDonutChart = ({ allWOs, currentUser }: { allWOs: any[]; currentUser: any }) => {
+        const [activeIdx, setActiveIdx] = useState<number | null>(null);
+        const isMyT = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === currentUser?.id || t.subtaskOperatorId === currentUser?.employeeId);
+        const allMySubtasks = allWOs.flatMap((wo: any) =>
+            (wo.categories || []).flatMap((cat: any) => {
+                const catTasks: any[] = cat.tasks || [];
+                const myCat = catTasks.filter(isMyT);
+                return myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+            })
+        );
+        const getProg = (t: any) => t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0);
+        const donutData = [
+            { key: 'notStarted', name: 'ยังไม่เริ่ม', value: allMySubtasks.filter((t: any) => getProg(t) === 0 && !['Completed', 'Verified'].includes(t.status)).length, color: '#E24B4A', range: '0%' },
+            { key: 'inProgress', name: 'กำลังทำ', value: allMySubtasks.filter((t: any) => { const p = getProg(t); return p >= 1 && p <= 70; }).length, color: '#378ADD', range: '1–70%' },
+            { key: 'nearDone', name: 'ใกล้เสร็จ', value: allMySubtasks.filter((t: any) => { const p = getProg(t); return p >= 71 && p < 100; }).length, color: '#1D9E75', range: '71–99%' },
+        ];
+        const pending = donutData.reduce((s, d) => s + d.value, 0);
+        const active = activeIdx !== null ? donutData[activeIdx] : null;
+        const pct = (v: number) => pending > 0 ? Math.round(v / pending * 100) : 0;
+        const handleSliceClick = (_: any, idx: number) => {
+            const key = donutData[idx].key;
+            setDonutFilter(prev => prev === key ? null : key);
+            setSelectedOpCategory('inProgress');
+            opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+            if (percent < 0.06) return null;
+            const RADIAN = Math.PI / 180;
+            const r = innerRadius + (outerRadius - innerRadius) * 0.5;
+            const x = cx + r * Math.cos(-midAngle * RADIAN);
+            const y = cy + r * Math.sin(-midAngle * RADIAN);
+            return (
+                <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" style={{ fontSize: '11px', fontWeight: 700, pointerEvents: 'none' }}>
+                    {`${Math.round(percent * 100)}%`}
+                </text>
+            );
+        };
+        const activeFilter = donutData.find(d => d.key === donutFilter);
+        return (
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1 }}>
+                {/* donut left */}
+                <div style={{ position: 'relative', width: '270px', height: '270px', flexShrink: 0 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                            <Pie data={donutData} cx="50%" cy="50%" innerRadius={82} outerRadius={128} paddingAngle={3} dataKey="value"
+                                label={renderLabel} labelLine={false}
+                                onMouseEnter={(_: any, i: number) => setActiveIdx(i)} onMouseLeave={() => setActiveIdx(null)}
+                                onClick={handleSliceClick} strokeWidth={0} style={{ cursor: 'pointer' }}>
+                                {donutData.map((d, i) => (
+                                    <Cell key={i} fill={d.color} opacity={donutFilter ? (donutFilter === d.key ? 1 : 0.2) : (activeIdx === null || activeIdx === i ? 1 : 0.3)} />
+                                ))}
+                            </Pie>
+                        </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+                        <div style={{ fontSize: '2.6rem', fontWeight: 800, color: active ? active.color : '#0f172a', lineHeight: 1 }}>{active ? active.value : pending}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '6px', whiteSpace: 'nowrap', fontWeight: 600 }}>{active ? active.name : 'งานค้างอยู่'}</div>
+                    </div>
+                </div>
+
+                {/* right: stat list */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* filter chip */}
+                    {activeFilter && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                            <span style={{ background: activeFilter.color + '18', color: activeFilter.color, padding: '2px 10px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: 700, border: `1px solid ${activeFilter.color}44` }}>
+                                กรอง: {activeFilter.name}
+                            </span>
+                            <span style={{ cursor: 'pointer', color: '#94a3b8', fontSize: '0.68rem', fontWeight: 600 }} onClick={() => setDonutFilter(null)}>✕</span>
+                        </div>
+                    )}
+
+                    {donutData.map((d, i) => {
+                        const isSelected = donutFilter === d.key;
+                        const isHovered = activeIdx === i;
+                        return (
+                            <div key={i} onClick={() => handleSliceClick(null, i)}
+                                onMouseEnter={() => setActiveIdx(i)} onMouseLeave={() => setActiveIdx(null)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '14px', background: isSelected ? d.color + '12' : isHovered ? '#f8fafc' : 'transparent', border: `1px solid ${isSelected ? d.color + '44' : 'transparent'}`, cursor: 'pointer', transition: 'all 0.15s', opacity: donutFilter && !isSelected ? 0.4 : 1 }}>
+                                <div style={{ width: '4px', height: '44px', borderRadius: '4px', background: d.color, flexShrink: 0 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>{d.name}</span>
+                                            <span style={{ fontSize: '0.62rem', color: '#94a3b8', marginLeft: '5px' }}>{d.range}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                                            <span style={{ fontSize: '1.3rem', fontWeight: 800, color: d.color, lineHeight: 1 }}>{d.value}</span>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: d.color + 'bb' }}>{pct(d.value)}%</span>
+                                        </div>
+                                    </div>
+                                    <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '4px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${pct(d.value)}%`, height: '100%', background: d.color, borderRadius: '4px', transition: 'width 0.6s ease' }} />
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    <div style={{ marginTop: '4px', padding: '8px 12px', background: '#f8fafc', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600 }}>รวมงานค้าง</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 800, color: '#374151' }}>{pending} รายการ</span>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const WorkloadTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
             const data = payload[0].payload;
@@ -1745,167 +1864,318 @@ const Dashboard = () => {
                     {/* Operations Mode (Foreman) */}
                     {viewMode === 'operations' && !isAdminOrManager ? (
                         <>
-                            {/* Stat Cards */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-                                <StatCard
-                                    title="งานทั้งหมดที่ดูแล (Total Jobs)"
-                                    value={stats.totalInMonth}
-                                    icon={<Activity size={24} />}
-                                    color="#3b82f6"
-                                    gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)"
-                                    subtext={<span>ใหม่ <b style={{ fontSize: '1rem' }}>{stats.newThisMonth}</b> / ค้าง <b style={{ fontSize: '1rem' }}>{stats.carriedOver}</b></span>}
-                                />
-                                <StatCard
-                                    title="งานที่ปิดจบสำเร็จ (Successfully Closed)"
-                                    value={stats.closed}
-                                    icon={<CheckCircle2 size={24} />}
-                                    color="#10b981"
-                                    gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                                    subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้"
-                                />
-                                <StatCard
-                                    title="งานที่รอประเมิน"
-                                    value={stats.evaluating}
-                                    icon={<Clock size={24} />}
-                                    color="#eab308"
-                                    gradient={selectedOpCategory === 'evaluating' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : undefined}
-                                    style={{ cursor: 'pointer', border: selectedOpCategory === 'evaluating' ? '2px solid #f59e0b' : '1px solid #e2e8f0', boxShadow: selectedOpCategory === 'evaluating' ? '0 10px 25px -5px rgba(245, 158, 11, 0.3)' : '0 4px 6px -1px rgba(0, 0, 0, 0.05)', transform: selectedOpCategory === 'evaluating' ? 'translateY(-6px)' : 'none' }}
-                                    onClick={() => setSelectedOpCategory('evaluating')}
-                                    subtext="งานใหม่เข้ามารอรับเรื่องและประเมิน"
-                                />
-                                <StatCard
-                                    title="งานเร่งด่วน (Urgent SLA)"
-                                    value={stats.urgentTasks?.length || 0}
-                                    icon={<AlertTriangle size={24} />}
-                                    color="#ef4444"
-                                    gradient={selectedOpCategory === 'urgent' ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : undefined}
-                                    style={{ cursor: 'pointer', border: selectedOpCategory === 'urgent' ? '2px solid #ef4444' : '1px solid #e2e8f0', boxShadow: selectedOpCategory === 'urgent' ? '0 10px 25px -5px rgba(239, 68, 68, 0.3)' : '0 4px 6px -1px rgba(0, 0, 0, 0.05)', transform: selectedOpCategory === 'urgent' ? 'translateY(-6px)' : 'none' }}
-                                    onClick={() => setSelectedOpCategory('urgent')}
-                                    subtext={<span>ใกล้ครบกำหนด <b style={{ color: '#991b1b' }}>{stats.dueTodayCount}</b> รายงานวันนี้</span>}
-                                />
-                            </div>
+                            {/* Stat Cards — all clickable, drill-down to list below */}
+                            {(() => {
+                                const _isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
+                                const inProgressCount = allAccessibleWOs
+                                    .filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status))
+                                    .flatMap((wo: any) => (wo.categories || []).flatMap((cat: any) => {
+                                        const catTasks: any[] = cat.tasks || [];
+                                        const myCat = catTasks.filter(_isMySubtask);
+                                        const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                        return show.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified');
+                                    }))
+                                    .length;
+                                const urgentSubtaskCount = (stats.urgentTasks || []).flatMap((wo: any) =>
+                                    (wo.categories || []).flatMap((cat: any) => {
+                                        const catTasks: any[] = cat.tasks || [];
+                                        const myCat = catTasks.filter(_isMySubtask);
+                                        const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                        return show.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified');
+                                    })
+                                ).length;
+                                const selectAndScroll = (cat: string) => {
+                                    setSelectedOpCategory(cat);
+                                    setDonutFilter(null);
+                                    setTimeout(() => opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                                };
+                                const activeStyle = (cat: string, color: string, rgb: string) => ({
+                                    cursor: 'pointer',
+                                    transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+                                    border: selectedOpCategory === cat ? `2px solid ${color}` : '1px solid #e2e8f0',
+                                    boxShadow: selectedOpCategory === cat ? `0 10px 25px -5px rgba(${rgb},0.3)` : '0 4px 6px -1px rgba(0,0,0,0.05)',
+                                    transform: selectedOpCategory === cat ? 'translateY(-6px)' : 'none',
+                                });
+                                return (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                        <StatCard
+                                            title="งานทั้งหมดที่ดูแล"
+                                            value={stats.totalInMonth}
+                                            icon={<Activity size={24} />}
+                                            color="#3b82f6"
+                                            gradient={selectedOpCategory === 'all' ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' : undefined}
+                                            style={activeStyle('all', '#3b82f6', '59,130,246')}
+                                            onClick={() => selectAndScroll('all')}
+                                            subtext={<span>ปิดจบ <b style={{ color: '#10b981' }}>{stats.closed}</b> · คงค้าง <b>{(stats.totalInMonth || 0) - (stats.closed || 0)}</b></span>}
+                                        />
+                                        <StatCard
+                                            title="กำลังดำเนินการ"
+                                            value={inProgressCount}
+                                            icon={<Zap size={24} />}
+                                            color="#0ea5e9"
+                                            gradient={selectedOpCategory === 'inProgress' ? 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)' : undefined}
+                                            style={activeStyle('inProgress', '#0ea5e9', '14,165,233')}
+                                            onClick={() => selectAndScroll('inProgress')}
+                                            subtext="งานย่อยที่ยังค้างอยู่"
+                                        />
+                                        <StatCard
+                                            title="รอลูกค้าประเมิน"
+                                            value={stats.evaluating}
+                                            icon={<Clock size={24} />}
+                                            color="#eab308"
+                                            gradient={selectedOpCategory === 'evaluating' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : undefined}
+                                            style={activeStyle('evaluating', '#f59e0b', '245,158,11')}
+                                            onClick={() => selectAndScroll('evaluating')}
+                                            subtext="รอลูกค้าตรวจรับงานหน้าไซต์"
+                                        />
+                                        <StatCard
+                                            title="เร่งด่วน SLA"
+                                            value={urgentSubtaskCount}
+                                            icon={<AlertTriangle size={24} />}
+                                            color="#ef4444"
+                                            gradient={selectedOpCategory === 'urgent' ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : undefined}
+                                            style={activeStyle('urgent', '#ef4444', '239,68,68')}
+                                            onClick={() => selectAndScroll('urgent')}
+                                            subtext="งานย่อยที่เลยหรือใกล้ครบกำหนด"
+                                        />
+                                    </div>
+                                );
+                            })()}
 
                             {/* Operations Grid - Row 1 */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem' }}>
-                                <div id="urgent-section" style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
+                                <div ref={opListRef} id="urgent-section" style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)', display: 'flex', flexDirection: 'column', scrollMarginTop: '80px' }}>
                                     <SectionHeader
-                                        title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน (Urgent SLA)' : selectedOpCategory === 'evaluating' ? 'รายการที่รอประเมิน (Evaluating)' : 'งานที่กำลังดำเนินการ (Ongoing)'}
-                                        icon={selectedOpCategory === 'urgent' ? <AlertTriangle size={20} color="#ef4444" /> : selectedOpCategory === 'evaluating' ? <Clock size={20} color="#f59e0b" /> : <Activity size={20} color="#0ea5e9" />}
-                                        subtitle={selectedOpCategory === 'urgent' ? 'รายการใบงานที่ต้องรีบดำเนินการเพื่อรักษามาตรฐาน SLA' : selectedOpCategory === 'evaluating' ? 'รายการใบงานใหม่ที่รอการตรวจสอบหน้างานจริง' : 'รายการใบงานที่ช่างกำลังเริ่มปฏิบัติงานในขณะนี้'}
+                                        title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานที่กำลังดำเนินการ' : 'ภาพรวมใบงานทั้งหมด'}
+                                        icon={selectedOpCategory === 'urgent' ? <AlertTriangle size={20} color="#ef4444" /> : selectedOpCategory === 'evaluating' ? <Clock size={20} color="#f59e0b" /> : selectedOpCategory === 'inProgress' ? <Zap size={20} color="#0ea5e9" /> : <Activity size={20} color="#4f46e5" />}
+                                        subtitle={selectedOpCategory === 'urgent' ? 'ใบงานที่ต้องรีบดำเนินการเพื่อรักษามาตรฐาน SLA — คลิกเพื่อบันทึกรายงาน' : selectedOpCategory === 'evaluating' ? 'ใบงานที่รอลูกค้าตรวจรับงานหน้าไซต์ — คลิกเพื่อติดตามสถานะ' : selectedOpCategory === 'inProgress' ? 'ใบงานที่ช่างกำลังปฏิบัติงานอยู่ — คลิกเพื่อบันทึกรายงานประจำวัน' : 'ใบงานที่ยังไม่ปิดจบ เรียงตามความเร่งด่วน SLA'}
                                     />
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '1rem', maxHeight: '550px', overflowY: 'auto', paddingRight: '8px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '1rem', maxHeight: '510px', overflowY: 'auto', paddingRight: '8px' }}>
                                         {(() => {
-                                            if (selectedOpCategory === 'urgent') {
-                                                const items = stats.urgentTasks || [];
-                                                return items.length > 0 ? items.map((task: any, idx: number) => {
-                                                    const tId = task.woId || task.id || '';
-                                                    return (
-                                                        <div key={`urgent-${idx}`} onClick={() => navigate(`/daily-report?id=${tId}`)} style={{ padding: '1.25rem 1.5rem', background: '#fff1f1', borderRadius: '24px', border: '1px solid #fecaca', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s ease' }} onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
-                                                            <div>
-                                                                <div style={{ fontWeight: 900, color: '#991b1b', fontSize: '1.1rem', marginBottom: '2px' }}>#{tId.slice(-6)}</div>
-                                                                <div style={{ fontSize: '0.85rem', color: '#1e293b', fontWeight: 800 }}>
-                                                                    {task.statusInfo?.categoryName && (
-                                                                        <span style={{ color: '#ef4444', marginRight: '6px' }}>[{task.statusInfo.categoryName}]</span>
-                                                                    )}
-                                                                    {task.taskName}
+                                            const isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
+
+                                            const SubtaskCard = ({ task, wo, categoryName, sla, isEval = false }: any) => {
+                                                const prog = task.dailyProgress ?? task.progress ?? (['Completed', 'Verified'].includes(task.status) ? 100 : 0);
+                                                const name = task.name || task.taskName || task.subtaskName || task.description || '—';
+                                                const rawId = task.subtaskId || task.id || '';
+                                                const shortId = rawId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
+                                                const isDone = prog >= 100 || task.status === 'Completed' || task.status === 'Verified';
+                                                const progColor = prog >= 80 ? '#10b981' : prog >= 40 ? '#0ea5e9' : '#f59e0b';
+                                                const revNum = task.currentRevision ? parseInt(task.currentRevision.replace('rev', '')) : null;
+                                                const bg = isDone ? '#f0fdf4' : '#f0f9ff';
+                                                const borderColor = isDone ? '#bbf7d0' : '#bae6fd';
+                                                const navTarget = isEval ? `/work-orders?id=${wo.id}` : `/daily-report?id=${wo.id}`;
+                                                const btnLabel = isEval ? '🔍 ติดตามสถานะ' : isDone ? '✅ งานเสร็จแล้ว' : '📝 บันทึกรายงาน';
+                                                const btnColor = isDone ? '#059669' : '#075985';
+                                                return (
+                                                    <div onClick={() => navigate(navTarget)} style={{ padding: '1rem 1.25rem', background: bg, borderRadius: '20px', border: `1px solid ${borderColor}`, cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                                        onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                                                                    <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>{shortId}</span>
+                                                                    {isEval && revNum !== null && revNum > 0 && <span style={{ fontSize: '0.62rem', fontWeight: 900, padding: '1px 7px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '5px', color: '#b91c1c', whiteSpace: 'nowrap' }}>REV. {revNum}</span>}
+                                                                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 7px', background: isDone ? 'rgba(16,185,129,0.1)' : 'rgba(14,165,233,0.1)', border: `1px solid ${isDone ? '#a7f3d0' : '#bae6fd'}`, borderRadius: '5px', color: isDone ? '#059669' : '#0369a1', whiteSpace: 'nowrap' }}>{categoryName}</span>
                                                                 </div>
-                                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>🏗️ {getProjectName(workOrders.find((w: any) => w.id === tId)?.projectId || '')}</div>
+                                                                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                                                                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>📍 {wo.locationName} · 🏗️ {getProjectName(wo.projectId)}</div>
                                                             </div>
-                                                            <div style={{ textAlign: 'right' }}>
-                                                                <div style={{ fontWeight: 900, color: '#ef4444', fontSize: '0.95rem', background: '#fee2e2', padding: '4px 10px', borderRadius: '10px' }}>{task.statusInfo?.text || 'ด่วน'}</div>
-                                                                <div style={{ fontSize: '0.75rem', color: '#991b1b', marginTop: '4px', fontWeight: 800 }}>เลทตัวคูณ SLA</div>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                                                {sla && <span style={{ fontSize: '0.68rem', fontWeight: 800, color: sla.level === 'critical' ? '#b91c1c' : '#d97706', background: sla.level === 'critical' ? '#fee2e2' : '#fef3c7', padding: '2px 8px', borderRadius: '8px', whiteSpace: 'nowrap' }}>{sla.text}</span>}
+                                                                <span style={{ fontSize: '0.78rem', fontWeight: 900, color: isDone ? '#059669' : progColor }}>{prog}%</span>
                                                             </div>
                                                         </div>
-                                                    );
-                                                }) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานด่วนคงค้างในขณะนี้ 🎉</div>;
-                                            } else if (selectedOpCategory === 'evaluating') {
-                                                const items = allAccessibleWOs.filter((wo: any) => wo.status === 'Evaluating');
-                                                return items.length > 0 ? items.map((wo: any) => (
-                                                    <div key={`eval-${wo.id}`} onClick={() => navigate(`/work-orders?id=${wo.id}`)} style={{ padding: '1.25rem 1.5rem', background: '#fffbeb', borderRadius: '24px', border: '1px solid #fef3c7', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s ease' }} onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
-                                                        <div>
-                                                            <div style={{ fontWeight: 900, color: '#92400e', fontSize: '1.1rem', marginBottom: '2px' }}>{wo.id}</div>
-                                                            <div style={{ fontSize: '0.875rem', color: '#1e293b', fontWeight: 700 }}>{wo.locationName}</div>
-                                                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>🏗️ {getProjectName(wo.projectId)}</div>
-                                                        </div>
-                                                        <div style={{ textAlign: 'right' }}>
-                                                            <div style={{ fontWeight: 900, color: '#d97706', fontSize: '0.85rem', background: '#fef3c7', padding: '4px 12px', borderRadius: '10px', display: 'inline-block' }}>รอประเมิน</div>
-                                                            <div style={{ fontSize: '0.75rem', color: '#b45309', marginTop: '4px', fontWeight: 600 }}>งานใหม่เข้าวันนี้</div>
-                                                        </div>
+                                                        {!isDone && (
+                                                            <div style={{ marginTop: '8px' }}>
+                                                                <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '4px', overflow: 'hidden' }}>
+                                                                    <div style={{ width: `${prog}%`, height: '100%', background: progColor, borderRadius: '4px', transition: 'width 0.5s ease' }} />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <button onClick={(e) => { e.stopPropagation(); navigate(navTarget); }} style={{ width: '100%', marginTop: '10px', padding: '6px', background: 'rgba(0,0,0,0.03)', border: `1px solid ${borderColor}`, borderRadius: '10px', color: btnColor, fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                                                            {btnLabel}
+                                                        </button>
                                                     </div>
-                                                )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
-                                            } else {
-                                                const items = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status));
-                                                return items.length > 0 ? items.map((wo: any) => {
-                                                    const slaStatus = getSLATimeStatus(wo);
-                                                    return (
-                                                        <div key={`ongoing-${wo.id}`} onClick={() => navigate(`/daily-report?id=${wo.id}`)} style={{ padding: '1.25rem 1.5rem', background: '#f0f9ff', borderRadius: '24px', border: '1px solid #bae6fd', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s ease' }} onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
+                                                );
+                                            };
+
+                                            const WOCard = ({ wo, bg, border, idColor, actionLabel, actionNav, statusBadge }: any) => {
+                                                const allSubtasks = wo.categories?.flatMap((c: any) => c.tasks || []) || [];
+                                                const mySubtasks = allSubtasks.filter(isMySubtask);
+                                                const relevantTasks = mySubtasks.length > 0 ? mySubtasks : allSubtasks;
+                                                const getAvgProg = (tasks: any[]) => tasks.length > 0 ? Math.round(tasks.reduce((s: number, t: any) => s + (t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0)), 0) / tasks.length) : null;
+                                                const prog = getAvgProg(relevantTasks);
+                                                const overallProg = mySubtasks.length > 0 && mySubtasks.length < allSubtasks.length ? getAvgProg(allSubtasks) : null;
+                                                return (
+                                                    <div onClick={() => navigate(actionNav)} style={{ padding: '1.25rem 1.5rem', background: bg, borderRadius: '24px', border: `1px solid ${border}`, cursor: 'pointer', transition: 'all 0.2s ease' }} onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: prog !== null || statusBadge ? '10px' : '0' }}>
                                                             <div>
-                                                                <div style={{ fontWeight: 900, color: '#075985', fontSize: '1.1rem', marginBottom: '2px' }}>{wo.id}</div>
+                                                                <div style={{ fontWeight: 900, color: idColor, fontSize: '1.05rem', marginBottom: '2px' }}>#{wo.id?.slice(-6)}</div>
                                                                 <div style={{ fontSize: '0.875rem', color: '#1e293b', fontWeight: 700 }}>{wo.locationName}</div>
-                                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>🏗️ {getProjectName(wo.projectId)}</div>
+                                                                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>🏗️ {getProjectName(wo.projectId)}</div>
+                                                                {wo.categories && wo.categories.length > 0 && (
+                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '7px' }}>
+                                                                        {wo.categories.slice(0, 4).map((cat: any, i: number) => {
+                                                                            const catMyTasks = mySubtasks.length > 0 ? cat.tasks?.filter((t: any) => isMySubtask(t)) : cat.tasks;
+                                                                            const total = catMyTasks?.length || 0;
+                                                                            if (total === 0) return null;
+                                                                            const pending = catMyTasks?.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Rejected').length || 0;
+                                                                            return (
+                                                                                <span key={i} style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', background: pending > 0 ? 'rgba(14,165,233,0.1)' : 'rgba(16,185,129,0.08)', border: `1px solid ${pending > 0 ? '#bae6fd' : '#a7f3d0'}`, borderRadius: '6px', color: pending > 0 ? '#0369a1' : '#059669', whiteSpace: 'nowrap' }}>
+                                                                                    {cat.name}{pending > 0 ? ` ·${pending}` : ' ✓'}
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                        {wo.categories.length > 4 && (
+                                                                            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', background: 'rgba(0,0,0,0.04)', borderRadius: '6px', color: '#94a3b8' }}>+{wo.categories.length - 4}</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                            <div style={{ textAlign: 'right' }}>
-                                                                <div style={{ fontWeight: 900, color: slaStatus?.level === 'danger' || slaStatus?.level === 'warning' ? '#ef4444' : '#0369a1', fontSize: '0.9rem', background: slaStatus?.level === 'danger' || slaStatus?.level === 'warning' ? '#fee2e2' : '#e0f2fe', padding: '6px 14px', borderRadius: '12px', display: 'inline-block' }}>
-                                                                    {slaStatus?.text || 'ปกติ'}
-                                                                </div>
-                                                                <div style={{ fontSize: '0.75rem', color: '#0369a1', marginTop: '4px', fontWeight: 600 }}>กำลังช่างดำเนินการ</div>
-                                                            </div>
+                                                            {statusBadge}
                                                         </div>
-                                                    );
-                                                }) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานค้างในช่วงนี้</div>;
+                                                        {prog !== null && (
+                                                            <div style={{ marginBottom: '10px' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>
+                                                                    <span>{mySubtasks.length > 0 ? `งานของฉัน · ${mySubtasks.length} งานย่อย` : `รวม · ${allSubtasks.length} งานย่อย`}</span>
+                                                                    <span style={{ color: prog >= 80 ? '#059669' : prog >= 40 ? '#0369a1' : '#d97706' }}>{prog}%</span>
+                                                                </div>
+                                                                <div style={{ background: '#e2e8f0', borderRadius: '6px', height: '6px', overflow: 'hidden', marginBottom: overallProg !== null ? '6px' : '0' }}>
+                                                                    <div style={{ width: `${prog}%`, height: '100%', background: prog >= 80 ? '#10b981' : prog >= 40 ? '#0ea5e9' : '#f59e0b', borderRadius: '6px', transition: 'width 0.5s ease' }} />
+                                                                </div>
+                                                                {overallProg !== null && (
+                                                                    <div>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: '#94a3b8', fontWeight: 500, marginBottom: '3px' }}>
+                                                                            <span>รวมทั้ง WO · {allSubtasks.length} งานย่อย</span>
+                                                                            <span>{overallProg}%</span>
+                                                                        </div>
+                                                                        <div style={{ background: '#f1f5f9', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
+                                                                            <div style={{ width: `${overallProg}%`, height: '100%', background: '#cbd5e1', borderRadius: '4px', transition: 'width 0.5s ease' }} />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <button onClick={(e) => { e.stopPropagation(); navigate(actionNav); }} style={{ width: '100%', padding: '7px', background: 'rgba(0,0,0,0.04)', border: `1px solid ${border}`, borderRadius: '12px', color: idColor, fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s' }}>
+                                                            {actionLabel}
+                                                        </button>
+                                                    </div>
+                                                );
+                                            };
+
+                                            if (selectedOpCategory === 'urgent') {
+                                                const urgentWOs = stats.urgentTasks || [];
+                                                const urgentFlat: any[] = urgentWOs.flatMap((wo: any) => {
+                                                    const sla = wo.statusInfo || getSLATimeStatus(wo);
+                                                    return (wo.categories || []).flatMap((cat: any) => {
+                                                        const catTasks: any[] = cat.tasks || [];
+                                                        const myCat = catTasks.filter(isMySubtask);
+                                                        const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                                        return show
+                                                            .filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified')
+                                                            .map((t: any) => ({ task: t, wo, categoryName: cat.name, sla }));
+                                                    });
+                                                });
+                                                if (urgentFlat.length === 0) return <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานด่วนคงค้างในขณะนี้ 🎉</div>;
+                                                return urgentFlat.map((item: any, idx: number) => (
+                                                    <SubtaskCard key={`urg-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={item.sla} />
+                                                ));
+                                            } else if (selectedOpCategory === 'evaluating') {
+                                                const isForCustomerEvalLocal = (wo: any) => {
+                                                    if (['Completed', 'Verified'].includes(wo.status)) return false;
+                                                    if (wo.status === 'pending_delivery') return true;
+                                                    const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
+                                                    return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+                                                };
+                                                const evalWOs = allAccessibleWOs.filter(isForCustomerEvalLocal);
+                                                const evalFlat = evalWOs.flatMap((wo: any) =>
+                                                    (wo.categories || []).flatMap((cat: any) => {
+                                                        const catTasks = cat.tasks || [];
+                                                        const myCat = catTasks.filter(isMySubtask);
+                                                        const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                                        return show.map((t: any) => ({ task: t, wo, categoryName: cat.name }));
+                                                    })
+                                                );
+                                                return evalFlat.length > 0 ? evalFlat.map((item: any, idx: number) => (
+                                                    <SubtaskCard key={`eval-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={null} isEval={true} />
+                                                )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
+                                            } else if (selectedOpCategory === 'inProgress') {
+                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status));
+                                                const progFilter = (p: number) => {
+                                                    if (!donutFilter) return p < 100;
+                                                    if (donutFilter === 'notStarted') return p === 0;
+                                                    if (donutFilter === 'inProgress') return p >= 1 && p <= 70;
+                                                    if (donutFilter === 'nearDone') return p >= 71 && p < 100;
+                                                    return p < 100;
+                                                };
+                                                const flat = activeWOs.flatMap((wo: any) =>
+                                                    (wo.categories || []).flatMap((cat: any) => {
+                                                        const catTasks = cat.tasks || [];
+                                                        const myCatTasks = catTasks.filter(isMySubtask);
+                                                        const show = myCatTasks.length > 0 ? myCatTasks : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                                        return show
+                                                            .filter((t: any) => progFilter(t.dailyProgress ?? t.progress ?? 0) && t.status !== 'Completed' && t.status !== 'Verified')
+                                                            .map((t: any) => ({ task: t, wo, categoryName: cat.name }));
+                                                    })
+                                                );
+                                                const filterLabel = donutFilter ? { notStarted: 'ยังไม่เริ่ม', inProgress: 'กำลังทำ', nearDone: 'ใกล้เสร็จ' }[donutFilter] : null;
+                                                return (
+                                                    <>
+                                                        {filterLabel && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '0.72rem' }}>
+                                                                <span style={{ background: '#f1f5f9', padding: '2px 10px', borderRadius: '8px', color: '#64748b', fontWeight: 700 }}>กรอง: {filterLabel}</span>
+                                                                <span style={{ cursor: 'pointer', color: '#94a3b8', fontWeight: 600 }} onClick={() => setDonutFilter(null)}>✕ ล้าง</span>
+                                                            </div>
+                                                        )}
+                                                        {flat.length > 0 ? flat.map((item: any, idx: number) => (
+                                                            <SubtaskCard key={`ip-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={getSLATimeStatus(item.wo)} />
+                                                        )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานย่อยในกลุ่มนี้</div>}
+                                                    </>
+                                                );
+                                            } else {
+                                                // 'all' — flat subtasks across all active WOs, sorted by SLA urgency
+                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo)).sort((a: any, b: any) => {
+                                                    const score = (s: any) => s?.level === 'critical' ? 0 : s?.level === 'warning' ? 1 : 2;
+                                                    return score(getSLATimeStatus(a)) - score(getSLATimeStatus(b));
+                                                });
+                                                const flat = activeWOs.flatMap((wo: any) =>
+                                                    (wo.categories || []).flatMap((cat: any) => {
+                                                        const catTasks = cat.tasks || [];
+                                                        const myCatTasks = catTasks.filter(isMySubtask);
+                                                        const show = myCatTasks.length > 0 ? myCatTasks : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                                        return show.map((t: any) => ({ task: t, wo, categoryName: cat.name }));
+                                                    })
+                                                );
+                                                return flat.length > 0 ? flat.map((item: any, idx: number) => (
+                                                    <SubtaskCard key={`all-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={getSLATimeStatus(item.wo)} />
+                                                )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานคงค้างในขณะนี้ 🎉</div>;
                                             }
                                         })()}
                                     </div>
                                 </div>
 
-                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
-                                    <SectionHeader title="ภาระงานแยกโครงการ" icon={<BarChart3 size={20} />} subtitle="สถานะปัจจุบันแยกตามไซต์งาน" />
-                                    <div style={{ height: '350px', width: '100%', marginTop: '1rem' }}>
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart
-                                                data={stats.projectStats}
-                                                layout="vertical"
-                                                margin={{ left: 30 }}
-                                                barGap={2}
-                                                onMouseLeave={() => setHoveredBarKey(null)}
-                                            >
-                                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                                                <XAxis type="number" hide />
-                                                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 700, fill: '#64748b' }} width={80} />
-                                                <Tooltip
-                                                    cursor={{ fill: '#f8fafc' }}
-                                                    content={<WorkloadTooltip />}
-                                                />
-                                                <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '0.8rem', fontWeight: 700, paddingBottom: '10px' }} />
-                                                <Bar
-                                                    dataKey="completed"
-                                                    name="ดำเนินการเสร็จสิ้น"
-                                                    stackId="a"
-                                                    fill="#10b981"
-                                                    radius={[0, 0, 0, 0]}
-                                                    barSize={14}
-                                                    onMouseEnter={() => setHoveredBarKey('completed')}
-                                                />
-                                                <Bar
-                                                    dataKey="inProgress"
-                                                    name="กำลังดำเนินการ"
-                                                    stackId="a"
-                                                    fill="#0ea5e9"
-                                                    radius={[0, 0, 0, 0]}
-                                                    barSize={14}
-                                                    onMouseEnter={() => setHoveredBarKey('inProgress')}
-                                                />
-                                                <Bar
-                                                    dataKey="evaluating"
-                                                    name="รอประเมิน"
-                                                    stackId="a"
-                                                    fill="#eab308"
-                                                    radius={[0, 4, 4, 0]}
-                                                    barSize={14}
-                                                    onMouseEnter={() => setHoveredBarKey('evaluating')}
-                                                />
-                                            </BarChart>
-                                        </ResponsiveContainer>
+                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+                                    <SectionHeader
+                                        title="การกระจายความคืบหน้า"
+                                        icon={<Activity size={20} />}
+                                        subtitle={selectedOpCategory === 'urgent' ? 'งานเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'งานรอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานกำลังดำเนินการ' : 'งานย่อยทั้งหมด'}
+                                    />
+                                    <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                        {(() => {
+                                            const isForCustomerEvalLocal = (wo: any) => {
+                                                if (['Completed', 'Verified'].includes(wo.status)) return false;
+                                                if (wo.status === 'pending_delivery') return true;
+                                                const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
+                                                return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+                                            };
+                                            const donutWOs =
+                                                selectedOpCategory === 'urgent' ? (stats.urgentTasks || []) :
+                                                selectedOpCategory === 'evaluating' ? allAccessibleWOs.filter(isForCustomerEvalLocal) :
+                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
+                                                allAccessibleWOs;
+                                            return <ProgressDonutChart allWOs={donutWOs} currentUser={user} />;
+                                        })()}
+
                                     </div>
                                 </div>
                             </div>
