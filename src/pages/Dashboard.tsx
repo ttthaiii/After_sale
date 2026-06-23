@@ -17,7 +17,8 @@ import {
     Edit2,
     Check,
     FileText,
-    MapPin
+    MapPin,
+    UserCheck
 } from 'lucide-react';
 import { formatDate, formatDateTime } from '../utils/date';
 import {
@@ -517,105 +518,290 @@ const WOSummaryModal = ({ isOpen, onClose, data, onViewDetail, selectedMonth, ge
 
 const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
     if (!isOpen || !task) return null;
-    const history = [...(task.history || [])].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Sort ascending for timeline view
+    const history = [...(task.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Group by revisionId
+    const revGroups: Record<string, any[]> = {};
+    history.forEach((log: any) => {
+        const revId = log.revisionId || 'rev00';
+        if (!revGroups[revId]) revGroups[revId] = [];
+        revGroups[revId].push(log);
+    });
+    const sortedRevKeys = Object.keys(revGroups).sort((a, b) => a.localeCompare(b));
+
+    const calcHrs = (logs: any[]) => logs.reduce((sum: number, log: any) =>
+        sum + (log.labor || []).reduce((s: number, l: any) => {
+            const eh = l.expectedHours || {};
+            return s + (eh.normal||0) + (eh.otNoon||0) + (eh.otEvening||0) + (eh.otMorning||0);
+        }, 0), 0);
+
+    const totalHrsAll = calcHrs(history);
+    const totalDaysAll = new Set(history.map((l: any) => l.date?.split('T')[0]).filter(Boolean)).size;
+
+    const revNum = (revId: string) => parseInt(String(revId).replace(/[^0-9]/g, '')) || 0;
+
+    const fmtDate = (d: Date) =>
+        `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()+543}`;
+
+    const revColors = [
+        { bg: '#eff6ff', border: '#bfdbfe', headerBg: '#dbeafe', text: '#1d4ed8', badge: '#2563eb' },
+        { bg: '#fff7ed', border: '#fed7aa', headerBg: '#ffedd5', text: '#c2410c', badge: '#ea580c' },
+        { bg: '#f0fdf4', border: '#bbf7d0', headerBg: '#dcfce7', text: '#15803d', badge: '#16a34a' },
+        { bg: '#fdf4ff', border: '#e9d5ff', headerBg: '#f3e8ff', text: '#7e22ce', badge: '#9333ea' },
+    ];
+
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div style={{ backgroundColor: '#fff', width: '700px', maxWidth: '100%', borderRadius: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden', animation: 'modalSlideUp 0.3s ease-out' }}>
-                <div style={{ padding: '24px 32px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ backgroundColor: '#fff', width: '740px', maxWidth: '100%', borderRadius: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden', animation: 'modalSlideUp 0.3s ease-out' }}>
+
+                {/* Modal Header */}
+                <div style={{ padding: '24px 32px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                        <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>ประวัติการปฏิบัติงาน ({history.length} ครั้ง)</h3>
-                        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0', fontWeight: 600 }}>{task.taskName} | {task.locationName || task.projectName}</p>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>ประวัติการปฏิบัติงาน</h3>
+                        <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 12px 0', fontWeight: 600 }}>{task.taskName} · {task.locationName || task.projectName}</p>
+                        {/* Cumulative summary chips */}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ padding: '4px 12px', background: '#f1f5f9', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#334155' }}>
+                                📋 {sortedRevKeys.length} ครั้ง{sortedRevKeys.length > 1 ? ' (มีการแก้ไข)' : ''}
+                            </span>
+                            <span style={{ padding: '4px 12px', background: '#ede9fe', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#6d28d9' }}>
+                                ⏱ รวม {totalHrsAll} ชม. (ทุก REV.)
+                            </span>
+                            <span style={{ padding: '4px 12px', background: '#ecfeff', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, color: '#0891b2' }}>
+                                📅 {totalDaysAll} วันทำงาน
+                            </span>
+                        </div>
                     </div>
-                    <button onClick={onClose} style={{ background: '#fff', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                    <button onClick={onClose} style={{ background: '#fff', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
                 </div>
-                <div style={{ padding: '32px', maxHeight: '70vh', overflowY: 'auto', background: '#fff' }}>
+
+                {/* Body */}
+                <div style={{ padding: '24px 32px', maxHeight: '65vh', overflowY: 'auto', background: '#fff' }}>
                     {history.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>ยังไม่มีบันทึกการปฏิบัติงาน</div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {history.map((log: any, idx: number) => {
-                                const logDate = new Date(log.date);
-                                const prevProgress = idx < history.length - 1 ? (history[idx + 1].progress || 0) : 0;
-                                const totalWorkers = (log.labor || []).reduce((acc: number, l: any) => acc + (l.amount || 1), 0);
-                                const isProblem = log.type === 'Problem';
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {sortedRevKeys.map((revId, revIdx) => {
+                                const logs = revGroups[revId];
+                                const col = revColors[revIdx % revColors.length];
+                                const revHrs = calcHrs(logs);
+                                const revDays = new Set(logs.map((l: any) => l.date?.split('T')[0]).filter(Boolean)).size;
+                                const firstProg = logs[0]?.progress ?? 0;
+                                const lastProg = logs[logs.length - 1]?.progress ?? 0;
+                                // Find start progress of this revision (progress before first entry)
+                                const allBeforeThisRev = history.filter((l: any) => (l.revisionId || 'rev00') !== revId);
+                                const progBefore = allBeforeThisRev.length > 0
+                                    ? Math.max(...allBeforeThisRev.map((l: any) => l.progress || 0))
+                                    : 0;
+                                const rNum = revNum(revId);
+
                                 return (
-                                    <div key={idx} style={{ background: isProblem ? '#fff1f2' : '#f8fafc', borderRadius: '20px', border: `1px solid ${isProblem ? '#fca5a5' : '#e2e8f0'}`, overflow: 'hidden' }}>
-                                        {/* Header row */}
-                                        <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', background: isProblem ? '#fef2f2' : '#fff' }}>
+                                    <div key={revId} style={{ border: `1.5px solid ${col.border}`, borderRadius: '20px', overflow: 'hidden', background: col.bg }}>
+                                        {/* Revision Header */}
+                                        <div style={{ padding: '14px 20px', background: col.headerBg, borderBottom: `1px solid ${col.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                {isProblem && <AlertCircle size={16} color="#ef4444" />}
-                                                <span style={{ fontSize: '1rem', fontWeight: 900, color: isProblem ? '#dc2626' : '#0f172a' }}>
-                                                    {logDate.getDate().toString().padStart(2,'0')}/{(logDate.getMonth()+1).toString().padStart(2,'0')}/{logDate.getFullYear()+543}
+                                                <span style={{ padding: '3px 10px', background: col.badge, color: '#fff', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900 }}>
+                                                    REV.{rNum}
                                                 </span>
-                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
-                                                    {logDate.getHours().toString().padStart(2,'0')}:{logDate.getMinutes().toString().padStart(2,'0')} น.
-                                                </span>
+                                                {rNum > 0 && (
+                                                    <span style={{ fontSize: '0.75rem', color: col.text, fontWeight: 700 }}>การแก้ไขครั้งที่ {rNum}</span>
+                                                )}
+                                                {rNum === 0 && (
+                                                    <span style={{ fontSize: '0.75rem', color: col.text, fontWeight: 700 }}>งานเริ่มต้น</span>
+                                                )}
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                {isProblem && <span style={{ padding: '3px 10px', background: '#fef2f2', color: '#ef4444', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 900, border: '1px solid #fee2e2' }}>🚨 พบปัญหา</span>}
-                                                {/* Progress from → to */}
-                                                <span style={{ padding: '3px 12px', background: '#e0e7ff', color: '#4338ca', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900 }}>
-                                                    {prevProgress}% → {log.progress}%
+                                                <span style={{ padding: '3px 10px', background: 'rgba(255,255,255,0.7)', color: col.text, borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800 }}>
+                                                    {progBefore}% → {lastProg}%
                                                 </span>
-                                                <span style={{ padding: '3px 10px', background: '#f1f5f9', color: '#475569', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 800 }}>
-                                                    👷 {totalWorkers} คน
+                                                <span style={{ padding: '3px 10px', background: 'rgba(255,255,255,0.7)', color: col.text, borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800 }}>
+                                                    {revDays} วัน · {revHrs} ชม.
                                                 </span>
                                             </div>
                                         </div>
-                                        {/* Labor detail rows */}
-                                        {(log.labor || []).length > 0 && (
-                                            <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                {(log.labor || []).map((l: any, lIdx: number) => {
-                                                    const name = l.workerName || l.staffName || l.workerId || '—';
-                                                    const timeRange = l.shiftTimes?.day || null;
-                                                    const otTimes = [
-                                                        l.shiftTimes?.otMorning ? `OT เช้า: ${l.shiftTimes.otMorning}` : null,
-                                                        l.shiftTimes?.otNoon   ? `OT เที่ยง: ${l.shiftTimes.otNoon}`  : null,
-                                                        l.shiftTimes?.otEvening? `OT เย็น: ${l.shiftTimes.otEvening}` : null,
-                                                    ].filter(Boolean);
-                                                    const eh = l.expectedHours || {};
-                                                    const totalHrs = (eh.normal||0) + (eh.otNoon||0) + (eh.otEvening||0) + (eh.otMorning||0);
-                                                    const isMember = l.membership === 'Internal';
-                                                    return (
-                                                        <div key={lIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 14px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                                                            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: isMember ? '#ede9fe' : '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                                <span style={{ fontSize: '0.7rem', fontWeight: 900, color: isMember ? '#6d28d9' : '#a16207' }}>{isMember ? 'DC' : 'OT'}</span>
+
+                                        {/* Daily entries within this revision */}
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {logs.map((log: any, logIdx: number) => {
+                                                const logDate = new Date(log.date);
+                                                const prevProg = logIdx > 0 ? (logs[logIdx - 1].progress || 0) : progBefore;
+                                                const totalWorkers = (log.labor || []).reduce((acc: number, l: any) => acc + (l.amount || 1), 0);
+                                                const isProblem = log.type === 'Problem';
+                                                const logHrs = calcHrs([log]);
+                                                // photos: { laborByShift: { regular, otMorning, otNoon, otEvening }, site }
+                                                const _shiftLabel: Record<string, string> = { regular: 'กะปกติ', otMorning: 'OT เช้า', otNoon: 'OT เที่ยง', otEvening: 'OT เย็น' };
+                                                // isLabor=true → slot0=เข้า slot1=ออก (เฉพาะเมื่อมีพอดี 2 รูป)
+                                                const photosByShift: { label: string; urls: string[]; isLabor: boolean }[] = [];
+                                                if (Array.isArray(log.photos)) {
+                                                    const urls = log.photos.map((p: any) => typeof p === 'string' ? p : (p.url || p.downloadUrl || p.uri || null)).filter(Boolean);
+                                                    if (urls.length) photosByShift.push({ label: 'รูปภาพ', urls, isLabor: false });
+                                                } else if (log.photos) {
+                                                    if (Array.isArray(log.photos.site) && log.photos.site.filter(Boolean).length > 0)
+                                                        photosByShift.push({ label: 'รูปหน้างาน', urls: log.photos.site.filter(Boolean), isLabor: false });
+                                                    if (log.photos.laborByShift) {
+                                                        for (const [shift, urls] of Object.entries(log.photos.laborByShift)) {
+                                                            if (Array.isArray(urls) && (urls as string[]).filter(Boolean).length > 0)
+                                                                photosByShift.push({ label: _shiftLabel[shift] || shift, urls: (urls as string[]).filter(Boolean), isLabor: true });
+                                                        }
+                                                    }
+                                                }
+                                                const totalPhotos = photosByShift.reduce((a, s) => a + s.urls.length, 0);
+
+                                                return (
+                                                    <div key={logIdx} style={{ background: isProblem ? '#fff1f2' : '#fff', borderRadius: '14px', border: `1px solid ${isProblem ? '#fca5a5' : '#e2e8f0'}`, overflow: 'hidden' }}>
+                                                        {/* Log row header */}
+                                                        <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                {isProblem && <AlertCircle size={14} color="#ef4444" />}
+                                                                <span style={{ fontSize: '0.9rem', fontWeight: 900, color: isProblem ? '#dc2626' : '#0f172a' }}>
+                                                                    {fmtDate(logDate)}
+                                                                </span>
                                                             </div>
-                                                            <div style={{ flex: 1 }}>
-                                                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>{name}</div>
-                                                                <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                                                    {timeRange && (
-                                                                        <span style={{ fontSize: '0.75rem', color: '#0891b2', fontWeight: 700, background: '#ecfeff', padding: '2px 8px', borderRadius: '6px' }}>
-                                                                            🕐 {timeRange}
-                                                                        </span>
-                                                                    )}
-                                                                    {otTimes.map((ot, i) => (
-                                                                        <span key={i} style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700, background: '#fefce8', padding: '2px 8px', borderRadius: '6px' }}>{ot}</span>
-                                                                    ))}
-                                                                    {totalHrs > 0 && (
-                                                                        <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: 800 }}>{totalHrs} ชม.</span>
-                                                                    )}
-                                                                </div>
+                                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                                {isProblem && <span style={{ padding: '2px 8px', background: '#fef2f2', color: '#ef4444', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 900 }}>🚨 พบปัญหา</span>}
+                                                                <span style={{ padding: '2px 10px', background: '#e0e7ff', color: '#4338ca', borderRadius: '6px', fontSize: '0.73rem', fontWeight: 900 }}>
+                                                                    {prevProg}% → {log.progress}%
+                                                                </span>
+                                                                {totalWorkers > 0 && (
+                                                                    <span style={{ padding: '2px 8px', background: '#f1f5f9', color: '#475569', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 800 }}>
+                                                                        👷 {totalWorkers} คน
+                                                                    </span>
+                                                                )}
+                                                                {logHrs > 0 && (
+                                                                    <span style={{ padding: '2px 8px', background: '#f5f3ff', color: '#7c3aed', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 900 }}>
+                                                                        รวม {logHrs} ชม.
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                        {/* Note */}
-                                        {log.note && (
-                                            <div style={{ padding: '10px 20px 14px', borderTop: '1px solid #e2e8f0' }}>
-                                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>หมายเหตุ: </span>
-                                                <span style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>{log.note}</span>
-                                            </div>
-                                        )}
+
+                                                        {/* Workers */}
+                                                        {(log.labor || []).length > 0 && (
+                                                            <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                {(log.labor || []).map((l: any, lIdx: number) => {
+                                                                    const name = l.workerName || l.staffName || l.workerId || '—';
+                                                                    const timeRange = l.shiftTimes?.day?.trim() || null;
+                                                                    const eh = l.expectedHours || {};
+                                                                    const normalHrs = eh.normal || 0;
+                                                                    const otHrs = (eh.otNoon||0) + (eh.otEvening||0) + (eh.otMorning||0);
+                                                                    const otBreakdown = [
+                                                                        eh.otMorning  ? `OT เช้า ${eh.otMorning}ชม.`  : null,
+                                                                        eh.otNoon     ? `OT เที่ยง ${eh.otNoon}ชม.`   : null,
+                                                                        eh.otEvening  ? `OT เย็น ${eh.otEvening}ชม.`  : null,
+                                                                    ].filter(Boolean);
+                                                                    const wHrs = normalHrs + otHrs;
+                                                                    const isMember = l.membership === 'Internal';
+                                                                    return (
+                                                                        <div key={lIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 12px', background: '#f8fafc', borderRadius: '10px' }}>
+                                                                            <div style={{ width: '26px', height: '26px', borderRadius: '7px', background: isMember ? '#ede9fe' : '#fef9c3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '1px' }}>
+                                                                                <span style={{ fontSize: '0.65rem', fontWeight: 900, color: isMember ? '#6d28d9' : '#a16207' }}>{isMember ? 'DC' : 'OT'}</span>
+                                                                            </div>
+                                                                            <div style={{ flex: 1 }}>
+                                                                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b', marginBottom: '4px' }}>{name}</div>
+                                                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                                                    {timeRange && (
+                                                                                        <span style={{ fontSize: '0.72rem', color: '#0891b2', fontWeight: 700, background: '#ecfeff', padding: '2px 7px', borderRadius: '5px' }}>🕐 {timeRange}</span>
+                                                                                    )}
+                                                                                    {normalHrs > 0 && (
+                                                                                        <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 700, background: '#f1f5f9', padding: '2px 7px', borderRadius: '5px' }}>ปกติ {normalHrs} ชม.</span>
+                                                                                    )}
+                                                                                    {otBreakdown.map((ot, i) => (
+                                                                                        <span key={i} style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: 700, background: '#fefce8', padding: '2px 7px', borderRadius: '5px', border: '1px solid #fde68a' }}>{ot}</span>
+                                                                                    ))}
+                                                                                    {wHrs > 0 && (
+                                                                                        <span style={{ fontSize: '0.73rem', color: '#7c3aed', fontWeight: 900, background: '#f5f3ff', padding: '2px 7px', borderRadius: '5px' }}>= {wHrs} ชม.</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Foreman note — Site Notes จากช่างตอนลงรายงาน */}
+                                                        {log.note && (
+                                                            <div style={{ margin: '0 16px 10px', padding: '10px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                                                <span style={{ fontSize: '1rem', flexShrink: 0 }}>📝</span>
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.68rem', color: '#92400e', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
+                                                                        หมายเหตุช่าง <span style={{ fontWeight: 600, opacity: 0.7 }}>(Site Notes)</span>
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.82rem', color: '#78350f', fontWeight: 600, lineHeight: 1.5 }}>{log.note}</div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Photos — toggle */}
+                                                        {totalPhotos > 0 && (
+                                                            <details style={{ margin: '0 16px 10px' }}>
+                                                                <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569', border: '1px solid #e2e8f0', userSelect: 'none' }}>
+                                                                    <span>📷</span> ดูรูป ({totalPhotos} รูป)
+                                                                </summary>
+                                                                <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                    {photosByShift.map((group, gi) => (
+                                                                        <div key={gi}>
+                                                                            <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>{group.label}</div>
+                                                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                                {group.urls.map((url, pi) => {
+                                                                                    const slotLabel = group.isLabor && group.urls.length === 2
+                                                                                        ? (pi === 0 ? 'เข้า' : 'ออก') : null;
+                                                                                    return (
+                                                                                        <div key={pi} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                                                                                            <a href={url} target="_blank" rel="noopener noreferrer">
+                                                                                                <img src={url} alt={`${group.label}-${pi}`} style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0', cursor: 'pointer', display: 'block' }} />
+                                                                                            </a>
+                                                                                            {slotLabel && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#64748b' }}>{slotLabel}</span>}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {/* Rejection banner — shown at bottom of REV if it was rejected */}
+                                            {(() => {
+                                                const anyLog = logs[0];
+                                                const revStatus = anyLog?.revisionStatus;
+                                                const rejectReason = anyLog?.revisionRejectReason;
+                                                const defectCats = anyLog?.revisionDefectCategories;
+                                                if (revStatus !== 'closed_rejected') return null;
+                                                const defectList = defectCats ? Object.entries(defectCats).filter(([,v]) => v).map(([k]) => k.split('(')[0].trim()) : [];
+                                                return (
+                                                    <div style={{ margin: '4px 0 4px', padding: '10px 14px', background: '#fef2f2', borderRadius: '10px', border: '1px solid #fca5a5', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                                        <span style={{ fontSize: '1rem', flexShrink: 0 }}>❌</span>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.68rem', color: '#991b1b', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>ลูกค้า Reject — ต้องแก้ไข</div>
+                                                            {rejectReason && <div style={{ fontSize: '0.82rem', color: '#7f1d1d', fontWeight: 700, marginBottom: '4px' }}>"{rejectReason}"</div>}
+                                                            {defectList.length > 0 && (
+                                                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                                    {defectList.map((d, i) => (
+                                                                        <span key={i} style={{ fontSize: '0.68rem', color: '#b91c1c', fontWeight: 700, background: '#fee2e2', padding: '2px 7px', borderRadius: '5px' }}>{d}</span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
                     )}
                 </div>
-                <div style={{ padding: '24px 32px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
+
+                {/* Footer */}
+                <div style={{ padding: '16px 32px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
                     <button onClick={onClose} style={{ padding: '12px 24px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '14px', fontWeight: 800, cursor: 'pointer' }}>ปิดหน้าต่าง</button>
                 </div>
             </div>
@@ -677,6 +863,7 @@ const Dashboard = () => {
     const [selectedComparisonCategory, setSelectedComparisonCategory] = useState<string | null>(null);
     const [selectedOpCategory, setSelectedOpCategory] = useState('urgent');
     const opListRef = useRef<HTMLDivElement>(null);
+    const hasAutoSelectedCategory = useRef(false);
     const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
     const [donutFilter, setDonutFilter] = useState<string | null>(null);
     const [showInsightDetails, setShowInsightDetails] = useState(false);
@@ -890,11 +1077,10 @@ const Dashboard = () => {
         filteredData.forEach((wo: any) => {
             wo.categories?.forEach((cat: any) => {
                 cat.tasks?.forEach((task: any) => {
-                    const isReporter = matchesUser(wo.reporterId || '');
                     const isResponsible = task.responsibleStaffIds?.some((id: string) => matchesUser(id));
-                    
-                    // Filter tasks where the user is involved
-                    if (isReporter || isResponsible) {
+
+                    // Show only tasks where this user is directly responsible
+                    if (isResponsible) {
                         tasks.push({
                             ...task,
                             woId: wo.id,
@@ -961,6 +1147,10 @@ const Dashboard = () => {
         const totalInMonth = newThisMonth + carriedOver;
         const total = allAccessibleWOs.length;
         const totalAssignments = filteredWOs.length;
+
+        const pendingAdminEval = allAccessibleWOs.filter((wo: any) =>
+            ['Pending', 'Evaluating'].includes(wo.status)
+        ).length;
 
         let closed = 0;
         let open = 0;
@@ -1345,7 +1535,7 @@ const Dashboard = () => {
             total, closed, open, evaluating, highRisk, totalHours, totalBudget, totalActualCost,
             internalCount, outsourceCount, slaScore, projectStats: Object.values(projectsMap).sort((a: any, b: any) => b.total - a.total),
             stalledCases, chronicIssues, budgetPerformance: [], laborByProject: laborByProjectArray, totalAssignments,
-            totalInMonth, newThisMonth, carriedOver, dueTodayCount,
+            totalInMonth, newThisMonth, carriedOver, dueTodayCount, pendingAdminEval,
             urgentTasks: urgentTasks.sort((a: any, b: any) => (a.statusInfo?.hoursLeft || 0) - (b.statusInfo?.hoursLeft || 0)),
             upcomingTasks: upcomingTasks.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
             laborStats: [{ name: 'DC ใน (Internal)', value: internalHours, color: '#4f46e5' }, { name: 'DC นอก (Outsource)', value: outsourceHours, color: '#10b981' }],
@@ -1360,6 +1550,28 @@ const Dashboard = () => {
 
     const stats = useMemo<DashboardStats>(() => getDashboardStats(filteredData), [getDashboardStats, filteredData]);
     const comparisonStats = useMemo<DashboardStats>(() => getDashboardStats(comparisonFilteredData), [getDashboardStats, comparisonFilteredData]);
+
+    // Auto-select first non-empty category on data load (runs once)
+    useEffect(() => {
+        if (hasAutoSelectedCategory.current) return;
+        if (allAccessibleWOs.length === 0) return;
+        hasAutoSelectedCategory.current = true;
+
+        const urgentCount = (stats.urgentTasks || []).flatMap((wo: any) =>
+            (wo.categories || []).flatMap((cat: any) => (cat.tasks || []))
+        ).filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified').length;
+        if (urgentCount > 0) return; // keep 'urgent'
+
+        // Check WO status directly — don't depend on subcollection tasks being loaded
+        const hasInProgress = allAccessibleWOs.some((wo: any) =>
+            !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Rejected'].includes(wo.status)
+        );
+        if (hasInProgress) { setSelectedOpCategory('inProgress'); return; }
+
+        if ((stats.evaluating || 0) > 0) { setSelectedOpCategory('evaluating'); return; }
+        // pendingAdmin excluded — foreman can't action it, don't default there
+        // all empty → stay on 'urgent' (shows ไม่มีงาน)
+    }, [allAccessibleWOs, stats]);
 
     const maxDevRaw = stats.laborByProject.length > 0 ? Math.max(100, ...stats.laborByProject.map((p: any) => Math.abs(p.deviation))) : 100;
     const maxDev = Math.ceil(maxDevRaw / 50) * 50;
@@ -1937,14 +2149,24 @@ const Dashboard = () => {
                                 return (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
                                         <StatCard
-                                            title="งานทั้งหมดที่ดูแล"
-                                            value={stats.totalInMonth}
-                                            icon={<Activity size={24} />}
-                                            color="#3b82f6"
-                                            gradient={selectedOpCategory === 'all' ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' : undefined}
-                                            style={activeStyle('all', '#3b82f6', '59,130,246')}
-                                            onClick={() => selectAndScroll('all')}
-                                            subtext={<span>ปิดจบ <b style={{ color: '#10b981' }}>{stats.closed}</b> · คงค้าง <b>{(stats.totalInMonth || 0) - (stats.closed || 0)}</b></span>}
+                                            title="เร่งด่วน SLA"
+                                            value={urgentSubtaskCount}
+                                            icon={<AlertTriangle size={24} />}
+                                            color="#ef4444"
+                                            gradient={selectedOpCategory === 'urgent' ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : undefined}
+                                            style={activeStyle('urgent', '#ef4444', '239,68,68')}
+                                            onClick={() => selectAndScroll('urgent')}
+                                            subtext="งานย่อยที่เลยหรือใกล้ครบกำหนด"
+                                        />
+                                        <StatCard
+                                            title="รอแอดมินประเมิน"
+                                            value={stats.pendingAdminEval}
+                                            icon={<Clock size={24} />}
+                                            color="#6366f1"
+                                            gradient={selectedOpCategory === 'pendingAdmin' ? 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)' : undefined}
+                                            style={activeStyle('pendingAdmin', '#6366f1', '99,102,241')}
+                                            onClick={() => selectAndScroll('pendingAdmin')}
+                                            subtext="ใบงานที่ส่งรอแอดมินอนุมัติ/มอบหมาย"
                                         />
                                         <StatCard
                                             title="กำลังดำเนินการ"
@@ -1966,16 +2188,6 @@ const Dashboard = () => {
                                             onClick={() => selectAndScroll('evaluating')}
                                             subtext="รอลูกค้าตรวจรับงานหน้าไซต์"
                                         />
-                                        <StatCard
-                                            title="เร่งด่วน SLA"
-                                            value={urgentSubtaskCount}
-                                            icon={<AlertTriangle size={24} />}
-                                            color="#ef4444"
-                                            gradient={selectedOpCategory === 'urgent' ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : undefined}
-                                            style={activeStyle('urgent', '#ef4444', '239,68,68')}
-                                            onClick={() => selectAndScroll('urgent')}
-                                            subtext="งานย่อยที่เลยหรือใกล้ครบกำหนด"
-                                        />
                                     </div>
                                 );
                             })()}
@@ -1984,9 +2196,9 @@ const Dashboard = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
                                 <div ref={opListRef} id="urgent-section" style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)', display: 'flex', flexDirection: 'column', scrollMarginTop: '80px' }}>
                                     <SectionHeader
-                                        title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานที่กำลังดำเนินการ' : 'ภาพรวมใบงานทั้งหมด'}
-                                        icon={selectedOpCategory === 'urgent' ? <AlertTriangle size={20} color="#ef4444" /> : selectedOpCategory === 'evaluating' ? <Clock size={20} color="#f59e0b" /> : selectedOpCategory === 'inProgress' ? <Zap size={20} color="#0ea5e9" /> : <Activity size={20} color="#4f46e5" />}
-                                        subtitle={selectedOpCategory === 'urgent' ? 'ใบงานที่ต้องรีบดำเนินการเพื่อรักษามาตรฐาน SLA — คลิกเพื่อบันทึกรายงาน' : selectedOpCategory === 'evaluating' ? 'ใบงานที่รอลูกค้าตรวจรับงานหน้าไซต์ — คลิกเพื่อติดตามสถานะ' : selectedOpCategory === 'inProgress' ? 'ใบงานที่ช่างกำลังปฏิบัติงานอยู่ — คลิกเพื่อบันทึกรายงานประจำวัน' : 'ใบงานที่ยังไม่ปิดจบ เรียงตามความเร่งด่วน SLA'}
+                                        title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานที่กำลังดำเนินการ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'ภาพรวมใบงานทั้งหมด'}
+                                        icon={selectedOpCategory === 'urgent' ? <AlertTriangle size={20} color="#ef4444" /> : selectedOpCategory === 'evaluating' ? <Clock size={20} color="#f59e0b" /> : selectedOpCategory === 'inProgress' ? <Zap size={20} color="#0ea5e9" /> : selectedOpCategory === 'pendingAdmin' ? <Clock size={20} color="#6366f1" /> : <Activity size={20} color="#4f46e5" />}
+                                        subtitle={selectedOpCategory === 'urgent' ? 'ใบงานที่ต้องรีบดำเนินการเพื่อรักษามาตรฐาน SLA — คลิกเพื่อบันทึกรายงาน' : selectedOpCategory === 'evaluating' ? 'ใบงานที่รอลูกค้าตรวจรับงานหน้าไซต์ — คลิกเพื่อติดตามสถานะ' : selectedOpCategory === 'inProgress' ? 'ใบงานที่ช่างกำลังปฏิบัติงานอยู่ — คลิกเพื่อบันทึกรายงานประจำวัน' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานที่ส่งไปรอแอดมินอนุมัติ/มอบหมายงาน — คลิกเพื่อดูรายละเอียด' : 'ใบงานที่ยังไม่ปิดจบ เรียงตามความเร่งด่วน SLA'}
                                     />
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '1rem', maxHeight: '510px', overflowY: 'auto', paddingRight: '8px' }}>
                                         {(() => {
@@ -2170,6 +2382,35 @@ const Dashboard = () => {
                                                         )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานย่อยในกลุ่มนี้</div>}
                                                     </>
                                                 );
+                                            } else if (selectedOpCategory === 'pendingAdmin') {
+                                                const pendingWOs = allAccessibleWOs.filter((wo: any) => ['Pending', 'Evaluating'].includes(wo.status));
+                                                if (pendingWOs.length === 0) return <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีใบงานรอแอดมินในขณะนี้ 🎉</div>;
+                                                return pendingWOs.map((wo: any, idx: number) => {
+                                                    const statusLabel = wo.status === 'Pending' ? 'รอประเมิน' : 'กำลังประเมิน';
+                                                    const statusColor = wo.status === 'Pending' ? '#6366f1' : '#8b5cf6';
+                                                    const taskCount = (wo.categories || []).reduce((s: number, c: any) => s + (c.tasks || []).length, 0);
+                                                    return (
+                                                        <div key={`pa-${idx}`} onClick={() => navigate(`/work-orders?highlight=${wo.id}`)}
+                                                            style={{ padding: '1rem 1.25rem', background: '#faf5ff', borderRadius: '20px', border: '1px solid #e9d5ff', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                                            onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')}
+                                                            onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6366f1', fontFamily: 'monospace' }}>{wo.id}</span>
+                                                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: statusColor, padding: '2px 10px', borderRadius: '20px' }}>{statusLabel}</span>
+                                                            </div>
+                                                            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e1b4b', marginBottom: '4px' }}>{wo.locationName || wo.building || '—'}</div>
+                                                            <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: '#7c3aed' }}>
+                                                                <span>📋 {taskCount} รายการ</span>
+                                                                {wo.reportDate && <span>📅 {wo.reportDate}</span>}
+                                                                {wo.reporterName && <span>👤 {wo.reporterName}</span>}
+                                                            </div>
+                                                            <button onClick={(e) => { e.stopPropagation(); navigate(`/work-orders?highlight=${wo.id}`); }}
+                                                                style={{ width: '100%', marginTop: '10px', padding: '7px', background: 'rgba(99,102,241,0.08)', border: '1px solid #c4b5fd', borderRadius: '12px', color: '#6366f1', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+                                                                🔍 ไปหน้าติดตามใบงาน
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                });
                                             } else {
                                                 // 'all' — flat subtasks across all active WOs, sorted by SLA urgency
                                                 const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo)).sort((a: any, b: any) => {
@@ -2196,7 +2437,7 @@ const Dashboard = () => {
                                     <SectionHeader
                                         title="การกระจายความคืบหน้า"
                                         icon={<Activity size={20} />}
-                                        subtitle={selectedOpCategory === 'urgent' ? 'งานเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'งานรอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานกำลังดำเนินการ' : 'งานย่อยทั้งหมด'}
+                                        subtitle={selectedOpCategory === 'urgent' ? 'งานเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'งานรอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานกำลังดำเนินการ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'งานย่อยทั้งหมด'}
                                     />
                                     <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                         {(() => {
@@ -2210,6 +2451,7 @@ const Dashboard = () => {
                                                 selectedOpCategory === 'urgent' ? (stats.urgentTasks || []) :
                                                 selectedOpCategory === 'evaluating' ? allAccessibleWOs.filter(isForCustomerEvalLocal) :
                                                 selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
+                                                selectedOpCategory === 'pendingAdmin' ? [] :
                                                 allAccessibleWOs;
                                             return <ProgressDonutChart allWOs={donutWOs} currentUser={user} />;
                                         })()}
@@ -2903,24 +3145,34 @@ const Dashboard = () => {
                                 {/* Job Performance Details */}
                                 <div id="job-details-section" className={highlightedSection === 'job-details-section' ? 'section-highlight' : ''} style={{ gridColumn: '1/-1', background: '#ffffff', padding: '1.5rem 2rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
                                     <SectionHeader title="รายละเอียดรายการงานที่ดำเนินการ (Task Performance Details)" icon={<Activity size={24} />} subtitle="รายการงานย่อยทั้งหมดที่คุณรับผิดชอบ แยกตามใบงานอ้างอิง" />
-                                    <div style={{ overflowX: 'auto' }}>
+                                    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '600px', overscrollBehavior: 'contain' }}>
                                         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                                             <thead>
-                                                <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                                    <th style={{ padding: '0 0.75rem', minWidth: '140px' }}>รายการงาน</th>
-                                                    <th style={{ minWidth: '100px' }}>ตำแหน่ง</th>
-                                                    <th style={{ minWidth: '100px' }}>หมวดหมู่</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>วันนัดดำเนินการ</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>SLA</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>กำหนดส่ง</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>วันเสร็จ</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>ช่วงเวลาที่ใช้</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>วันทำจริง</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>+/- วัน</th>
-                                                    <th>REV.</th>
-                                                    <th style={{ whiteSpace: 'nowrap' }}>ชม.</th>
-                                                    <th>สถานะ</th>
-                                                    <th style={{ textAlign: 'right', paddingRight: '0.75rem' }}>จัดการ</th>
+                                                {/* Group label row — sticky top:0 */}
+                                                <tr style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
+                                                    <th colSpan={3} style={{ padding: '8px 0.75rem 5px', position: 'sticky', top: 0, zIndex: 21, background: '#fff', boxShadow: '0 8px 0 0 #fff' }}></th>
+                                                    <th colSpan={3} style={{ padding: '8px 4px 5px', color: '#2563eb', background: '#eff6ff', borderRadius: '6px 6px 0 0', borderBottom: '2px solid #e2e8f0', borderLeft: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 21, boxShadow: '0 8px 0 0 #fff' }}>🎯 เป้าหมาย</th>
+                                                    <th colSpan={2} style={{ padding: '8px 4px 5px', color: '#0d9488', background: '#f0fdf4', borderRadius: '6px 6px 0 0', borderBottom: '2px solid #e2e8f0', borderLeft: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 21, boxShadow: '0 8px 0 0 #fff' }}>✅ ผลจริง</th>
+                                                    <th colSpan={3} style={{ padding: '8px 4px 5px', color: '#b45309', background: '#fff7ed', borderRadius: '6px 6px 0 0', borderBottom: '2px solid #e2e8f0', borderLeft: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 21, boxShadow: '0 8px 0 0 #fff' }}>⚡ ความพยายาม</th>
+                                                    <th colSpan={1} style={{ padding: '8px 4px 5px', color: '#6d28d9', background: '#faf5ff', borderRadius: '6px 6px 0 0', borderBottom: '2px solid #e2e8f0', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 21, boxShadow: '0 8px 0 0 #fff' }}>💎 คุณภาพ</th>
+                                                    <th colSpan={2} style={{ padding: '8px 0.75rem 5px', position: 'sticky', top: 0, zIndex: 21, background: '#fff', boxShadow: '0 8px 0 0 #fff' }}></th>
+                                                </tr>
+                                                {/* Column headers row — sticky top:33px (ต่อจาก group row) */}
+                                                <tr style={{ color: '#94a3b8', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
+                                                    <th style={{ padding: '4px 0.75rem 10px', minWidth: '140px', textAlign: 'left', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>รายการงาน</th>
+                                                    <th style={{ padding: '4px 8px 10px', minWidth: '90px', textAlign: 'center', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>ตำแหน่ง</th>
+                                                    <th style={{ padding: '4px 8px 10px', minWidth: '90px', textAlign: 'center', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>หมวดหมู่</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#3b82f6', background: '#eff6ff', borderLeft: '1px solid #e2e8f0', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>วันนัดดำเนินการ</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#3b82f6', background: '#eff6ff', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>SLA</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#3b82f6', background: '#eff6ff', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>กำหนดส่ง</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#0d9488', background: '#f0fdf4', borderLeft: '1px solid #e2e8f0', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>วันเสร็จ</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#0d9488', background: '#f0fdf4', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>+/- วัน</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderLeft: '1px solid #e2e8f0', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>ช่วงเวลาที่ใช้</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>วันทำจริง</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>ชม.</th>
+                                                    <th style={{ padding: '4px 8px 10px', textAlign: 'center', color: '#6d28d9', background: '#faf5ff', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>REV.</th>
+                                                    <th style={{ padding: '4px 8px 10px', textAlign: 'center', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>สถานะ</th>
+                                                    <th style={{ padding: '4px 0.75rem 10px', textAlign: 'center', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>จัดการ</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -3128,7 +3380,7 @@ const Dashboard = () => {
                                                                             {task.position || '-'}
                                                                         </div>
                                                                     </td>
-                                                                    <td>
+                                                                    <td style={{ textAlign: 'center' }}>
                                                                         <div style={{
                                                                             display: 'inline-flex',
                                                                             padding: '6px 12px',
@@ -3143,42 +3395,26 @@ const Dashboard = () => {
                                                                         </div>
                                                                     </td>
 
-                                                                    {/* วันนัดดำเนินการ — task.startDate */}
-                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                                                                    {/* วันนัดดำเนินการ — task.startDate | GROUP BORDER: เป้าหมาย */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textAlign: 'center', borderLeft: '1px solid #e2e8f0' }}>
                                                                         {taskStartDate ? fmtDeadline(taskStartDate) : _dash}
                                                                     </td>
 
                                                                     {/* SLA */}
-                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px' }}>
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
                                                                         <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#6366f1', background: '#eef2ff', padding: '2px 7px', borderRadius: '6px' }}>
                                                                             {_slaLabel[tSlaKey] || tSlaKey}
                                                                         </span>
                                                                     </td>
 
                                                                     {/* กำหนดส่ง */}
-                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textAlign: 'center' }}>
                                                                         {fmtDeadline(tDeadlineDate)}
                                                                     </td>
 
-                                                                    {/* วันเสร็จ */}
-                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                                                                    {/* วันเสร็จ | GROUP BORDER: ผลจริง */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', fontSize: '0.78rem', fontWeight: 700, color: taskDaysDiff !== null ? (taskDaysDiff > 0 ? '#dc2626' : '#059669') : '#475569', textAlign: 'center', borderLeft: '1px solid #e2e8f0' }}>
                                                                         {taskCompletedAt ? fmtDeadline(taskCompletedAt) : _dash}
-                                                                    </td>
-
-                                                                    {/* ระยะเวลาทั้งหมด — วันนัด → วันเสร็จ (calendar) */}
-                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
-                                                                        {calDaysUsed !== null
-                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>{calDaysUsed}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>วัน</span></span>
-                                                                            : _dash}
-                                                                    </td>
-
-                                                                    {/* วันทำจริง — ชม.รวม ÷ 8, ถ้า < 8ชม. แสดงเป็นชม. */}
-                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
-                                                                        {workDaysVal !== null
-                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0891b2' }}>{workDaysVal}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>วัน</span></span>
-                                                                            : workHrsOnly !== null
-                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0891b2' }}>{workHrsOnly}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>ชม.</span></span>
-                                                                            : _dash}
                                                                     </td>
 
                                                                     {/* +/- วัน: + = เลยกำหนด = แดง, - = ก่อนกำหนด = เขียว */}
@@ -3190,45 +3426,80 @@ const Dashboard = () => {
                                                                         ) : _dash}
                                                                     </td>
 
-                                                                    {/* REV. */}
-                                                                    <td style={{ padding: '0 6px', textAlign: 'center' }}>
-                                                                        {revNum > 0
-                                                                            ? <span style={{ fontSize: '0.72rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#fef3c7', color: '#d97706' }}>REV.{revNum}</span>
+                                                                    {/* ช่วงเวลาทั้งหมด | GROUP BORDER: ความพยายาม */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center', borderLeft: '1px solid #e2e8f0' }}>
+                                                                        {calDaysUsed !== null
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>{calDaysUsed}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>วัน</span></span>
                                                                             : _dash}
                                                                     </td>
 
-                                                                    {/* ชม. — แสดงทุก task ที่มีข้อมูล */}
+                                                                    {/* วันทำจริง */}
+                                                                    <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
+                                                                        {workDaysVal !== null
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0891b2' }}>{workDaysVal}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>วัน</span></span>
+                                                                            : workHrsOnly !== null
+                                                                            ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0891b2' }}>{workHrsOnly}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>ชม.</span></span>
+                                                                            : _dash}
+                                                                    </td>
+
+                                                                    {/* ชม. */}
                                                                     <td style={{ whiteSpace: 'nowrap', padding: '0 6px', textAlign: 'center' }}>
                                                                         {totalLaborHrs > 0
                                                                             ? <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#7c3aed' }}>{totalLaborHrs}<span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>ชม.</span></span>
                                                                             : _dash}
                                                                     </td>
 
-                                                                    <td style={{ padding: '0 4px' }}>
-                                                                        <span style={{
-                                                                            padding: '5px 10px',
-                                                                            background: p === 100 ? '#ecfdf5' : p > 0 ? '#eff6ff' : '#f8fafc',
-                                                                            color: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#64748b',
-                                                                            borderRadius: '12px',
-                                                                            fontSize: '0.75rem',
-                                                                            fontWeight: 800,
-                                                                            display: 'inline-flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '6px',
-                                                                            border: `1px solid ${p === 100 ? '#d1fae5' : p > 0 ? '#dbeafe' : '#f1f5f9'}`
-                                                                        }}>
-                                                                            {p === 100 ? <CheckCircle2 size={14} /> : p > 0 ? <Clock size={14} /> : <AlertCircle size={14} />}
-                                                                            {p === 100 ? 'เสร็จสมบูรณ์' : p > 0 ? 'กำลังดำเนินการ' : 'ยังไม่เริ่ม'}
-                                                                        </span>
+                                                                    {/* REV. | GROUP BORDER: คุณภาพ */}
+                                                                    <td style={{ padding: '0 6px', textAlign: 'center', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
+                                                                        {revNum > 0
+                                                                            ? <span style={{ fontSize: '0.72rem', fontWeight: 900, padding: '2px 6px', borderRadius: '6px', background: '#fef3c7', color: '#d97706' }}>REV.{revNum}</span>
+                                                                            : _dash}
+                                                                    </td>
+
+                                                                    <td style={{ padding: '0 4px', textAlign: 'center' }}>
+                                                                        {task.status === 'Completed' && task.evaluationStatus === 'Assigned' ? (
+                                                                            <span style={{
+                                                                                padding: '5px 10px',
+                                                                                background: '#fff7ed',
+                                                                                color: '#ea580c',
+                                                                                borderRadius: '12px',
+                                                                                fontSize: '0.75rem',
+                                                                                fontWeight: 800,
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '6px',
+                                                                                border: '1px solid #fed7aa'
+                                                                            }}>
+                                                                                <UserCheck size={14} />
+                                                                                รอลูกค้าประเมิน
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span style={{
+                                                                                padding: '5px 10px',
+                                                                                background: p === 100 ? '#ecfdf5' : p > 0 ? '#eff6ff' : '#f8fafc',
+                                                                                color: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#64748b',
+                                                                                borderRadius: '12px',
+                                                                                fontSize: '0.75rem',
+                                                                                fontWeight: 800,
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '6px',
+                                                                                border: `1px solid ${p === 100 ? '#d1fae5' : p > 0 ? '#dbeafe' : '#f1f5f9'}`
+                                                                            }}>
+                                                                                {p === 100 ? <CheckCircle2 size={14} /> : p > 0 ? <Clock size={14} /> : <AlertCircle size={14} />}
+                                                                                {p === 100 ? 'เสร็จสมบูรณ์' : p > 0 ? 'กำลังดำเนินการ' : 'ยังไม่เริ่ม'}
+                                                                            </span>
+                                                                        )}
                                                                     </td>
                                                                     <td style={{ textAlign: 'right', paddingRight: '0.75rem' }}>
                                                                         <button 
                                                                             onClick={() => {
-                                                                                setSelectedTaskHistory({ 
-                                                                                    taskName: task.name, 
-                                                                                    projectName: task.projectName, 
-                                                                                    locationName: task.locationName, 
-                                                                                    history: task.history || [] 
+                                                                                setSelectedTaskHistory({
+                                                                                    taskName: task.name,
+                                                                                    projectName: task.projectName,
+                                                                                    locationName: task.locationName,
+                                                                                    history: task.history || [],
+                                                                                    rejectReason: task.rejectReason || null,
                                                                                 });
                                                                             }}
                                                                             className="premium-action-btn"

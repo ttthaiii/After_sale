@@ -91,6 +91,27 @@ const Entry = () => {
         }
     }, [location.search, workOrders, navigate]);
 
+    // Highlight-only deep link (?highlight=) — scroll to card + glow, no modal/popup
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const highlightId = params.get('highlight');
+        if (highlightId && workOrders.length > 0) {
+            const wo = workOrders.find(w => w.id === highlightId);
+            if (wo) {
+                setHighlightedId(highlightId);
+                setTimeout(() => {
+                    const el = document.getElementById(`wo-card-${highlightId}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 150);
+                setTimeout(() => setHighlightedId(null), 4000);
+            }
+            const newParams = new URLSearchParams(location.search);
+            newParams.delete('highlight');
+            const newSearch = newParams.toString();
+            navigate({ search: newSearch ? `?${newSearch}` : '' }, { replace: true });
+        }
+    }, [location.search, workOrders, navigate]);
+
     const handleCreateNew = (type: WorkOrderType) => {
         setSelectedType(type);
         setSelectedOrder(null);
@@ -102,6 +123,12 @@ const Entry = () => {
         setSelectedType(order.type);
         setIsEditModalOpen(true);
     };
+
+    // Live reference to selectedOrder — updates when subcollections load (avoids frozen snapshot bug)
+    const liveSelectedOrder = useMemo(() => {
+        if (!selectedOrder) return null;
+        return workOrders.find(wo => wo.id === selectedOrder.id) || selectedOrder;
+    }, [selectedOrder, workOrders]);
 
     // Filter logic: Only Draft and Evaluating (รอประเมิน)
     const filteredDrafts = useMemo(() => {
@@ -657,7 +684,7 @@ const Entry = () => {
             <ForemanReportModal 
                 isOpen={isEditModalOpen} 
                 onClose={() => setIsEditModalOpen(false)} 
-                editWorkOrder={selectedOrder || undefined}
+                editWorkOrder={liveSelectedOrder || undefined}
             />
 
             {modalAlert && modalAlert.isOpen && (

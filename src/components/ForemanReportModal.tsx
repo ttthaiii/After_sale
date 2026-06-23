@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loader2 } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -107,6 +107,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     const [isPreviewDraft, setIsPreviewDraft] = useState(false); // ✅ Distinguish between Draft and Submit
     const [isUploading, setIsUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false); // ✅ Fix: Lock button during submission
+
+    // Refs to track initialization state across renders (avoid race condition with async subcollection loading)
+    const prevIsOpenRef = useRef(false);
+    const groupsLoadedRef = useRef<{ id: string; filled: boolean } | null>(null);
     const [showProjectError, setShowProjectError] = useState(false); // ✅ Track missing project error
     // Actually, I'll use a simpler approach with state to track which item is being uploaded
     const [uploadTarget, setUploadTarget] = useState<{ groupId: string, itemId: string } | null>(null);
@@ -138,30 +142,51 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
     // Update type when prop changes or modal opens
     useEffect(() => {
-        if (isOpen) {
-            setStep('form'); // Reset to form step when opening
-            setIsPreviewDraft(false); // Reset preview mode
-            if (editWorkOrder) {
-                // ✅ Edit Mode: Load existing data
-                setFormState({
-                    projectId: editWorkOrder.projectId,
-                    reporterName: editWorkOrder.reporterName,
-                    reporterPhone: editWorkOrder.reporterPhone,
-                    reportDate: editWorkOrder.reportDate || new Date().toISOString().split('T')[0],
-                    location: editWorkOrder.locationName,
-                    building: editWorkOrder.building || '',
-                    floor: editWorkOrder.floor || '',
-                    room: editWorkOrder.room || '',
-                    description: editWorkOrder.initialProblem || '',
-                    type: editWorkOrder.type,
-                    id: editWorkOrder.id
-                });
-                // Map Categories back to Groups
-                setGroups((editWorkOrder.categories || []).map(cat => ({
+        const justOpened = isOpen && !prevIsOpenRef.current;
+        prevIsOpenRef.current = isOpen;
+
+        if (!isOpen) {
+            groupsLoadedRef.current = null;
+            return;
+        }
+
+        // Reset step/preview only on first open — not on every subcollection update
+        if (justOpened) {
+            setStep('form');
+            setIsPreviewDraft(false);
+        }
+
+        if (editWorkOrder) {
+            // Always sync form fields (non-disruptive)
+            setFormState({
+                projectId: editWorkOrder.projectId,
+                reporterName: editWorkOrder.reporterName,
+                reporterPhone: editWorkOrder.reporterPhone,
+                reportDate: editWorkOrder.reportDate || new Date().toISOString().split('T')[0],
+                location: editWorkOrder.locationName,
+                building: editWorkOrder.building || '',
+                floor: editWorkOrder.floor || '',
+                room: editWorkOrder.room || '',
+                description: editWorkOrder.initialProblem || '',
+                type: editWorkOrder.type,
+                id: editWorkOrder.id
+            });
+
+            const cats = editWorkOrder.categories || [];
+            const woid = editWorkOrder.id;
+            const loaded = groupsLoadedRef.current;
+            const isDifferentWO = !loaded || loaded.id !== woid;
+            // subcollections just arrived: we loaded this WO before but got empty, now has data
+            const wasEmptyNowFilled = loaded?.id === woid && !loaded.filled && cats.length > 0;
+
+            if (isDifferentWO || wasEmptyNowFilled) {
+                groupsLoadedRef.current = { id: woid, filled: cats.length > 0 };
+                // Map Categories → Groups with photo fallback chain
+                setGroups(cats.map(cat => ({
                     id: cat.id,
                     category: cat.name,
                     items: (cat.tasks || []).map(task => ({
-                        ...task, // Preserve ALL fields...
+                        ...task,
                         id: task.id,
                         position: task.position || '',
                         detail: task.name,
@@ -179,24 +204,25 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         ).filter(url => url && typeof url === 'string') as string[]))
                     }))
                 })));
-            } else {
-                // New Mode: Reset
-                setFormState(prev => ({
-                    ...prev,
-                    type: initialWorkType,
-                    description: '',
-                    reporterName: user?.name || '',
-                    reporterPhone: '',
-                    projectId: '',
-                    location: locationName,
-                    id: `WO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}` // ✅ Proper reset
-                }));
-                setGroups([{
-                    id: crypto.randomUUID(),
-                    category: CATEGORIES_LIST[0],
-                    items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
-                }]);
             }
+            // else: same WO already loaded with data → don't overwrite user's in-progress edits
+        } else if (justOpened) {
+            // New WO — only reset on first open
+            setFormState(prev => ({
+                ...prev,
+                type: initialWorkType,
+                description: '',
+                reporterName: user?.name || '',
+                reporterPhone: '',
+                projectId: '',
+                location: locationName,
+                id: `WO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`
+            }));
+            setGroups([{
+                id: crypto.randomUUID(),
+                category: CATEGORIES_LIST[0],
+                items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
+            }]);
         }
     }, [isOpen, initialWorkType, user?.name, editWorkOrder]);
 
