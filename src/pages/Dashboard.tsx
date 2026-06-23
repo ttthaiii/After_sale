@@ -833,6 +833,8 @@ const Dashboard = () => {
     const [statusFilters] = useState<string[]>([]);
     const [viewMode, setViewMode] = useState(isAdminOrManager ? 'insights' : 'operations');
     const [selectedForemanId, setSelectedForemanId] = useState<string | null>(null);
+    const [taskCatFilter, setTaskCatFilter] = useState<string>('');
+    const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
 
     const activeForemen = useMemo(() => {
         const foremanIdsWithWork = new Set<string>();
@@ -1069,15 +1071,22 @@ const Dashboard = () => {
     // ✅ Phase 1: Flat-map tasks for Task-Centric Dashboard
     const flatTasks = useMemo(() => {
         const tasks: any[] = [];
+        const _isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver' || (user?.role as any) === 'BackOffice';
         const matchesUser = (id: string) => {
             if (!user) return false;
+            // Admin viewing a specific foreman → match selected foreman's ID
+            if (_isAdminOrManager && selectedForemanId) return id === selectedForemanId;
+            // Admin with only project filter → show all tasks
+            if (_isAdminOrManager) return true;
             return id === user.id || (user.employeeId && id === user.employeeId);
         };
 
         filteredData.forEach((wo: any) => {
             wo.categories?.forEach((cat: any) => {
                 cat.tasks?.forEach((task: any) => {
-                    const isResponsible = task.responsibleStaffIds?.some((id: string) => matchesUser(id));
+                    const isResponsible = _isAdminOrManager
+                        ? (task.responsibleStaffIds?.some((id: string) => matchesUser(id)) || (!selectedForemanId && task.responsibleStaffIds?.length >= 0))
+                        : task.responsibleStaffIds?.some((id: string) => matchesUser(id));
 
                     // Show only tasks where this user is directly responsible
                     if (isResponsible) {
@@ -1101,7 +1110,28 @@ const Dashboard = () => {
             if (a.woId !== b.woId) return a.woId.localeCompare(b.woId);
             return (a.name || '').localeCompare(b.name || '');
         });
-    }, [filteredData, user, projects]);
+    }, [filteredData, user, projects, selectedForemanId]);
+
+    const getTaskDisplayStatus = (t: any): string => {
+        if (t.status === 'Completed' && t.evaluationStatus === 'Assigned') return 'รอลูกค้าประเมิน';
+        const p = t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0);
+        if (p === 100 || t.status === 'Completed' || t.status === 'Verified') return 'เสร็จสมบูรณ์';
+        if (p > 0) return 'กำลังดำเนินการ';
+        return 'ยังไม่เริ่ม';
+    };
+    const taskCatOptions = useMemo(() => {
+        const base = taskStatusFilter ? flatTasks.filter((t: any) => getTaskDisplayStatus(t) === taskStatusFilter) : flatTasks;
+        return Array.from(new Set(base.map((t: any) => t.categoryName).filter(Boolean))).sort() as string[];
+    }, [flatTasks, taskStatusFilter]);
+    const taskStatusOptions = useMemo(() => {
+        const base = taskCatFilter ? flatTasks.filter((t: any) => t.categoryName === taskCatFilter) : flatTasks;
+        return Array.from(new Set(base.map((t: any) => getTaskDisplayStatus(t)))).sort() as string[];
+    }, [flatTasks, taskCatFilter]);
+    const filteredFlatTasks = useMemo(() => flatTasks.filter((t: any) => {
+        if (taskCatFilter && t.categoryName !== taskCatFilter) return false;
+        if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
+        return true;
+    }), [flatTasks, taskCatFilter, taskStatusFilter]);
 
     // Comparison Dashboard specific broad filtering
     const comparisonFilteredData = useMemo(() => {
@@ -1275,17 +1305,31 @@ const Dashboard = () => {
                             foremanAggregation[fId].taskCount++;
                         });
 
+                        const isCurrentUserTask = isAdminOrManager
+                            ? true
+                            : foremanIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+
+                        if (!isCurrentUserTask) {
+                            if (isSlaMet) projectAggregation[pId].slaMet++;
+                            projectAggregation[pId].taskCount++;
+                            return;
+                        }
+
                         const latestNote = history.filter((h: any) => h.notes).slice(-1)[0]?.notes || t.notes || '';
 
                         projectAggregation[pId].cases.push({
                             id: wo.id.slice(-6),
                             fullId: wo.id,
+                            label: `${wo.id.slice(-6)} · ${(t.name || c.name || '').slice(0, 12)}`,
                             taskName: t.name,
                             categoryName: c.name,
                             total: duration,
                             work: workDays * 8,
                             actualManHours: workHours,
                             target: limit,
+                            calendarDays: calendarHours / 24,
+                            targetDays: limit / 24,
+                            workDays: workDays,
                             ratio: duration / limit * 100,
                             deviation: 100 - (duration / limit * 100),
                             workRatio: workDays * 8 / limit * 100,
@@ -1296,9 +1340,14 @@ const Dashboard = () => {
                     }
 
                     const catName = t.rootCause || c.name || "ทั่วไป";
-                    if (!categoryAggregation[catName]) categoryAggregation[catName] = { name: catName, count: 0, cost: 0, hours: 0, projects: {} };
-                    categoryAggregation[catName].count++;
-                    categoryAggregation[catName].projects[pId] = (categoryAggregation[catName].projects[pId] || 0) + 1;
+                    const taskResponsibleIds = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                    const isMyTask = isAdminOrManager || taskResponsibleIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+
+                    if (isMyTask) {
+                        if (!categoryAggregation[catName]) categoryAggregation[catName] = { name: catName, count: 0, cost: 0, hours: 0, projects: {} };
+                        categoryAggregation[catName].count++;
+                        categoryAggregation[catName].projects[pId] = (categoryAggregation[catName].projects[pId] || 0) + 1;
+                    }
 
                     history.forEach((h: any) => {
                         const currP = h.progress || 0;
@@ -1310,20 +1359,23 @@ const Dashboard = () => {
                             dailyAggregation[dStr].delta += d;
                             projectAggregation[pId].delta += d;
 
-                            (h.labor || []).forEach((lab: any) => {
-                                let labHrs = 0;
-                                if (lab.shifts) {
-                                    if (lab.shifts.normal) labHrs += 8;
-                                    if (lab.shifts.otMorning) labHrs += 2;
-                                    if (lab.shifts.otNoon) labHrs += 1;
-                                    if (lab.shifts.otEvening) labHrs += 3;
-                                } else {
-                                    labHrs = lab.timeType === 'Normal' ? 8 : 2;
-                                }
-                                const cost = labHrs * (lab.amount || 1) * (lab.membership === 'Internal' ? internalRate : outsourceRate);
-                                categoryAggregation[catName].cost += cost;
-                                categoryAggregation[catName].hours += labHrs * (lab.amount || 1);
-                            });
+                            if (isMyTask) {
+                                (h.labor || []).forEach((lab: any) => {
+                                    let labHrs = 0;
+                                    if (lab.shifts) {
+                                        if (lab.shifts.normal) labHrs += 8;
+                                        if (lab.shifts.otMorning) labHrs += 2;
+                                        if (lab.shifts.otNoon) labHrs += 1;
+                                        if (lab.shifts.otEvening) labHrs += 3;
+                                    } else {
+                                        labHrs = lab.timeType === 'Normal' ? 8 : 2;
+                                    }
+                                    const cost = labHrs * (lab.amount || 1) * (lab.membership === 'Internal' ? internalRate : outsourceRate);
+                                    if (!categoryAggregation[catName]) categoryAggregation[catName] = { name: catName, count: 0, cost: 0, hours: 0, projects: {} };
+                                    categoryAggregation[catName].cost += cost;
+                                    categoryAggregation[catName].hours += labHrs * (lab.amount || 1);
+                                });
+                            }
                         }
                         lastP = currP;
                     });
@@ -1393,6 +1445,9 @@ const Dashboard = () => {
             // ✅ Count tasks instead of Work Orders for project statistics
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
+                    const tResponsible = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                    const isMineTask = isAdminOrManager || tResponsible.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+                    if (!isMineTask) return;
                     projectsMap[pId].total++;
                     const isTaskCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
                     if (isTaskCompleted) {
@@ -1404,9 +1459,13 @@ const Dashboard = () => {
                     }
                 });
 
+                const myTasks = (c.tasks || []).filter((t: any) => {
+                    const tResponsible = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                    return isAdminOrManager || tResponsible.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+                });
                 if (!projectsMap[pId].categories[c.name]) projectsMap[pId].categories[c.name] = { name: c.name, total: 0, completed: 0, slaMet: 0, stalled: 0 };
-                projectsMap[pId].categories[c.name].total += (c.tasks || []).length;
-                projectsMap[pId].categories[c.name].completed += (c.tasks || []).filter((t: any) => t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified').length;
+                projectsMap[pId].categories[c.name].total += myTasks.length;
+                projectsMap[pId].categories[c.name].completed += myTasks.filter((t: any) => t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified').length;
             });
 
             const isWOCompleted = isWorkOrderCompleted(wo);
@@ -1441,6 +1500,8 @@ const Dashboard = () => {
             const taskMapByDate: any = {};
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
+                    const tResp = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                    if (!isAdminOrManager && !tResp.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId))) return;
                     (t.history || []).forEach((log: any) => {
                         let dateStr = '';
                         if (log.date) {
@@ -1627,6 +1688,48 @@ const Dashboard = () => {
         });
         return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a: any, b: any) => b.value - a.value).slice(0, 5);
     }, [filteredData]);
+
+    const [catSort, setCatSort] = useState<'count' | 'fast' | 'rev'>('count');
+
+    const smartCategoryData = useMemo(() => {
+        const map: Record<string, { count: number; totalDays: number; completedCount: number; totalRev: number }> = {};
+        filteredData.forEach((wo: any) => {
+            (wo.categories || []).forEach((c: any) => {
+                const name = c.name || 'ไม่ระบุ';
+                (c.tasks || []).forEach((t: any) => {
+                    const tResp = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                    const isMine = isAdminOrManager || tResp.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+                    if (!isMine) return;
+                    const isWaitingEval = t.status === 'Completed' && t.evaluationStatus === 'Assigned';
+                    const isDone = !isWaitingEval && (t.status === 'Completed' || t.status === 'Verified' || t.dailyProgress === 100);
+                    if (!isDone) return;
+                    if (!map[name]) map[name] = { count: 0, totalDays: 0, completedCount: 0, totalRev: 0 };
+                    map[name].count++;
+                    const revCount = t.currentRevision ? parseInt(String(t.currentRevision).replace(/[^0-9]/g, '')) || 0 : 0;
+                    map[name].totalRev += revCount;
+                    const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                    const startMs = t.startDate ? new Date(t.startDate).getTime() : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
+                    const last = history[history.length - 1];
+                    if (last) {
+                        const days = (new Date(last.date).getTime() - startMs) / 86400000;
+                        map[name].totalDays += Math.max(0, days);
+                        map[name].completedCount++;
+                    }
+                });
+            });
+        });
+        const arr = Object.entries(map).map(([name, d]) => ({
+            name,
+            count: d.count,
+            avgDays: d.completedCount > 0 ? +(d.totalDays / d.completedCount).toFixed(1) : null,
+            totalRev: d.totalRev,
+            avgRev: d.count > 0 ? +(d.totalRev / d.count).toFixed(1) : 0,
+        }));
+        if (catSort === 'count') return arr.sort((a, b) => b.count - a.count).slice(0, 6);
+        if (catSort === 'fast') return arr.filter(x => x.avgDays !== null).sort((a: any, b: any) => a.avgDays - b.avgDays).slice(0, 6);
+        return arr.sort((a, b) => b.avgRev - a.avgRev).slice(0, 6);
+    }, [filteredData, catSort, isAdminOrManager, user]);
+
 
     const timelineData = useMemo(() => {
         const [year, monthNum] = selectedMonth.split('-').map(Number);
@@ -2639,7 +2742,7 @@ const Dashboard = () => {
                                 {/* Overview: Project Cards — แทน deviation chart */}
                                 {!(selectedSCurveProject || drillDownProject) && (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
-                                        {stats.laborByProject.map((p: any) => {
+                                        {stats.laborByProject.filter((p: any) => p.taskCount > 0).map((p: any) => {
                                             const sla = p.slaScore ?? 100;
                                             const slaColor = sla >= 80 ? '#10b981' : sla >= 50 ? '#f59e0b' : '#ef4444';
                                             const slaBg = sla >= 80 ? '#ecfdf5' : sla >= 50 ? '#fffbeb' : '#fef2f2';
@@ -2659,7 +2762,7 @@ const Dashboard = () => {
                                                     <div>
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                                                             <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>SLA ทันกำหนด</span>
-                                                            <span style={{ fontSize: '0.75rem', color: slaColor, fontWeight: 800 }}>{onTime} / {p.taskCount ?? 0} งาน</span>
+                                                            <span style={{ fontSize: '0.75rem', color: slaColor, fontWeight: 800 }}>{onTime} งาน</span>
                                                         </div>
                                                         <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
                                                             <div style={{ height: '100%', width: `${sla}%`, background: `linear-gradient(90deg, ${slaColor}88, ${slaColor})`, borderRadius: '4px' }} />
@@ -2703,7 +2806,7 @@ const Dashboard = () => {
                                         >
                                             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                                             <XAxis type="number" axisLine={false} tickLine={false} orientation="top" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} domain={[-maxDev, maxDev]} ticks={devTicks} tickFormatter={(v) => v === 0 ? '0' : v > 0 ? `+${v}%` : `${v}%`} />
-                                            <YAxis dataKey={(selectedSCurveProject || drillDownProject) ? 'id' : 'name'} type="category" axisLine={false} tickLine={false} tick={{ fill: '#1e293b', fontSize: 11, fontWeight: 700 }} width={140} />
+                                            <YAxis dataKey={(selectedSCurveProject || drillDownProject) ? 'label' : 'name'} type="category" axisLine={false} tickLine={false} tick={{ fill: '#1e293b', fontSize: 11, fontWeight: 700 }} width={160} />
                                             <Tooltip
                                                 content={(props: any) => {
                                                     const { active, payload } = props;
@@ -2756,20 +2859,20 @@ const Dashboard = () => {
                                                                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
                                                                     <div style={rowStyle}>
                                                                         <span style={labelStyle}>เป้าหมาย (SLA):</span>
-                                                                        <span style={valueStyle}>{data.target?.toFixed(0)} ชม.</span>
+                                                                        <span style={valueStyle}>{(data.targetDays ?? data.target / 24).toFixed(0)} วัน</span>
                                                                     </div>
                                                                     <div style={{ ...rowStyle, borderTop: '1px solid #edf2f7', paddingTop: '8px' }}>
-                                                                        <span style={labelStyle}>เวลาที่ใช้ทั้งหมด:</span>
+                                                                        <span style={labelStyle}>ใช้จริง (วันปฏิทิน):</span>
                                                                         <div style={{ textAlign: 'right' }}>
-                                                                            <span style={{ ...valueStyle, color: isDelayed ? '#ef4444' : '#1e293b' }}>{data.total?.toFixed(1)} ชม.</span>
+                                                                            <span style={{ ...valueStyle, color: isDelayed ? '#ef4444' : '#1e293b' }}>{(data.calendarDays ?? data.total / 24).toFixed(1)} วัน</span>
                                                                             <span style={{ fontSize: '10px', color: isDelayed ? '#f87171' : '#60a5fa', display: 'block', fontWeight: 800 }}>
                                                                                 ({Math.abs(dev).toFixed(0)}% {isDelayed ? 'ช้ากว่าเป้า' : 'เร็วกว่าเป้า'})
                                                                             </span>
                                                                         </div>
                                                                     </div>
                                                                     <div style={{ ...rowStyle, borderTop: '1px solid #edf2f7', paddingTop: '8px', marginBottom: 0 }}>
-                                                                        <span style={{ ...labelStyle, color: '#4f46e5' }}>เวลาทำงานจริง (Daily):</span>
-                                                                        <span style={{ ...valueStyle, color: '#4f46e5', fontSize: '15px' }}>{data.actualManHours?.toFixed(1)} ชม.</span>
+                                                                        <span style={{ ...labelStyle, color: '#64748b' }}>วันทำงาน / ชม. รวม:</span>
+                                                                        <span style={{ ...valueStyle, color: '#64748b', fontSize: '12px' }}>{data.workDays ?? '-'} วัน / {data.actualManHours?.toFixed(1)} ชม.</span>
                                                                     </div>
                                                                 </div>
 
@@ -3068,23 +3171,65 @@ const Dashboard = () => {
 
                             {/* Bottom Grid: Category + Project Track + Job Details + Executive Summary */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
-                                    <SectionHeader title="งานที่รับผิดชอบแยกตามหมวด" icon={<BarChart3 size={20} />} subtitle="หมวดงานที่ทำมากสุด — ใช้ติดตามปัญหาซ้ำและวิเคราะห์ต้นเหตุ" />
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        {categoryData.map((cat: any, idx: number) => (
-                                            <div key={cat.name} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                                <div style={{ width: '40px', fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8' }}>#{idx + 1}</div>
-                                                <div style={{ flex: 1 }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>{cat.name} </span>
-                                                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#4f46e5' }}>{cat.value} งาน</span>
+                                <div style={{ background: '#fff', padding: '1.75rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                                        <SectionHeader title="งานที่รับผิดชอบแยกตามหมวด" icon={<BarChart3 size={20} />} subtitle="หมวดงานที่ทำมากสุด — ใช้ติดตามปัญหาซ้ำและวิเคราะห์ต้นเหตุ" />
+                                        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px', gap: '2px', flexShrink: 0 }}>
+                                            {([['count', 'จำนวน'], ['fast', 'จบเร็ว'], ['rev', 'REV']] as const).map(([key, label]) => (
+                                                <button key={key} onClick={() => setCatSort(key)} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '5px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: catSort === key ? '#fff' : 'transparent', color: catSort === key ? '#4f46e5' : '#94a3b8', boxShadow: catSort === key ? '0 1px 3px rgba(0,0,0,0.10)' : 'none', transition: 'all 0.18s' }}>{label}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {(() => {
+                                            const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+                                            const BGS    = ['#eef2ff', '#e0f2fe', '#dcfce7', '#fef3c7', '#ede9fe', '#fee2e2'];
+                                            const maxCount = smartCategoryData[0]?.count || 1;
+                                            const maxRev   = Math.max(...smartCategoryData.map((c: any) => c.avgRev || 0), 0.001);
+                                            const fastItems = smartCategoryData.filter((c: any) => c.avgDays !== null);
+                                            const maxDays  = Math.max(...fastItems.map((c: any) => c.avgDays), 0.001);
+                                            const minDays  = Math.min(...fastItems.map((c: any) => c.avgDays), 0);
+                                            return smartCategoryData.map((cat, idx) => {
+                                                const color = COLORS[idx] || '#94a3b8';
+                                                const bgc   = BGS[idx]   || '#f1f5f9';
+                                                const barPct = catSort === 'count'
+                                                    ? (cat.count / maxCount) * 100
+                                                    : catSort === 'rev'
+                                                    ? ((cat as any).avgRev / maxRev) * 100
+                                                    : cat.avgDays !== null
+                                                    ? (maxDays - minDays > 0 ? (1 - (cat.avgDays! - minDays) / (maxDays - minDays)) * 100 : 100)
+                                                    : 5;
+                                                const badge = catSort === 'fast' && cat.avgDays !== null
+                                                    ? `จบใน ${cat.avgDays} วัน`
+                                                    : catSort === 'rev'
+                                                    ? `เฉลี่ย ${(cat as any).avgRev} REV/งาน`
+                                                    : `${cat.count} งาน`;
+                                                const isSelected = taskCatFilter === cat.name;
+                                                const isOtherSelected = taskCatFilter !== '' && !isSelected;
+                                                return (
+                                                    <div key={cat.name}
+                                                        onClick={() => setTaskCatFilter(isSelected ? '' : cat.name)}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '12px', background: isSelected ? bgc : '#fafafa', border: `1px solid ${isSelected ? color + '60' : '#f1f5f9'}`, transition: 'all 0.18s', cursor: 'pointer', opacity: isOtherSelected ? 0.4 : 1 }}
+                                                        onMouseOver={e => { if (!isSelected) { e.currentTarget.style.background = bgc; e.currentTarget.style.borderColor = color + '40'; } }}
+                                                        onMouseOut={e => { if (!isSelected) { e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.borderColor = '#f1f5f9'; } }}
+                                                    >
+                                                        <div style={{ width: '26px', height: '26px', borderRadius: '8px', background: isSelected || idx === 0 ? color : bgc, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: isSelected || idx === 0 ? '#fff' : color }}>{idx + 1}</span>
+                                                        </div>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                                <span style={{ fontSize: '0.83rem', fontWeight: isSelected ? 700 : 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '65%' }}>{cat.name}</span>
+                                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color, flexShrink: 0 }}>{badge}</span>
+                                                            </div>
+                                                            <div style={{ height: '5px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
+                                                                <div style={{ width: `${Math.max(barPct, 4)}%`, height: '100%', background: color, borderRadius: '99px', transition: 'width 0.45s ease' }} />
+                                                            </div>
+                                                        </div>
+                                                        {isSelected && <div style={{ fontSize: '0.68rem', fontWeight: 700, color, background: color + '18', padding: '2px 8px', borderRadius: '99px', flexShrink: 0 }}>✕</div>}
                                                     </div>
-                                                    <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                                                        <div style={{ width: `${(cat as any).value / ((categoryData[0] as any)?.value || 1) * 100}%`, height: '100%', background: '#4f46e5', borderRadius: '4px' }} />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
+                                                );
+                                            });
+                                        })()}
                                     </div>
                                 </div>
 
@@ -3144,7 +3289,22 @@ const Dashboard = () => {
 
                                 {/* Job Performance Details */}
                                 <div id="job-details-section" className={highlightedSection === 'job-details-section' ? 'section-highlight' : ''} style={{ gridColumn: '1/-1', background: '#ffffff', padding: '1.5rem 2rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
-                                    <SectionHeader title="รายละเอียดรายการงานที่ดำเนินการ (Task Performance Details)" icon={<Activity size={24} />} subtitle="รายการงานย่อยทั้งหมดที่คุณรับผิดชอบ แยกตามใบงานอ้างอิง" />
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                                        <SectionHeader title="รายละเอียดรายการงานที่ดำเนินการ (Task Performance Details)" icon={<Activity size={24} />} subtitle="รายการงานย่อยทั้งหมดที่คุณรับผิดชอบ แยกตามใบงานอ้างอิง" />
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                            <select value={taskCatFilter} onChange={e => setTaskCatFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskCatFilter ? '#eff6ff' : '#f8fafc', color: taskCatFilter ? '#2563eb' : '#64748b', cursor: 'pointer', outline: 'none' }}>
+                                                <option value="">หมวดงาน: ทั้งหมด</option>
+                                                {taskCatOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                            <select value={taskStatusFilter} onChange={e => setTaskStatusFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskStatusFilter ? '#f0fdf4' : '#f8fafc', color: taskStatusFilter ? '#059669' : '#64748b', cursor: 'pointer', outline: 'none' }}>
+                                                <option value="">สถานะ: ทั้งหมด</option>
+                                                {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                            </select>
+                                            {(taskCatFilter || taskStatusFilter) && (
+                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
+                                            )}
+                                        </div>
+                                    </div>
                                     <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '600px', overscrollBehavior: 'contain' }}>
                                         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                                             <thead>
@@ -3178,7 +3338,7 @@ const Dashboard = () => {
                                             <tbody>
                                                 {(() => {
                                                     let lastWoId = '';
-                                                    if (flatTasks.length === 0) {
+                                                    if (filteredFlatTasks.length === 0) {
                                                         return (
                                                             <tr>
                                                                 <td colSpan={14} style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8' }}>
@@ -3196,7 +3356,7 @@ const Dashboard = () => {
                                                         );
                                                     }
 
-                                                    return flatTasks.map((task: any, index: number) => {
+                                                    return filteredFlatTasks.map((task: any, index: number) => {
                                                         const showHeader = task.woId !== lastWoId;
                                                         lastWoId = task.woId;
                                                         const p = task.dailyProgress || 0;

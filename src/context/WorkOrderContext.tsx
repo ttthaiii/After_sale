@@ -249,6 +249,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
                             // Fetch daily reports from ALL revisions for parent task
                             for (const revDoc of revisionsSnap.docs) {
+                                const revData = revDoc.data();
                                 const reportsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
                                 for (const reportDoc of reportsSnap.docs) {
                                     const reportData = reportDoc.data();
@@ -258,7 +259,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                                             id: reportDoc.id,
                                             date: reportData.date || reportDoc.id,
                                             isSupportReport: false,
-                                            revisionId: revDoc.id
+                                            revisionId: revDoc.id,
+                                            revisionStatus: revData.status || null,
+                                            revisionRejectReason: revData.rejectReason || null,
+                                            revisionDefectCategories: revData.defectCategories || null,
+                                            revisionRejectedAt: revData.rejectedAt || null,
                                         } as unknown as DailyReport);
                                     }
                                 }
