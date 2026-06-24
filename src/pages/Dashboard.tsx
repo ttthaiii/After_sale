@@ -868,7 +868,6 @@ const Dashboard = () => {
     const hasAutoSelectedCategory = useRef(false);
     const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
     const [donutFilter, setDonutFilter] = useState<string | null>(null);
-    const [showInsightDetails, setShowInsightDetails] = useState(false);
 
     const getProjectName = (id: string) => projects.find((p: any) => p.id === id)?.name || id;
 
@@ -1128,10 +1127,11 @@ const Dashboard = () => {
         return Array.from(new Set(base.map((t: any) => getTaskDisplayStatus(t)))).sort() as string[];
     }, [flatTasks, taskCatFilter]);
     const filteredFlatTasks = useMemo(() => flatTasks.filter((t: any) => {
+        if (highlightedWOId && t.woId !== highlightedWOId) return false;
         if (taskCatFilter && t.categoryName !== taskCatFilter) return false;
         if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
         return true;
-    }), [flatTasks, taskCatFilter, taskStatusFilter]);
+    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter]);
 
     // Comparison Dashboard specific broad filtering
     const comparisonFilteredData = useMemo(() => {
@@ -1612,6 +1612,122 @@ const Dashboard = () => {
     const stats = useMemo<DashboardStats>(() => getDashboardStats(filteredData), [getDashboardStats, filteredData]);
     const comparisonStats = useMemo<DashboardStats>(() => getDashboardStats(comparisonFilteredData), [getDashboardStats, comparisonFilteredData]);
 
+    // Health cards use baseAccessibleWOs so ALL projects remain visible when a project filter is active
+    const healthCardProjects = useMemo(() => {
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const startOfMonth = new Date(year, month - 1, 1).getTime();
+        const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+        const slaHoursMap: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+        const now = Date.now();
+        const projectAgg: Record<string, { id: string; name: string; cases: any[] }> = {};
+
+        baseAccessibleWOs
+            .filter((wo: any) => {
+                const created = new Date(wo.createdAt).getTime();
+                return created >= startOfMonth && created <= endOfMonth;
+            })
+            .forEach((wo: any) => {
+                const pId = wo.projectId;
+                if (!pId) return;
+                if (!projectAgg[pId]) projectAgg[pId] = { id: pId, name: getProjectName(pId), cases: [] };
+                const woSlaStart = wo.createdAt ? new Date(wo.createdAt).getTime() : now;
+                (wo.categories || []).forEach((c: any) => {
+                    (c.tasks || []).forEach((t: any) => {
+                        const isCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
+                        if (!isCompleted) return;
+                        const limit = slaHoursMap[t.slaCategory || '24h'] || 24;
+                        const start = t.startDate
+                            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                            : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woSlaStart);
+                        const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        const lastUpdate = history[history.length - 1];
+                        const end = lastUpdate ? new Date(lastUpdate.date).getTime() : now;
+                        const workHours = history.reduce((acc: number, h: any) => {
+                            let hTotal = 0;
+                            (h.labor || []).forEach((lab: any) => {
+                                let hrs = lab.shifts
+                                    ? (lab.shifts.normal ? 8 : 0) + (lab.shifts.otMorning ? 2 : 0) + (lab.shifts.otNoon ? 1 : 0) + (lab.shifts.otEvening ? 3 : 0)
+                                    : (lab.timeType === 'Normal' ? 8 : 2);
+                                hTotal += hrs * (lab.amount || 1);
+                            });
+                            return acc + hTotal;
+                        }, 0);
+                        const calendarHours = (end - start) / 3600000;
+                        const duration = Math.max(calendarHours, workHours);
+                        const foremanIds = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                        const isCurrentUserTask = isAdminOrManager
+                            ? true
+                            : foremanIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+                        if (!isCurrentUserTask) return;
+                        const workDays = new Set(history.map((h: any) => h.date.split('T')[0])).size;
+                        projectAgg[pId].cases.push({
+                            id: wo.id.slice(-6), fullId: wo.id,
+                            label: `${wo.id.slice(-6)} · ${(t.name || c.name || '').slice(0, 12)}`,
+                            total: duration, calendarDays: calendarHours / 24, targetDays: limit / 24,
+                            workDays, ratio: duration / limit * 100, deviation: 100 - (duration / limit * 100),
+                        });
+                    });
+                });
+            });
+
+        return Object.values(projectAgg).filter((p: any) => p.cases.length > 0);
+    }, [baseAccessibleWOs, selectedMonth, getProjectName, isAdminOrManager, user]);
+
+    const projectTrend = useMemo(() => {
+        const SLA_MAP: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+        const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+        const months: string[] = [];
+        for (let i = 3; i >= 0; i--) {
+            let m = selMonth - i; let y = selYear;
+            while (m <= 0) { m += 12; y--; }
+            months.push(`${y}-${String(m).padStart(2, '0')}`);
+        }
+        const byMonth: Record<string, Record<string, { met: number; total: number }>> = {};
+        months.forEach(m => { byMonth[m] = {}; });
+
+        allAccessibleWOs.forEach((wo: any) => {
+            const pId = wo.projectId || 'unknown';
+            const woStart = wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now();
+            (wo.categories || []).forEach((c: any) => {
+                (c.tasks || []).forEach((t: any) => {
+                    const foremanIds: string[] = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
+                    const isMyTask = isAdminOrManager || foremanIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
+                    if (!isMyTask) return;
+                    const isDone = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
+                    const isWaiting = t.status === 'Completed' && t.evaluationStatus === 'Assigned';
+                    if (!isDone || isWaiting) return;
+                    const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                    const last = history[history.length - 1];
+                    if (!last) return;
+                    const endMs = new Date(last.date).getTime();
+                    const taskMonth = `${new Date(endMs).getFullYear()}-${String(new Date(endMs).getMonth() + 1).padStart(2, '0')}`;
+                    if (!byMonth[taskMonth]) return;
+                    const limit = SLA_MAP[t.slaCategory || '24h'] || 24;
+                    const startMs = t.startDate
+                        ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                        : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woStart);
+                    const calHours = (endMs - startMs) / 3600000;
+                    const isSlaMet = calHours <= limit;
+                    if (!byMonth[taskMonth][pId]) byMonth[taskMonth][pId] = { met: 0, total: 0 };
+                    byMonth[taskMonth][pId].total++;
+                    if (isSlaMet) byMonth[taskMonth][pId].met++;
+                });
+            });
+        });
+
+        const trend: Record<string, number[]> = {};
+        months.forEach((m, idx) => {
+            Object.entries(byMonth[m]).forEach(([pId]) => {
+                if (!trend[pId]) trend[pId] = Array(months.length).fill(-1);
+            });
+            Object.keys(trend).forEach(pId => {
+                const d = byMonth[m][pId];
+                trend[pId][idx] = d ? (d.total > 0 ? Math.round(d.met / d.total * 100) : -1) : trend[pId][idx];
+            });
+        });
+        return { months, trend };
+    }, [selectedMonth, allAccessibleWOs, isAdminOrManager, user]);
+
     // Auto-select first non-empty category on data load (runs once)
     useEffect(() => {
         if (hasAutoSelectedCategory.current) return;
@@ -1790,9 +1906,10 @@ const Dashboard = () => {
     }, [allAccessibleWOs, selectedMonth, selectedWeek, highlightedWOId]);
 
     const sCurveData = useMemo(() => {
-        if (!selectedSCurveProject || !selectedMonth || allAccessibleWOs.length === 0) return [];
         const [year, monthNum] = selectedMonth.split('-').map(Number);
         const daysInMonth = new Date(year, monthNum, 0).getDate();
+        const mkSkeleton = () => Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, manpower: null as any, slaOk: null as any, slaRisk: null as any, slaBreach: null as any, hasHighlight: false }));
+        if (!selectedSCurveProject || !selectedMonth || allAccessibleWOs.length === 0) return mkSkeleton();
         const startOfMonthTime = new Date(year, monthNum - 1, 1).getTime();
         const endOfMonthTime = new Date(year, monthNum, 0, 23, 59, 59).getTime();
 
@@ -1804,48 +1921,71 @@ const Dashboard = () => {
             (!wo.completedAt || new Date(wo.completedAt).getTime() >= startOfMonthTime)
         );
 
-        if (projectWOs.length === 0) return [];
+        if (projectWOs.length === 0) return mkSkeleton();
 
-        let baselineProgressSum = 0, totalPossibleProgress = 0;
-        projectWOs.forEach((wo: any) => {
-            (wo.categories || []).forEach((cat: any) => {
-                cat.tasks.forEach((task: any) => {
-                    if (task.status === 'Cancelled' || task.status === 'Rejected') return;
-                    totalPossibleProgress += 100;
-                    const history = [...(task.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                    const lastLogBeforeMonth = history.filter((h: any) => new Date(h.date).getTime() < startOfMonthTime).pop();
-                    baselineProgressSum += lastLogBeforeMonth ? lastLogBeforeMonth.progress || 0 : 0;
-                });
-            });
-        });
-
-        const potentialMonthlyGain = totalPossibleProgress - baselineProgressSum;
+        const slaHours: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+        const matchesUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
+        const viewingForeman = isAdminOrManager ? selectedForemanId : null;
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${monthNum.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
             const endOfDayTime = new Date(year, monthNum - 1, d, 23, 59, 59).getTime();
-            let dailyLabor = 0, currentProgressSum = 0, hasHighlightActivity = false;
+            let dailyLabor = 0, slaOk = 0, slaRisk = 0, slaBreach = 0, hasHighlightActivity = false;
+            const taskDetails: any[] = [];
             projectWOs.forEach((wo: any) => {
+                const woStart = wo.createdAt ? new Date(wo.createdAt).getTime() : endOfDayTime;
                 (wo.categories || []).forEach((cat: any) => {
                     cat.tasks.forEach((task: any) => {
                         if (task.status === 'Cancelled' || task.status === 'Rejected') return;
+                        const taskOwners: string[] = task.responsibleStaffIds || [];
+                        const isUserTask = viewingForeman
+                            ? taskOwners.includes(viewingForeman) || (!taskOwners.length && wo.reporterId === viewingForeman)
+                            : taskOwners.some((id: string) => matchesUid(id)) || (!taskOwners.length && matchesUid(wo.reporterId || ''));
+                        if (!isUserTask) return;
                         const history = task.history || [];
                         const logToday = history.find((h: any) => h.date.startsWith(dateStr));
                         if (logToday) {
-                            dailyLabor += (logToday.labor || []).reduce((lAcc: number, l: any) => lAcc + (l.amount || 0), 0);
+                            const todayLabor = (logToday.labor || []).reduce((lAcc: number, l: any) => lAcc + (l.amount || 0), 0);
+                            dailyLabor += todayLabor;
                             if (wo.id?.toString().trim() === highlightedWOId?.toString().trim()) hasHighlightActivity = true;
+                            const prevLog = history
+                                .filter((h: any) => new Date(h.date).getTime() < new Date(year, monthNum - 1, d).getTime())
+                                .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                            const progFrom = prevLog?.progress ?? 0;
+                            const progTo = logToday.progress ?? progFrom;
+                            const tLimit = slaHours[task.slaCategory || '24h'] || 24;
+                            const tStart = task.startDate
+                                ? new Date(`${task.startDate.split('T')[0]}T08:00:00`).getTime()
+                                : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : woStart);
+                            let slaStatus: 'ok' | 'risk' | 'breach' = 'ok';
+                            if (tStart <= endOfDayTime) {
+                                const elapsed = (endOfDayTime - tStart) / 3600000;
+                                if (elapsed > tLimit) slaStatus = 'breach';
+                                else if (elapsed > tLimit * 0.7) slaStatus = 'risk';
+                            }
+                            if (todayLabor > 0) taskDetails.push({ taskName: task.name || '—', woName: wo.locationName || `#${wo.id}`, progFrom, progTo, slaStatus, labor: todayLabor });
                         }
-                        const latestLogByDay = history.filter((h: any) => new Date(h.date).getTime() <= endOfDayTime).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                        currentProgressSum += latestLogByDay ? latestLogByDay.progress || 0 : 0;
+                        const latestLogByDay = history
+                            .filter((h: any) => new Date(h.date).getTime() <= endOfDayTime)
+                            .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                        const isDoneByDay = (latestLogByDay?.progress ?? 0) >= 100;
+                        if (isDoneByDay) return;
+                        const limit = slaHours[task.slaCategory || '24h'] || 24;
+                        const start = task.startDate
+                            ? new Date(`${task.startDate.split('T')[0]}T08:00:00`).getTime()
+                            : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : woStart);
+                        if (start > endOfDayTime) return;
+                        const elapsedHours = (endOfDayTime - start) / 3600000;
+                        if (elapsedHours > limit) slaBreach++;
+                        else if (elapsedHours > limit * 0.7) slaRisk++;
+                        else slaOk++;
                     });
                 });
             });
-            let currentActualRelative = potentialMonthlyGain > 0 ? Math.round((currentProgressSum - baselineProgressSum) / potentialMonthlyGain * 100) : 100;
-            currentActualRelative = Math.min(100, Math.max(0, currentActualRelative));
-            const idealProgress = Math.round(d / daysInMonth * 100);
-            dataArr.push({ day: d, manpower: dailyLabor, progress: currentActualRelative, ideal: idealProgress, hasHighlight: hasHighlightActivity });
+            const sortedDetails = [...taskDetails].sort((a, b) => { const o: any = {ok:0,risk:1,breach:2}; return o[a.slaStatus]-o[b.slaStatus]; });
+            dataArr.push({ day: d, manpower: dailyLabor, totalWorkedTasks: dailyLabor > 0 ? sortedDetails.length : null, slaOk: dailyLabor > 0 ? slaOk : null, slaRisk: dailyLabor > 0 ? slaRisk : null, slaBreach: dailyLabor > 0 ? slaBreach : null, hasHighlight: hasHighlightActivity, taskDetails: dailyLabor > 0 ? sortedDetails : [] });
         }
         return dataArr;
-    }, [allAccessibleWOs, selectedSCurveProject, selectedMonth, highlightedWOId]);
+    }, [allAccessibleWOs, selectedSCurveProject, selectedMonth, highlightedWOId, user, isAdminOrManager, selectedForemanId]);
 
     if (loading || !user) return (
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh', gap: '1rem', color: '#64748b' }}>
@@ -2689,300 +2829,6 @@ const Dashboard = () => {
                                 </div>
                             )}
 
-                            {/* SLA Analysis Section - MOVED TO TOP */}
-                            <div id="analytics-detail-section" className={highlightedSection === 'analytics-detail-section' ? 'section-highlight' : ''} style={{ background: '#ffffff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', marginBottom: '2.5rem', transition: 'all 0.5s' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                                    {(() => {
-                                        const isDetailMode = !!selectedSCurveProject || !!drillDownProject;
-                                        const detailName = selectedSCurveProject ? getProjectName(selectedSCurveProject) : drillDownProject;
-                                        return (
-                                            <>
-                                                <SectionHeader
-                                                    title={isDetailMode ? `เจาะลึก SLA: ${detailName} ${selectedSCurveProject ? '(ตามฟิลเตอร์)' : '(15 รายการล่าสุด)'}` : 'วิเคราะห์ประสิทธิภาพ SLA รายโครงการ (Project SLA Analysis)'}
-                                                    icon={<TrendingUp size={24} />}
-                                                    subtitle={isDetailMode ? `รายละเอียดใบงานและระดับความเบี่ยงเบน SLA ในไซต์ ${detailName}` : 'ร้อยละความสำเร็จตามกำหนด SLA เฉลี่ยของทุกประเภท (เป้าหมาย 100%)'}
-                                                />
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                                {drillDownProject && !selectedSCurveProject && (
-                                    <button onClick={() => setDrillDownProject(null)} style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 800, color: '#475569', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                        ← ย้อนกลับไปดูทุกโครงการ
-                                    </button>
-                                )}
-                                {selectedSCurveProject && (
-                                    <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#4f46e5', background: '#eff6ff', padding: '8px 16px', borderRadius: '12px', display: 'inline-block' }}>
-                                            ✨ กำลังแสดงรายละเอียดเจาะลึก: {getProjectName(selectedSCurveProject)}
-                                        </div>
-                                        <button
-                                            onClick={() => { setSelectedSCurveProject(''); setHighlightedWOId(null); }}
-                                            style={{ padding: '8px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 800, color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                            onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
-                                            onMouseOut={(e) => e.currentTarget.style.background = '#fff'}
-                                        >
-                                            <X size={14} /> ล้างฟิลเตอร์โครงการ
-                                        </button>
-
-                                        {highlightedWOId && (
-                                            <div style={{ padding: '8px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px', animation: 'pulse 2s infinite' }}>
-                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }}></div>
-                                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#92400e' }}>กำลังเน้นใบงาน: {highlightedWOId && highlightedWOId.includes('-') ? highlightedWOId.split('-').slice(-2).join('-') : (highlightedWOId || '-')}</span>
-                                                <button
-                                                    onClick={() => setHighlightedWOId(null)}
-                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#b45309', display: 'flex' }}
-                                                >
-                                                    <X size={14} />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                {/* Overview: Project Cards — แทน deviation chart */}
-                                {!(selectedSCurveProject || drillDownProject) && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
-                                        {stats.laborByProject.filter((p: any) => p.taskCount > 0).map((p: any) => {
-                                            const sla = p.slaScore ?? 100;
-                                            const slaColor = sla >= 80 ? '#10b981' : sla >= 50 ? '#f59e0b' : '#ef4444';
-                                            const slaBg = sla >= 80 ? '#ecfdf5' : sla >= 50 ? '#fffbeb' : '#fef2f2';
-                                            const onTime = Math.round(sla * (p.taskCount ?? 0) / 100);
-                                            return (
-                                                <div
-                                                    key={p.name}
-                                                    onClick={() => p.id ? setSelectedSCurveProject(p.id) : setDrillDownProject(p.name)}
-                                                    style={{ background: '#fff', border: `1.5px solid #e2e8f0`, borderRadius: '20px', padding: '1.25rem 1.5rem', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: '12px' }}
-                                                    onMouseOver={(e) => { e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = slaColor; }}
-                                                    onMouseOut={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
-                                                >
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                                                        <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b', lineHeight: 1.3, flex: 1 }}>{p.name}</div>
-                                                        <div style={{ background: slaBg, color: slaColor, fontWeight: 900, fontSize: '1.05rem', padding: '4px 10px', borderRadius: '10px', flexShrink: 0 }}>{sla}%</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                                            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>SLA ทันกำหนด</span>
-                                                            <span style={{ fontSize: '0.75rem', color: slaColor, fontWeight: 800 }}>{onTime} งาน</span>
-                                                        </div>
-                                                        <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                                                            <div style={{ height: '100%', width: `${sla}%`, background: `linear-gradient(90deg, ${slaColor}88, ${slaColor})`, borderRadius: '4px' }} />
-                                                        </div>
-                                                    </div>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid #f8fafc' }}>
-                                                        <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontWeight: 700 }}>คลิกดูรายใบงาน →</span>
-                                                        <span style={{ fontSize: '0.8rem', fontWeight: 900, color: slaColor }}>{sla >= 80 ? 'On Track' : sla >= 50 ? 'ระวัง' : 'ล่าช้า'}</span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                                {/* Drill-down: Deviation Chart (เดิม) */}
-                                {(selectedSCurveProject || drillDownProject) && (
-                                <div style={{ height: '400px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', border: '1px solid #f1f5f9', borderRadius: '12px' }}>
-                                    <ResponsiveContainer width="100%" height={(selectedSCurveProject || drillDownProject) ? '100%' : Math.max(stats.laborByProject.length * 50, 400)}>
-                                        <BarChart
-                                            data={(selectedSCurveProject || drillDownProject)
-                                                ? (stats.laborByProject.find((p: any) => p.id === selectedSCurveProject || p.name === drillDownProject)?.cases || [])
-                                                : stats.laborByProject}
-                                            layout="vertical"
-                                            margin={{ left: 40, right: 40, top: 70, bottom: 20 }}
-                                            barGap={-24}
-                                            style={{ cursor: 'pointer' }}
-                                            onClick={(state: any) => {
-                                                if (state && state.activePayload && state.activePayload.length > 0) {
-                                                    const data = state.activePayload[0].payload;
-                                                    if (selectedSCurveProject || drillDownProject) {
-                                                        const id = data.fullId || data.id;
-                                                        if (id) {
-                                                            setHighlightedWOId(highlightedWOId === id ? null : id);
-                                                        }
-                                                    } else {
-                                                        if (data.id) setSelectedSCurveProject(data.id);
-                                                        else if (data.name) setDrillDownProject(data.name);
-                                                    }
-                                                }
-                                            }}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                                            <XAxis type="number" axisLine={false} tickLine={false} orientation="top" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} domain={[-maxDev, maxDev]} ticks={devTicks} tickFormatter={(v) => v === 0 ? '0' : v > 0 ? `+${v}%` : `${v}%`} />
-                                            <YAxis dataKey={(selectedSCurveProject || drillDownProject) ? 'label' : 'name'} type="category" axisLine={false} tickLine={false} tick={{ fill: '#1e293b', fontSize: 11, fontWeight: 700 }} width={160} />
-                                            <Tooltip
-                                                content={(props: any) => {
-                                                    const { active, payload } = props;
-                                                    if (!active || !payload || !payload[0]) return null;
-                                                    const data = payload[0].payload;
-                                                    const isDetail = !!(selectedSCurveProject || drillDownProject);
-
-                                                    if (isDetail) {
-                                                        const dev = data.deviation || 0;
-                                                        const isDelayed = dev < 0;
-
-                                                        // Common Inline Styles for consistency
-                                                        const rowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' };
-                                                        const labelStyle: React.CSSProperties = { fontSize: '12px', color: '#64748b', fontWeight: 600 };
-                                                        const valueStyle: React.CSSProperties = { fontSize: '13px', color: '#1e293b', fontWeight: 800 };
-
-                                                        return (
-                                                            <div style={{
-                                                                background: '#ffffff',
-                                                                border: '1px solid #e2e8f0',
-                                                                padding: '20px',
-                                                                borderRadius: '16px',
-                                                                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-                                                                minWidth: '300px',
-                                                                zIndex: 1000
-                                                            }}>
-                                                                {/* Header */}
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
-                                                                    <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>เลขที่ใบงาน: {data.fullId || data.id}</span>
-                                                                    <span style={{
-                                                                        fontSize: '10px',
-                                                                        fontWeight: 900,
-                                                                        padding: '4px 10px',
-                                                                        borderRadius: '20px',
-                                                                        background: isDelayed ? '#fef2f2' : '#f0f9ff',
-                                                                        color: isDelayed ? '#ef4444' : '#0284c7',
-                                                                        border: `1px solid ${isDelayed ? '#fee2e2' : '#e0f2fe'}`
-                                                                    }}>
-                                                                        {isDelayed ? '⚠ ล่าช้า' : '✓ ปกติ'}
-                                                                    </span>
-                                                                </div>
-
-                                                                {/* Task Info */}
-                                                                <div style={{ marginBottom: '16px' }}>
-                                                                    <h4 style={{ margin: 0, fontSize: '15px', color: '#0f172a', fontWeight: 900, lineHeight: 1.4 }}>{data.taskName || 'งานไม่ระบุชื่อ'}</h4>
-                                                                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', fontWeight: 600 }}>หมวดหมู่: <span style={{ color: '#334155' }}>{data.categoryName || '-'}</span></div>
-                                                                </div>
-
-                                                                {/* Metrics Grid */}
-                                                                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-                                                                    <div style={rowStyle}>
-                                                                        <span style={labelStyle}>เป้าหมาย (SLA):</span>
-                                                                        <span style={valueStyle}>{(data.targetDays ?? data.target / 24).toFixed(0)} วัน</span>
-                                                                    </div>
-                                                                    <div style={{ ...rowStyle, borderTop: '1px solid #edf2f7', paddingTop: '8px' }}>
-                                                                        <span style={labelStyle}>ใช้จริง (วันปฏิทิน):</span>
-                                                                        <div style={{ textAlign: 'right' }}>
-                                                                            <span style={{ ...valueStyle, color: isDelayed ? '#ef4444' : '#1e293b' }}>{(data.calendarDays ?? data.total / 24).toFixed(1)} วัน</span>
-                                                                            <span style={{ fontSize: '10px', color: isDelayed ? '#f87171' : '#60a5fa', display: 'block', fontWeight: 800 }}>
-                                                                                ({Math.abs(dev).toFixed(0)}% {isDelayed ? 'ช้ากว่าเป้า' : 'เร็วกว่าเป้า'})
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div style={{ ...rowStyle, borderTop: '1px solid #edf2f7', paddingTop: '8px', marginBottom: 0 }}>
-                                                                        <span style={{ ...labelStyle, color: '#64748b' }}>วันทำงาน / ชม. รวม:</span>
-                                                                        <span style={{ ...valueStyle, color: '#64748b', fontSize: '12px' }}>{data.workDays ?? '-'} วัน / {data.actualManHours?.toFixed(1)} ชม.</span>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Notes */}
-                                                                {data.notes && (
-                                                                    <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px dotted #e2e8f0' }}>
-                                                                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 900, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>หมายเหตุจากหน้างาน:</span>
-                                                                        <p style={{ margin: 0, fontSize: '11px', color: '#475569', fontStyle: 'italic', lineHeight: 1.5 }}>"{data.notes}"</p>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    return (
-                                                        <div style={{ background: '#ffffff', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                                                            <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#1e293b', fontWeight: 800 }}>{data.name}</p>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
-                                                                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>SLA Performance:</span>
-                                                                <span style={{ fontSize: '14px', color: data.deviation < 0 ? '#ef4444' : '#10b981', fontWeight: 900 }}>
-                                                                    {data.deviation > 0 ? `+${Math.abs(data.deviation).toFixed(1)}%` : `${data.deviation.toFixed(1)}%`}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }}
-                                            />
-                                            <ReferenceLine x={0} stroke="#475569" strokeWidth={3}>
-                                                <Label value="มาตรฐาน SLA (On-Time)" position="top" offset={45} fill="#475569" fontSize={13} fontWeight={900} />
-                                            </ReferenceLine>
-                                            {(selectedSCurveProject || drillDownProject) ? (
-                                                <Bar
-                                                    dataKey="deviation"
-                                                    radius={0}
-                                                    barSize={28}
-                                                    onClick={(data: any) => {
-                                                        if (data && (data.fullId || data.id)) {
-                                                            setHighlightedWOId(highlightedWOId === (data.fullId || data.id) ? null : (data.fullId || data.id));
-                                                        }
-                                                    }}
-                                                >
-                                                    {(stats.laborByProject.find((p: any) => p.id === selectedSCurveProject || p.name === drillDownProject)?.cases || []).map((entry: any, index: number) => {
-                                                        const isHighlighted = highlightedWOId === entry.fullId;
-                                                        return (
-                                                            <Cell
-                                                                key={`cell-detail-${index}`}
-                                                                fill={entry.deviation < 0 ? '#ef4444' : '#10b981'}
-                                                                fillOpacity={(!highlightedWOId || isHighlighted) ? 1 : 0.2}
-                                                                stroke={isHighlighted ? '#1e293b' : 'none'}
-                                                                strokeWidth={2}
-                                                            />
-                                                        );
-                                                    })}
-                                                    <LabelList
-                                                        dataKey="deviation"
-                                                        position="center"
-                                                        content={(props: any) => {
-                                                            const { x, y, width, height, value } = props;
-                                                            const isSmall = Math.abs(width) < 50;
-                                                            return (
-                                                                <text x={x + width / 2} y={y + height / 2} dy={4} textAnchor="middle" fill={isSmall ? '#1e293b' : '#fff'} fontSize={10} fontWeight={800} style={{ pointerEvents: 'none' }}>
-                                                                    {value > 0 ? `+${value.toFixed(0)}%` : `${value.toFixed(0)}%`}
-                                                                </text>
-                                                            );
-                                                        }}
-                                                    />
-                                                </Bar>
-                                            ) : (
-                                                <Bar
-                                                    dataKey="deviation"
-                                                    radius={0}
-                                                    barSize={28}
-                                                    onClick={(data: any) => {
-                                                        if (data && data.id) setSelectedSCurveProject(data.id);
-                                                        else if (data && data.name) setDrillDownProject(data.name);
-                                                    }}
-                                                >
-                                                    {stats.laborByProject.map((entry: any, index: number) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.deviation < 0 ? '#ef4444' : '#10b981'} />
-                                                    ))}
-                                                    <LabelList
-                                                        dataKey="taskCount"
-                                                        position="center"
-                                                        content={(props: any) => {
-                                                            const { x, y, width, height, value } = props;
-                                                            if (selectedSCurveProject || drillDownProject) return null;
-                                                            const isSmall = Math.abs(width) < 50;
-                                                            return <text x={x + width / 2} y={y + height / 2} dy={4} textAnchor="middle" fill={isSmall ? '#1e293b' : '#fff'} fontSize={10} fontWeight={800} style={{ pointerEvents: 'none' }}>{value} งาน</text>;
-                                                        }}
-                                                    />
-                                                </Bar>
-                                            )}
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                )}
-                            </div>
-
-                            {/* Collapsed Detail Section — Charts Row + S-Curve */}
-                            <div style={{ marginBottom: '2.5rem' }}>
-                                <button
-                                    onClick={() => setShowInsightDetails(v => !v)}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '14px 20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', color: '#475569', transition: 'all 0.2s' }}
-                                >
-                                    <TrendingUp size={18} />
-                                    {showInsightDetails ? '▲ ซ่อนรายละเอียด — คนงาน/ความคืบหน้ารายวัน' : '▼ ดูรายละเอียดเพิ่มเติม — สถิติการเปิด-ปิดงาน และกราฟคนงาน vs คืบหน้า'}
-                                </button>
-                            </div>
-                            {showInsightDetails && (
-                            <>
                             {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', marginBottom: '2.5rem' }}>
                                 <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
                                     <SectionHeader
@@ -3080,12 +2926,12 @@ const Dashboard = () => {
                                             <TrendingUp size={28} />
                                         </div>
                                         <div>
-                                            <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>คนงานต่อวัน vs ความคืบหน้ารวม</h3>
-                                            <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>แท่งแดง = จำนวนคนงานที่ใช้จริงรายวัน · เส้นน้ำเงิน = % งานรวมทั้งหมดที่ทำเสร็จแล้วสะสม</p>
+                                            <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>SLA Pressure vs Manpower</h3>
+                                            <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>แท่ง = จำนวนงาน active แยกตามสถานะ SLA รายวัน · เส้น = คนงานที่ใช้จริง</p>
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ height: '400px', width: '100%' }}>
+                                <div style={{ height: '400px', width: '100%', position: 'relative' }}>
                                     <ResponsiveContainer width="100%" height="100%">
                                         <ComposedChart
                                             key={`scurve-${highlightedWOId || 'none'}-${selectedSCurveProject || 'all'}`}
@@ -3097,7 +2943,7 @@ const Dashboard = () => {
                                                     handleLaborDetailClick(selectedSCurveProject, `${selectedMonth}-${dayStr}`);
                                                 }
                                             }}
-                                            style={{ cursor: 'pointer' }}
+                                            style={{ cursor: selectedSCurveProject ? 'pointer' : 'default' }}
                                         >
                                             <defs>
                                                 <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
@@ -3107,70 +2953,219 @@ const Dashboard = () => {
                                             </defs>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                             <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700, dy: 5 }} label={{ value: 'วันที่ในเดือน', position: 'insideBottom', offset: -15, fill: '#94a3b8', fontSize: 11, fontWeight: 800 }} />
-                                            <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#ef4444', fontSize: 12, fontWeight: 700 }} label={{ value: 'จำนวนคน (แรง)', angle: -90, position: 'insideLeft', offset: 15, fill: '#ef4444', fontSize: 11, fontWeight: 800 }} />
-                                            <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} domain={[0, 100]} tick={{ fill: '#3b82f6', fontSize: 12, fontWeight: 700 }} label={{ value: 'ความคืบหน้า (%)', angle: 90, position: 'insideRight', offset: 15, fill: '#3b82f6', fontSize: 11, fontWeight: 800 }} />
+                                            <YAxis yAxisId="left" hide={!selectedSCurveProject} axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }} label={{ value: 'งานที่ทำ (ใบ)', angle: -90, position: 'insideLeft', offset: 15, fill: '#64748b', fontSize: 11, fontWeight: 800 }} />
+                                            <YAxis yAxisId="right" orientation="right" hide={!selectedSCurveProject} axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#2563eb', fontSize: 12, fontWeight: 700 }} label={{ value: 'คนงาน (แรง)', angle: 90, position: 'insideRight', offset: 15, fill: '#2563eb', fontSize: 11, fontWeight: 800 }} />
                                             <Tooltip
-                                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontWeight: 700 }}
-                                                formatter={(value: any, name: any) => {
-                                                    const thaiNames: any = { ideal: 'เป้าหมายมาตรฐาน', manpower: 'จำนวนแรงงานรวม', progress: 'ความคืบหน้าจริง' };
-                                                    const unit = name === 'manpower' ? ' แรง' : '%';
-                                                    return [`${value}${unit}`, thaiNames[name] || name];
+                                                content={(props: any) => {
+                                                    if (!props.active || !props.payload?.length) return null;
+                                                    const d = props.payload[0]?.payload;
+                                                    if (!d) return null;
+                                                    const slaIcon = (s: string) => s === 'breach' ? '🔴' : s === 'risk' ? '⚠️' : '✅';
+                                                    return (
+                                                        <div style={{ background: '#fff', borderRadius: '14px', boxShadow: '0 10px 20px -3px rgba(0,0,0,0.15)', padding: '12px 16px', fontSize: '12px', minWidth: '210px', maxWidth: '290px' }}>
+                                                            <div style={{ fontWeight: 800, color: '#1e293b', marginBottom: '8px', fontSize: '13px', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <span>{d.taskDetails?.length || 0} งาน</span>
+                                                                <span style={{ color: '#2563eb', fontSize: '12px', fontWeight: 700 }}>👷 {d.manpower} แรง</span>
+                                                            </div>
+                                                            {d.taskDetails?.length > 0 ? d.taskDetails.map((t: any, i: number) => (
+                                                                <div key={i} style={{ borderTop: i > 0 ? '1px solid #f1f5f9' : undefined, paddingTop: i > 0 ? '7px' : undefined, marginTop: i > 0 ? '7px' : undefined }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                                                        <span style={{ fontWeight: 700, color: '#334155', flex: 1, lineHeight: '1.3' }}>{slaIcon(t.slaStatus)} {t.taskName}</span>
+                                                                        <span style={{ color: '#64748b', flexShrink: 0, fontSize: '11px' }}>{t.labor} แรง</span>
+                                                                    </div>
+                                                                    <div style={{ color: '#64748b', marginTop: '3px', fontSize: '11px' }}>
+                                                                        โปรเกรส: <span style={{ color: '#475569', fontWeight: 700 }}>{t.progFrom}%</span> → <span style={{ color: '#1e293b', fontWeight: 700 }}>{t.progTo}%</span>
+                                                                    </div>
+                                                                </div>
+                                                            )) : <div style={{ color: '#94a3b8' }}>ไม่มีการลงข้อมูลวันนี้</div>}
+                                                        </div>
+                                                    );
                                                 }}
-                                                labelFormatter={(label) => `วันที่ ${label}`}
                                             />
-                                            <Legend verticalAlign="top" content={renderSCurveLegend} />
+                                            <Legend verticalAlign="top" content={() => (
+                                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '8px', fontSize: '12px' }}>
+                                                    {[['#97C459','on track'],['#EF9F27','ใกล้หมด SLA'],['#E24B4A','เกิน SLA แล้ว']].map(([c,l]) => (
+                                                        <span key={l} style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b' }}>
+                                                            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: c, flexShrink: 0 }} />
+                                                            {l}
+                                                        </span>
+                                                    ))}
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b' }}>
+                                                        <span style={{ display: 'inline-block', width: '18px', height: '2px', background: '#2563eb', verticalAlign: 'middle' }} />
+                                                        คนงาน (แรง)
+                                                    </span>
+                                                </div>
+                                            )} />
                                             {selectedMonth && (() => {
-                                                const [year, month] = selectedMonth.split('-');
-                                                const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+                                                const [yr, mo] = selectedMonth.split('-');
+                                                const dim = new Date(parseInt(yr), parseInt(mo), 0).getDate();
                                                 const sundays: number[] = [];
-                                                for (let d = 1; d <= daysInMonth; d++) {
-                                                    if (new Date(parseInt(year), parseInt(month) - 1, d).getDay() === 0) sundays.push(d);
+                                                for (let d = 1; d <= dim; d++) {
+                                                    if (new Date(parseInt(yr), parseInt(mo) - 1, d).getDay() === 0) sundays.push(d);
                                                 }
-                                                return sundays.map((day) => <ReferenceLine key={`week-end-${day}`} x={day} yAxisId="right" stroke="#94a3b8" strokeWidth={1} strokeDasharray="3 3" />);
+                                                return sundays.map((day) => <ReferenceLine key={`sun-${day}`} x={day} yAxisId="left" stroke="#e2e8f0" strokeWidth={1} strokeDasharray="3 3" />);
                                             })()}
-                                            {highlightedWOId && (
-                                                <Line
-                                                    yAxisId="left"
-                                                    type="monotone"
-                                                    dataKey={(entry: any) => entry.hasHighlight ? entry.manpower : null}
-                                                    stroke="none"
-                                                    dot={{ r: 6, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }}
-                                                    name="กิจกรรมของใบงานที่เน้น"
-                                                />
-                                            )}
                                             {selectedMonth && (() => {
                                                 const d = new Date();
                                                 const currentMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
                                                 if (selectedMonth === currentMonthStr) {
-                                                    return <ReferenceLine x={d.getDate()} yAxisId="right" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" label={{ position: 'top', value: 'วันนี้', fill: '#2563eb', fontSize: 10, fontWeight: 900 }} />;
+                                                    return <ReferenceLine x={d.getDate()} yAxisId="left" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" label={{ position: 'top', value: 'วันนี้', fill: '#2563eb', fontSize: 10, fontWeight: 900 }} />;
                                                 }
                                                 return null;
                                             })()}
-                                            <Area yAxisId="right" type="monotone" dataKey="progress" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorProgress)" name="progress" />
-                                            <Line
-                                                yAxisId="left"
-                                                type="monotone"
-                                                dataKey="manpower"
-                                                stroke="#ef4444"
-                                                strokeWidth={2}
-                                                dot={(props: any) => {
-                                                    const { cx, cy, payload } = props;
-                                                    if (payload.hasHighlight) return <circle cx={cx} cy={cy} r={6} fill="#ef4444" stroke="#fff" strokeWidth={2} />;
-                                                    return <circle cx={cx} cy={cy} r={3} fill="#ef4444" />;
-                                                }}
-                                                activeDot={{ r: 8 }}
-                                                name="manpower"
-                                            />
-                                            <Line yAxisId="right" type="monotone" dataKey="ideal" stroke="#94a3b8" strokeWidth={1} strokeDasharray="5 5" dot={false} name="ideal" />
+                                            {selectedSCurveProject && (
+                                                <Bar yAxisId="left" dataKey="totalWorkedTasks" name="งานที่ทำวันนี้"
+                                                    shape={(props: any) => {
+                                                        const { x, y, width, height, payload } = props;
+                                                        if (!height || height <= 0) return <g />;
+                                                        const tasks: any[] = payload.taskDetails || [];
+                                                        if (!tasks.length) return <g />;
+                                                        const n = tasks.length;
+                                                        const segH = height / n;
+                                                        return (
+                                                            <g>
+                                                                {tasks.map((task: any, i: number) => {
+                                                                    const color = task.slaStatus === 'breach' ? '#E24B4A' : task.slaStatus === 'risk' ? '#EF9F27' : '#97C459';
+                                                                    const sy = y + height - (i + 1) * segH;
+                                                                    const isTop = i === n - 1;
+                                                                    return (
+                                                                        <g key={i}>
+                                                                            {isTop
+                                                                                ? <path d={`M${x+3},${sy} Q${x},${sy} ${x},${sy+3} L${x},${sy+segH} L${x+width},${sy+segH} L${x+width},${sy+3} Q${x+width},${sy} ${x+width-3},${sy} Z`} fill={color} />
+                                                                                : <rect x={x} y={sy} width={width} height={segH} fill={color} />
+                                                                            }
+                                                                            {i < n - 1 && <line x1={x} y1={sy + segH} x2={x + width} y2={sy + segH} stroke="white" strokeWidth={2} />}
+                                                                        </g>
+                                                                    );
+                                                                })}
+                                                            </g>
+                                                        );
+                                                    }}
+                                                />
+                                            )}
+                                            {selectedSCurveProject && <Line yAxisId="right" type="monotone" dataKey="manpower" stroke="#2563eb" strokeWidth={2} connectNulls={false} dot={(props: any) => { const { cx, cy, payload } = props; return <circle cx={cx} cy={cy} r={payload.hasHighlight ? 6 : 3} fill="#2563eb" stroke={payload.hasHighlight ? '#fff' : 'none'} strokeWidth={2} />; }} activeDot={{ r: 8 }} name="manpower" />}
                                         </ComposedChart>
                                     </ResponsiveContainer>
+                                    {!selectedSCurveProject && (
+                                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                                            <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.88)', padding: '1rem 2rem', borderRadius: '16px', border: '1px solid #e2e8f0', backdropFilter: 'blur(4px)' }}>
+                                                <p style={{ margin: 0, color: '#64748b', fontWeight: 700, fontSize: '0.95rem' }}>เลือกโปรเจกต์จากการ์ด SLA ด้านล่างเพื่อดูกราฟ</p>
+                                                <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>โครงสร้างเดือน {selectedMonth} แสดงตามแกนเวลา</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            </>
-                            )}
 
-                            {/* Bottom Grid: Category + Project Track + Job Details + Executive Summary */}
+                            {/* Bottom Grid: SLA Cards + Category + (Project Track full-width) + Task Details */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                {/* Col 1: SLA Section — overview or drill-down */}
+                                <div id="analytics-detail-section" className={highlightedSection === 'analytics-detail-section' ? 'section-highlight' : ''} style={{ background: '#fff', padding: '1.75rem', borderRadius: '32px', border: '1px solid #e2e8f0', overflow: 'hidden', transition: 'all 0.5s' }}>
+                                    <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <SectionHeader title="SLA รายโครงการ (Project Health Pulse)" icon={<TrendingUp size={20} />} subtitle="คลิกโปรเจกต์เพื่อฟิลเตอร์ข้อมูลทั้ง dashboard" />
+                                        {selectedSCurveProject && (
+                                            <button onClick={() => { setSelectedSCurveProject(''); setHighlightedWOId(null); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, color: '#ef4444', cursor: 'pointer', flexShrink: 0 }}>
+                                                <X size={10} /> ล้างฟิลเตอร์
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', overflowY: 'auto', maxHeight: '520px', alignItems: 'stretch' }}>
+                                        {healthCardProjects.map((p: any) => {
+                                            const cases = p.cases ?? [];
+                                            const caseTotal = cases.length;
+                                            const onTime  = cases.filter((c: any) => c.deviation >= 0).length;
+                                            const atRisk  = cases.filter((c: any) => c.deviation < 0 && c.deviation >= -30).length;
+                                            const late    = cases.filter((c: any) => c.deviation < -30).length;
+                                            const sla = caseTotal > 0 ? Math.round(onTime / caseTotal * 100) : 100;
+                                            const accentColor = sla >= 80 ? '#10b981' : sla >= 50 ? '#f59e0b' : '#ef4444';
+                                            const verdictBg   = sla >= 80 ? '#ecfdf5' : sla >= 50 ? '#fffbeb' : '#fef2f2';
+                                            const verdictText = sla >= 80 ? '#065f46' : sla >= 50 ? '#92400e' : '#991b1b';
+                                            const verdictLabel = sla >= 80 ? 'On Track' : sla >= 50 ? 'ระวัง' : 'ล่าช้า';
+                                            const worstCase = caseTotal > 0 ? [...cases].sort((a: any, b: any) => a.deviation - b.deviation)[0] : null;
+                                            const worstDev  = worstCase ? Math.round(Math.abs(worstCase.deviation)) : 0;
+                                            const worstDays = worstCase && worstCase.deviation < 0 ? +(worstCase.calendarDays - worstCase.targetDays).toFixed(1) : 0;
+                                            const isSelected = p.id ? selectedSCurveProject === p.id : false;
+                                            const isOtherSelected = selectedSCurveProject !== '' && !isSelected;
+                                            return (
+                                                <div
+                                                    key={p.name}
+                                                    onClick={() => { if (p.id) setSelectedSCurveProject(selectedSCurveProject === p.id ? '' : p.id); }}
+                                                    style={{ background: isSelected ? '#f8faff' : '#fff', border: isSelected ? `2px solid ${accentColor}` : '1px solid #e2e8f0', borderRadius: '16px', padding: '1.1rem 1.25rem 1.1rem 1.5rem', cursor: p.id ? 'pointer' : 'default', transition: 'opacity 0.15s, border-color 0.15s, box-shadow 0.15s', position: 'relative', overflow: 'hidden', opacity: isOtherSelected ? 0.5 : 1, boxShadow: isSelected ? `0 0 0 3px ${accentColor}20` : 'none' }}
+                                                    onMouseOver={(e) => { e.currentTarget.style.boxShadow = isSelected ? `0 0 0 3px ${accentColor}35` : '0 2px 8px rgba(0,0,0,0.06)'; }}
+                                                    onMouseOut={(e) => { e.currentTarget.style.boxShadow = isSelected ? `0 0 0 3px ${accentColor}20` : 'none'; }}
+                                                >
+                                                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: accentColor, borderRadius: '16px 0 0 16px' }} />
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>{p.name}</div>
+                                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: verdictBg, color: verdictText, marginTop: '3px', display: 'inline-block' }}>{verdictLabel}</span>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: accentColor }}>{sla}%</div>
+                                                            <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '1px' }}>{onTime}/{caseTotal} รายการทันกำหนด</div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', height: '5px', borderRadius: '99px', overflow: 'hidden', gap: '2px', margin: '0 0 8px' }}>
+                                                        {onTime > 0  && <div style={{ flex: onTime,  background: '#10b981', borderRadius: '99px' }} />}
+                                                        {atRisk > 0  && <div style={{ flex: atRisk,  background: '#f59e0b', borderRadius: '99px' }} />}
+                                                        {late > 0    && <div style={{ flex: late,    background: '#ef4444', borderRadius: '99px' }} />}
+                                                        {caseTotal === 0 && <div style={{ flex: 1, background: '#e2e8f0', borderRadius: '99px' }} />}
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                                                        {([['#10b981', `ทันกำหนด ${onTime}`], ['#f59e0b', `เกือบช้า ${atRisk}`], ['#ef4444', `ล่าช้า ${late}`]] as [string, string][]).map(([color, label]) => (
+                                                            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem', color: '#64748b' }}>
+                                                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                                                {label}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {worstCase && worstCase.deviation < 0 ? (
+                                                        <div style={{ background: '#fafafa', border: '0.5px solid #f1f5f9', borderRadius: '8px', padding: '7px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                                            <div>
+                                                                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>รายการที่แย่สุด</div>
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b', marginTop: '1px' }}>{worstCase.label} {worstDays > 0 ? `— ช้า ${worstDays} วัน` : ''}</div>
+                                                            </div>
+                                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>-{worstDev}%</div>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ background: '#f0fdf4', border: '0.5px solid #bbf7d0', borderRadius: '8px', padding: '7px 10px', marginBottom: '10px' }}>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46' }}>ทุกรายการผ่าน SLA</div>
+                                                        </div>
+                                                    )}
+                                                    {(() => {
+                                                        const tData = projectTrend.trend[p.id] || [];
+                                                        const hasData = tData.some((v: number) => v >= 0);
+                                                        const last = tData[tData.length - 1] ?? -1;
+                                                        const prev = tData[tData.length - 2] ?? -1;
+                                                        const trendDir = (last >= 0 && prev >= 0) ? (last > prev ? 'up' : last < prev ? 'down' : 'flat') : 'none';
+                                                        const trendLabel = trendDir === 'up' ? 'แนวโน้มดีขึ้น' : trendDir === 'down' ? 'แย่ลงต่อเนื่อง' : trendDir === 'flat' ? 'คงที่' : '';
+                                                        const trendColor = trendDir === 'up' ? '#10b981' : trendDir === 'down' ? '#ef4444' : '#f59e0b';
+                                                        return (
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '0.5px solid #f1f5f9' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    {hasData && (
+                                                                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px' }}>
+                                                                            {tData.map((v: number, i: number) => {
+                                                                                const h = v >= 0 ? Math.max(Math.round(v / 100 * 16), 2) : 3;
+                                                                                const bc = v >= 80 ? '#10b981' : v >= 50 ? '#f59e0b' : v >= 0 ? '#ef4444' : '#e2e8f0';
+                                                                                const isLast = i === tData.length - 1;
+                                                                                return <div key={i} style={{ width: '4px', height: `${h}px`, background: bc, borderRadius: '2px', opacity: isLast ? 1 : 0.55 }} />;
+                                                                            })}
+                                                                        </div>
+                                                                    )}
+                                                                    {trendLabel && <span style={{ fontSize: '0.65rem', fontWeight: 600, color: trendColor }}>{trendDir === 'up' ? '▲' : trendDir === 'down' ? '▼' : '—'} {trendLabel}</span>}
+                                                                </div>
+                                                                <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>ดูรายการ →</span>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Col 2: Category Chart */}
                                 <div style={{ background: '#fff', padding: '1.75rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
                                         <SectionHeader title="งานที่รับผิดชอบแยกตามหมวด" icon={<BarChart3 size={20} />} subtitle="หมวดงานที่ทำมากสุด — ใช้ติดตามปัญหาซ้ำและวิเคราะห์ต้นเหตุ" />
@@ -3180,7 +3175,7 @@ const Dashboard = () => {
                                             ))}
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minHeight: '280px' }}>
                                         {(() => {
                                             const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
                                             const BGS    = ['#eef2ff', '#e0f2fe', '#dcfce7', '#fef3c7', '#ede9fe', '#fee2e2'];
@@ -3189,7 +3184,7 @@ const Dashboard = () => {
                                             const fastItems = smartCategoryData.filter((c: any) => c.avgDays !== null);
                                             const maxDays  = Math.max(...fastItems.map((c: any) => c.avgDays), 0.001);
                                             const minDays  = Math.min(...fastItems.map((c: any) => c.avgDays), 0);
-                                            return smartCategoryData.map((cat, idx) => {
+                                            return smartCategoryData.slice(0, 5).map((cat, idx) => {
                                                 const color = COLORS[idx] || '#94a3b8';
                                                 const bgc   = BGS[idx]   || '#f1f5f9';
                                                 const barPct = catSort === 'count'
@@ -3233,65 +3228,17 @@ const Dashboard = () => {
                                     </div>
                                 </div>
 
-                                <div id="project-track-section" className={highlightedSection === 'project-track-section' ? 'section-highlight' : ''} style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                        <SectionHeader title="ผลงานแยกตามโครงการ (Project Performance Summary)" icon={<Activity size={20} />} subtitle="สรุปข้อมูลการดำเนินงานและความรวดเร็วแยกโครงการ" />
-                                        {(selectedSCurveProject || drillDownProject) && (
-                                            <button
-                                                onClick={() => { setSelectedSCurveProject(''); setDrillDownProject(null); }}
-                                                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', fontWeight: 800, padding: '6px 12px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                            >
-                                                <X size={14} /> ดูโครงการทั้งหมด
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div style={{ overflowY: 'auto', maxHeight: '300px' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 2px' }}>
-                                            <thead>
-                                                <tr style={{ textAlign: 'left', color: '#64748b', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase' }}>
-                                                    <th style={{ padding: '0 1rem' }}>โครงการ</th>
-                                                    <th style={{ textAlign: 'center' }}>เคสทั้งหมด</th>
-                                                    <th style={{ textAlign: 'center' }}>ทำเสร็จทันกำหนด</th>
-                                                    <th style={{ textAlign: 'center' }}>ความคุ้มค่า (ROI)</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {(() => {
-                                                    const activePName = selectedSCurveProject ? getProjectName(selectedSCurveProject) : drillDownProject;
-                                                    const displayData = activePName
-                                                        ? stats.laborByProject.filter((p: any) => p.name === activePName)
-                                                        : stats.laborByProject;
-
-                                                    return displayData.map((p: any) => (
-                                                        <tr key={p.name} style={{ background: '#ffffff' }}>
-                                                            <td style={{ padding: '11px 1rem', fontWeight: 700, color: '#334155', borderRadius: '12px 0 0 12px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.slaScore >= 80 ? '#10b981' : p.slaScore >= 50 ? '#f59e0b' : '#ef4444' }} />
-                                                                    {p.name}
-                                                                </div>
-                                                            </td>
-                                                            <td style={{ textAlign: 'center', fontWeight: 800, color: '#4f46e5' }}>{p.total} เคส</td>
-                                                            <td style={{ textAlign: 'center', fontWeight: 800, color: p.slaScore >= 80 ? '#10b981' : '#f59e0b' }}>
-                                                                {p.slaScore}% ทันเวลา
-                                                            </td>
-                                                            <td style={{ textAlign: 'center', borderRadius: '0 12px 12px 0' }}>
-                                                                <span style={{ padding: '4px 10px', borderRadius: '20px', background: parseFloat(p.productivity) >= 20 ? '#dcfce7' : '#fef3c7', color: parseFloat(p.productivity) >= 20 ? '#166534' : '#92400e', fontSize: '0.75rem', fontWeight: 900 }}>
-                                                                    {p.productivity}%
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    ));
-                                                })()}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
                                 {/* Job Performance Details */}
                                 <div id="job-details-section" className={highlightedSection === 'job-details-section' ? 'section-highlight' : ''} style={{ gridColumn: '1/-1', background: '#ffffff', padding: '1.5rem 2rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
                                         <SectionHeader title="รายละเอียดรายการงานที่ดำเนินการ (Task Performance Details)" icon={<Activity size={24} />} subtitle="รายการงานย่อยทั้งหมดที่คุณรับผิดชอบ แยกตามใบงานอ้างอิง" />
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+                                            {highlightedWOId && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '5px 10px' }}>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#2563eb' }}>#{highlightedWOId.slice(-6)}</span>
+                                                    <button onClick={() => setHighlightedWOId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
+                                                </div>
+                                            )}
                                             <select value={taskCatFilter} onChange={e => setTaskCatFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskCatFilter ? '#eff6ff' : '#f8fafc', color: taskCatFilter ? '#2563eb' : '#64748b', cursor: 'pointer', outline: 'none' }}>
                                                 <option value="">หมวดงาน: ทั้งหมด</option>
                                                 {taskCatOptions.map(c => <option key={c} value={c}>{c}</option>)}
@@ -3300,8 +3247,8 @@ const Dashboard = () => {
                                                 <option value="">สถานะ: ทั้งหมด</option>
                                                 {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
-                                            {(taskCatFilter || taskStatusFilter) && (
-                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
+                                            {(taskCatFilter || taskStatusFilter || highlightedWOId) && (
+                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setHighlightedWOId(null); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
                                             )}
                                         </div>
                                     </div>
