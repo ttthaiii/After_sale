@@ -999,8 +999,22 @@ const Dashboard = () => {
         const endOfMonthTime = new Date(year, monthNum, 0, 23, 59, 59).getTime();
         const statsMap: any = {};
 
+        const SKIP_STATUSES = ['Draft', 'Pending', 'Cancelled', 'Evaluating'];
+        const matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
+        const viewingAs = isAdminOrManager ? selectedForemanId : null;
+        const hasOwnerTask = (wo: any) =>
+            (wo.categories || []).some((c: any) =>
+                (c.tasks || []).some((t: any) => {
+                    const owners: string[] = t.responsibleStaffIds || [];
+                    if (viewingAs) return owners.includes(viewingAs) || (!owners.length && wo.reporterId === viewingAs);
+                    return owners.some((id: string) => matchUid(id)) || (!owners.length && matchUid(wo.reporterId || ''));
+                })
+            );
+
         // Use baseAccessibleWOs so the project list doesn't shrink when one is selected
         baseAccessibleWOs.forEach((wo: any) => {
+            if (SKIP_STATUSES.includes(wo.status)) return;
+            if (!hasOwnerTask(wo)) return;
             const created = new Date(wo.createdAt).getTime();
             const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
             const isActive = created <= endOfMonthTime && (!completed || completed >= startOfMonthTime);
@@ -1010,7 +1024,7 @@ const Dashboard = () => {
         });
 
         return projects.filter((p: any) => statsMap[p.id]);
-    }, [baseAccessibleWOs, projects, selectedMonth]);
+    }, [baseAccessibleWOs, projects, selectedMonth, user, isAdminOrManager, selectedForemanId]);
 
     const selectableProjects = useMemo(() => {
         if (!user || user.role !== 'Foreman') return projects;
@@ -1160,21 +1174,38 @@ const Dashboard = () => {
         const now = effectiveNow;
         const slaHoursMap: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
 
+        // Ownership helpers — defined early so WO-level filters can use them
+        const _matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
+        const _viewingAs = isAdminOrManager ? selectedForemanId : null;
+        const _hasOwnerTask = (wo: any) =>
+            (wo.categories || []).some((c: any) =>
+                (c.tasks || []).some((t: any) => {
+                    const owners: string[] = t.responsibleStaffIds || [];
+                    if (_viewingAs) return owners.includes(_viewingAs) || (!owners.length && wo.reporterId === _viewingAs);
+                    return owners.some((id: string) => _matchUid(id)) || (!owners.length && _matchUid(wo.reporterId || ''));
+                })
+            );
+
+        const EXCLUDED_STATUSES = ['Draft', 'Pending', 'Cancelled', 'Evaluating'];
+
         const newThisMonthData = allAccessibleWOs.filter((wo: any) => {
+            if (EXCLUDED_STATUSES.includes(wo.status)) return false;
             const created = new Date(wo.createdAt).getTime();
-            return created >= startOfMonth && created <= endOfMonth;
+            return created >= startOfMonth && created <= endOfMonth && _hasOwnerTask(wo);
         });
 
         const carriedOverData = allAccessibleWOs.filter((wo: any) => {
+            if (EXCLUDED_STATUSES.includes(wo.status)) return false;
             const created = new Date(wo.createdAt).getTime();
             const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
             if (created >= startOfMonth) return false;
-            return !isWorkOrderCompleted(wo) || (completed && completed >= startOfMonth);
+            return (!isWorkOrderCompleted(wo) || (completed && completed >= startOfMonth)) && _hasOwnerTask(wo);
         });
 
         const newThisMonth = newThisMonthData.length;
         const carriedOver = carriedOverData.length;
         const totalInMonth = newThisMonth + carriedOver;
+        const closedWOsInScope = [...newThisMonthData, ...carriedOverData].filter((wo: any) => wo.status === 'Completed' || wo.status === 'Verified').length;
         const total = allAccessibleWOs.length;
         const totalAssignments = filteredWOs.length;
 
@@ -1195,15 +1226,39 @@ const Dashboard = () => {
             const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
             return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
         };
-        // Count evaluating at WO level (not task level) — avoids collision with closed++ when all tasks are 100%
+        // Filter to tasks the current foreman is responsible for
+        const matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
+        const viewingAs = isAdminOrManager ? selectedForemanId : null;
+        const isOwnerTask = (t: any, wo: any) => {
+            const owners: string[] = t.responsibleStaffIds || [];
+            if (viewingAs) return owners.includes(viewingAs) || (!owners.length && wo.reporterId === viewingAs);
+            return owners.some((id: string) => matchUid(id)) || (!owners.length && matchUid(wo.reporterId || ''));
+        };
+        // Count evaluating at WO level only (for the "evaluating" stat card)
         evaluating = allAccessibleWOs.filter(isForCustomerEval).length;
-        allAccessibleWOs.forEach((wo: any) => {
-            if (isForCustomerEval(wo)) return; // skip — counted above as evaluating
+        // Count tasks only from WOs in scope (same set as totalInMonth) — excludes draft, prev-month closed, pending-admin
+        const inScopeWOs = [...newThisMonthData, ...carriedOverData];
+        inScopeWOs.forEach((wo: any) => {
+            if (['Draft', 'Cancelled'].includes(wo.status)) return;
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
-                    const isCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
-                    if (isCompleted) closed++;
-                    else if (['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected', 'Evaluating'].includes(wo.status)) open++;
+                    if (!isOwnerTask(t, wo)) return;
+                    const isWaitingCustomerEval = t.status === 'Completed' && t.evaluationStatus === 'Assigned';
+                    const isCompleted = !isWaitingCustomerEval && (t.status === 'Completed' || t.status === 'Verified');
+                    if (isCompleted) {
+                        closed++;
+                        // SLA counting — same scope as closed task count (inScopeWOs + isOwnerTask)
+                        totalTaskCount++;
+                        const slaLimit = slaHoursMap[t.slaCategory || '24h'] || 24;
+                        const slaStart = t.startDate
+                            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                            : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
+                        const lastUpdate = (t.history || []).slice(-1)[0];
+                        const slaEnd = lastUpdate ? new Date(lastUpdate.date).getTime() : now;
+                        if ((slaEnd - slaStart) / (1000 * 3600) <= slaLimit) {
+                            slaMetCount++;
+                        }
+                    } else open++;
                 });
             });
         });
@@ -1217,19 +1272,12 @@ const Dashboard = () => {
                     ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
                     : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
 
-                    if (t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified') {
-                        if (isFocusMatch) {
-                            totalTaskCount++;
-                        }
-                        const lastUpdate = (t.history || []).slice(-1)[0];
-                        const end = lastUpdate ? new Date(lastUpdate.date).getTime() : now;
-                        if ((end - start) / (1000 * 3600) <= limit) {
-                            if (isFocusMatch) slaMetCount++;
-                        }
-                    } else if (t.status !== 'Rejected') {
-                        const hoursLeft = limit - (now - start) / (1000 * 3600);
-                        if (hoursLeft < limit * 0.3) {
-                            if (isFocusMatch) highRisk++;
+                    if (!(t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified')) {
+                        if (t.status !== 'Rejected') {
+                            const hoursLeft = limit - (now - start) / (1000 * 3600);
+                            if (hoursLeft < limit * 0.3) {
+                                if (isFocusMatch) highRisk++;
+                            }
                         }
                     }
                 });
@@ -1400,6 +1448,7 @@ const Dashboard = () => {
 
         allAccessibleWOs.forEach((wo: any) => {
             if (wo.status === 'Evaluating' && !isAdminOrManager) return;
+            if (wo.status === 'Draft') return;
             const isFocusMatch = !highlightedWOId || wo.id?.toString().trim() === highlightedWOId?.toString().trim();
             const status = getSLATimeStatus(wo);
             const isCompleted = isWorkOrderCompleted(wo);
@@ -1594,9 +1643,10 @@ const Dashboard = () => {
 
         return {
             total, closed, open, evaluating, highRisk, totalHours, totalBudget, totalActualCost,
-            internalCount, outsourceCount, slaScore, projectStats: Object.values(projectsMap).sort((a: any, b: any) => b.total - a.total),
+            internalCount, outsourceCount, slaScore, slaMetCount, totalTaskCount,
+            projectStats: Object.values(projectsMap).sort((a: any, b: any) => b.total - a.total),
             stalledCases, chronicIssues, budgetPerformance: [], laborByProject: laborByProjectArray, totalAssignments,
-            totalInMonth, newThisMonth, carriedOver, dueTodayCount, pendingAdminEval,
+            totalInMonth, newThisMonth, carriedOver, closedWOsInScope, dueTodayCount, pendingAdminEval,
             urgentTasks: urgentTasks.sort((a: any, b: any) => (a.statusInfo?.hoursLeft || 0) - (b.statusInfo?.hoursLeft || 0)),
             upcomingTasks: upcomingTasks.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
             laborStats: [{ name: 'DC ใน (Internal)', value: internalHours, color: '#4f46e5' }, { name: 'DC นอก (Outsource)', value: outsourceHours, color: '#10b981' }],
@@ -1607,7 +1657,7 @@ const Dashboard = () => {
                 return { ...f, name: s ? s.name : `โฟร์แมน ${f.id.slice(-4)}`, slaScore: f.taskCount > 0 ? Math.round((f.slaMet / f.taskCount) * 100) : 100, avgResolution: f.taskCount > 0 ? (f.totalDuration / f.taskCount).toFixed(1) : '0' };
             }).sort((a: any, b: any) => b.slaScore !== a.slaScore ? b.slaScore - a.slaScore : b.totalJobs - a.totalJobs),
         };
-    }, [selectedMonth, allAccessibleWOs, isWorkOrderCompleted, highlightedWOId, getProjectName, isAdminOrManager, staff]);
+    }, [selectedMonth, allAccessibleWOs, isWorkOrderCompleted, highlightedWOId, getProjectName, isAdminOrManager, staff, user, selectedForemanId]);
 
     const stats = useMemo<DashboardStats>(() => getDashboardStats(filteredData), [getDashboardStats, filteredData]);
     const comparisonStats = useMemo<DashboardStats>(() => getDashboardStats(comparisonFilteredData), [getDashboardStats, comparisonFilteredData]);
@@ -2360,23 +2410,22 @@ const Dashboard = () => {
                             {/* Stat Cards — all clickable, drill-down to list below */}
                             {(() => {
                                 const _isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
-                                const inProgressCount = allAccessibleWOs
-                                    .filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status))
-                                    .flatMap((wo: any) => (wo.categories || []).flatMap((cat: any) => {
-                                        const catTasks: any[] = cat.tasks || [];
-                                        const myCat = catTasks.filter(_isMySubtask);
-                                        const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
-                                        return show.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified');
-                                    }))
-                                    .length;
-                                const urgentSubtaskCount = (stats.urgentTasks || []).flatMap((wo: any) =>
-                                    (wo.categories || []).flatMap((cat: any) => {
-                                        const catTasks: any[] = cat.tasks || [];
-                                        const myCat = catTasks.filter(_isMySubtask);
-                                        const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
-                                        return show.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified');
-                                    })
-                                ).length;
+                                const isIncomplete = (t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified';
+                                const countTasks = (wos: any[]) => wos.flatMap((wo: any) => (wo.categories || []).flatMap((cat: any) => {
+                                    const catTasks: any[] = cat.tasks || [];
+                                    const myCat = catTasks.filter(_isMySubtask);
+                                    const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
+                                    return show.filter(isIncomplete);
+                                })).length;
+                                const urgentWOIds = new Set((stats.urgentTasks || []).map((wo: any) => String(wo.id)));
+                                const urgentSubtaskCount = countTasks(stats.urgentTasks || []);
+                                const inProgressCount = countTasks(
+                                    allAccessibleWOs.filter((wo: any) =>
+                                        !isWorkOrderCompleted(wo) &&
+                                        !urgentWOIds.has(String(wo.id)) &&
+                                        ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)
+                                    )
+                                );
                                 const selectAndScroll = (cat: string) => {
                                     setSelectedOpCategory(cat);
                                     setDonutFilter(null);
@@ -2402,6 +2451,16 @@ const Dashboard = () => {
                                             subtext="งานย่อยที่เลยหรือใกล้ครบกำหนด"
                                         />
                                         <StatCard
+                                            title="ปกติ"
+                                            value={inProgressCount}
+                                            icon={<Zap size={24} />}
+                                            color="#0ea5e9"
+                                            gradient={selectedOpCategory === 'inProgress' ? 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)' : undefined}
+                                            style={activeStyle('inProgress', '#0ea5e9', '14,165,233')}
+                                            onClick={() => selectAndScroll('inProgress')}
+                                            subtext="งานที่ดำเนินการอยู่ ไม่เร่งด่วน"
+                                        />
+                                        <StatCard
                                             title="รอแอดมินประเมิน"
                                             value={stats.pendingAdminEval}
                                             icon={<Clock size={24} />}
@@ -2410,16 +2469,6 @@ const Dashboard = () => {
                                             style={activeStyle('pendingAdmin', '#6366f1', '99,102,241')}
                                             onClick={() => selectAndScroll('pendingAdmin')}
                                             subtext="ใบงานที่ส่งรอแอดมินอนุมัติ/มอบหมาย"
-                                        />
-                                        <StatCard
-                                            title="กำลังดำเนินการ"
-                                            value={inProgressCount}
-                                            icon={<Zap size={24} />}
-                                            color="#0ea5e9"
-                                            gradient={selectedOpCategory === 'inProgress' ? 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)' : undefined}
-                                            style={activeStyle('inProgress', '#0ea5e9', '14,165,233')}
-                                            onClick={() => selectAndScroll('inProgress')}
-                                            subtext="งานย่อยที่ยังค้างอยู่"
                                         />
                                         <StatCard
                                             title="รอลูกค้าประเมิน"
@@ -2439,9 +2488,9 @@ const Dashboard = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
                                 <div ref={opListRef} id="urgent-section" style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)', display: 'flex', flexDirection: 'column', scrollMarginTop: '80px' }}>
                                     <SectionHeader
-                                        title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานที่กำลังดำเนินการ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'ภาพรวมใบงานทั้งหมด'}
+                                        title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานปกติ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'ภาพรวมใบงานทั้งหมด'}
                                         icon={selectedOpCategory === 'urgent' ? <AlertTriangle size={20} color="#ef4444" /> : selectedOpCategory === 'evaluating' ? <Clock size={20} color="#f59e0b" /> : selectedOpCategory === 'inProgress' ? <Zap size={20} color="#0ea5e9" /> : selectedOpCategory === 'pendingAdmin' ? <Clock size={20} color="#6366f1" /> : <Activity size={20} color="#4f46e5" />}
-                                        subtitle={selectedOpCategory === 'urgent' ? 'ใบงานที่ต้องรีบดำเนินการเพื่อรักษามาตรฐาน SLA — คลิกเพื่อบันทึกรายงาน' : selectedOpCategory === 'evaluating' ? 'ใบงานที่รอลูกค้าตรวจรับงานหน้าไซต์ — คลิกเพื่อติดตามสถานะ' : selectedOpCategory === 'inProgress' ? 'ใบงานที่ช่างกำลังปฏิบัติงานอยู่ — คลิกเพื่อบันทึกรายงานประจำวัน' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานที่ส่งไปรอแอดมินอนุมัติ/มอบหมายงาน — คลิกเพื่อดูรายละเอียด' : 'ใบงานที่ยังไม่ปิดจบ เรียงตามความเร่งด่วน SLA'}
+                                        subtitle={selectedOpCategory === 'urgent' ? 'ใบงานที่ต้องรีบดำเนินการเพื่อรักษามาตรฐาน SLA — คลิกเพื่อบันทึกรายงาน' : selectedOpCategory === 'evaluating' ? 'ใบงานที่รอลูกค้าตรวจรับงานหน้าไซต์ — คลิกเพื่อติดตามสถานะ' : selectedOpCategory === 'inProgress' ? 'งานที่กำลังดำเนินการอยู่และยังไม่ถึงกำหนด SLA — คลิกเพื่อบันทึกรายงานประจำวัน' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานที่ส่งไปรอแอดมินอนุมัติ/มอบหมายงาน — คลิกเพื่อดูรายละเอียด' : 'ใบงานที่ยังไม่ปิดจบ เรียงตามความเร่งด่วน SLA'}
                                     />
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '1rem', maxHeight: '510px', overflowY: 'auto', paddingRight: '8px' }}>
                                         {(() => {
@@ -2593,7 +2642,8 @@ const Dashboard = () => {
                                                     <SubtaskCard key={`eval-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={null} isEval={true} />
                                                 )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
                                             } else if (selectedOpCategory === 'inProgress') {
-                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status));
+                                                const _urgentWOIds = new Set((stats.urgentTasks || []).map((wo: any) => String(wo.id)));
+                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !_urgentWOIds.has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status));
                                                 const progFilter = (p: number) => {
                                                     if (!donutFilter) return p < 100;
                                                     if (donutFilter === 'notStarted') return p === 0;
@@ -2680,7 +2730,7 @@ const Dashboard = () => {
                                     <SectionHeader
                                         title="การกระจายความคืบหน้า"
                                         icon={<Activity size={20} />}
-                                        subtitle={selectedOpCategory === 'urgent' ? 'งานเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'งานรอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานกำลังดำเนินการ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'งานย่อยทั้งหมด'}
+                                        subtitle={selectedOpCategory === 'urgent' ? 'งานเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'งานรอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานปกติ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'งานย่อยทั้งหมด'}
                                     />
                                     <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                         {(() => {
@@ -2693,7 +2743,7 @@ const Dashboard = () => {
                                             const donutWOs =
                                                 selectedOpCategory === 'urgent' ? (stats.urgentTasks || []) :
                                                 selectedOpCategory === 'evaluating' ? allAccessibleWOs.filter(isForCustomerEvalLocal) :
-                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
+                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !new Set((stats.urgentTasks || []).map((u: any) => String(u.id))).has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
                                                 selectedOpCategory === 'pendingAdmin' ? [] :
                                                 allAccessibleWOs;
                                             return <ProgressDonutChart allWOs={donutWOs} currentUser={user} />;
@@ -2709,80 +2759,142 @@ const Dashboard = () => {
                         <>
                             {/* Performance Hero Card — Foreman only */}
                             {isForeman ? (() => {
-                                const slaColor = stats.slaScore >= 80 ? '#10b981' : stats.slaScore >= 50 ? '#f59e0b' : '#ef4444';
-                                const slaBg   = stats.slaScore >= 80 ? '#f0fdf4' : stats.slaScore >= 50 ? '#fffbeb' : '#fef2f2';
-                                const closeRate = stats.totalInMonth > 0 ? Math.round(stats.closed / stats.totalInMonth * 100) : 0;
+                                const slaColor = stats.slaScore >= 85 ? '#1D9E75' : stats.slaScore >= 65 ? '#378ADD' : stats.slaScore >= 40 ? '#EF9F27' : '#E24B4A';
+                                const statusLabel = stats.slaScore >= 85 ? 'ยอดเยี่ยม' : stats.slaScore >= 65 ? 'ดี' : stats.slaScore >= 40 ? 'ควรปรับปรุง' : 'ต้องแก้ไขด่วน';
+                                const statusBg = stats.slaScore >= 85 ? '#E1F5EE' : stats.slaScore >= 65 ? '#E6F1FB' : stats.slaScore >= 40 ? '#FAEEDA' : '#FCEBEB';
+                                const statusTextColor = stats.slaScore >= 85 ? '#0F6E56' : stats.slaScore >= 65 ? '#185FA5' : stats.slaScore >= 40 ? '#854F0B' : '#A32D2D';
+                                const closedWOs = stats.closedWOsInScope ?? 0;
+                                const closeRate = stats.totalInMonth > 0 ? Math.round(closedWOs / stats.totalInMonth * 100) : 0;
+                                const lateCount = (stats.urgentTasks || []).filter((wo: any) => wo.statusInfo?.level === 'critical').length;
+                                const topUrgent = (stats.urgentTasks || [])[0];
+                                const nextUpcoming = (stats.upcomingTasks || [])[0];
+                                const circ = 2 * Math.PI * 52;
                                 return (
-                                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0', borderLeft: `5px solid ${slaColor}`, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', padding: '1.5rem 2rem', marginBottom: '1rem' }}>
-                                    {/* Top row: gauge + stats */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
-                                        {/* SLA Gauge */}
-                                        <div style={{ flexShrink: 0, textAlign: 'center' }}>
-                                            <svg viewBox="0 0 120 120" width="110" height="110">
-                                                <circle cx="60" cy="60" r="50" fill="none" stroke="#f1f5f9" strokeWidth="10"/>
-                                                <circle cx="60" cy="60" r="50" fill="none"
-                                                    stroke={slaColor}
-                                                    strokeWidth="10" strokeLinecap="round"
-                                                    strokeDasharray={`${(stats.slaScore / 100) * 314.2} 314.2`}
-                                                    transform="rotate(-90 60 60)"
-                                                    style={{ transition: 'stroke-dasharray 1s ease' }}
+                                <div style={{ background: '#fff', borderRadius: '24px', border: '0.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', padding: '1.5rem 2rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: '180px 1fr', gap: '1.5rem', alignItems: 'center' }}>
+
+                                    {/* LEFT: gauge */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ position: 'relative', width: '160px', height: '160px' }}>
+                                            <svg width="160" height="160" viewBox="0 0 160 160">
+                                                <defs>
+                                                    <linearGradient id="slaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                        <stop offset="0%" stopColor={slaColor} stopOpacity="1"/>
+                                                        <stop offset="100%" stopColor={slaColor} stopOpacity="0.6"/>
+                                                    </linearGradient>
+                                                </defs>
+                                                {/* Background track */}
+                                                <circle cx="80" cy="80" r="65" fill="none" stroke="#f1f5f9" strokeWidth="12"/>
+                                                {/* Progress arc */}
+                                                <circle cx="80" cy="80" r="65" fill="none" stroke={`url(#slaGrad)`} strokeWidth="12"
+                                                    strokeDasharray={`${(stats.slaScore / 100) * (2 * Math.PI * 65)} ${2 * Math.PI * 65}`}
+                                                    strokeLinecap="round" transform="rotate(-90 80 80)"
+                                                    style={{ transition: 'stroke-dasharray 1s ease', filter: `drop-shadow(0 0 6px ${slaColor}66)` }}
                                                 />
-                                                <text x="60" y="55" textAnchor="middle" fill="#1e293b" fontSize="20" fontWeight="bold">{stats.slaScore}%</text>
-                                                <text x="60" y="72" textAnchor="middle" fill="#94a3b8" fontSize="10" fontWeight="600">SLA เดือนนี้</text>
+                                                {/* Inner glow circle */}
+                                                <circle cx="80" cy="80" r="53" fill={statusBg} opacity="0.5"/>
                                             </svg>
-                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: slaBg, border: `1px solid ${slaColor}`, color: slaColor, padding: '3px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 800 }}>
-                                                {stats.slaScore >= 80 ? <CheckCircle2 size={13}/> : <Activity size={13}/>}
-                                                {stats.slaScore >= 80 ? 'ดีมาก' : stats.slaScore >= 50 ? 'พอใช้' : 'ควรปรับปรุง'}
+                                            {/* Center text overlay */}
+                                            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                                                <div style={{ fontSize: '32px', fontWeight: 900, color: slaColor, lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.slaScore}%</div>
+                                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginTop: '4px' }}>SLA score</div>
                                             </div>
                                         </div>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: statusBg, color: statusTextColor, padding: '6px 18px', borderRadius: '20px', fontSize: '13px', fontWeight: 700 }}>
+                                            {statusLabel}
+                                        </div>
+                                        {lateCount > 0 && (
+                                            <div style={{ fontSize: '11px', color: '#A32D2D', textAlign: 'center', lineHeight: 1.6 }}>มีงาน late {lateCount} รายการ</div>
+                                        )}
+                                    </div>
 
-                                        {/* Divider */}
-                                        <div style={{ width: '1px', alignSelf: 'stretch', minHeight: '70px', background: '#e2e8f0', flexShrink: 0 }} />
-
-                                        {/* Stats */}
-                                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', rowGap: '0.75rem' }}>
-                                            {[
-                                                { label: 'งานทั้งหมด', value: stats.totalInMonth, sub: `ใหม่ ${stats.newThisMonth} · ค้าง ${stats.carriedOver}`, color: '#2563eb' },
-                                                { label: 'ปิดจบสำเร็จ', value: stats.closed, sub: `${closeRate}% ของทั้งหมด`, color: '#059669' },
-                                                { label: 'ชั่วโมงทำงาน', value: stats.totalHours.toLocaleString(), sub: 'ชม. แรงงานจริง', color: '#7c3aed' },
-                                                { label: 'โครงการที่ดูแล', value: stats.laborByProject?.length ?? 0, sub: 'โครงการ', color: '#ea580c' },
-                                            ].map(s => (
-                                                <div key={s.label} style={{ textAlign: 'center', padding: '0 0.25rem' }}>
-                                                    <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{s.label}</div>
-                                                    <div style={{ fontSize: '2rem', fontWeight: 900, color: s.color, lineHeight: 1, marginBottom: '3px' }}>{s.value}</div>
-                                                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{s.sub}</div>
+                                    {/* MIDDLE: stats + progress */}
+                                    {(() => {
+                                        const closedWOs = stats.closedWOsInScope ?? 0;
+                                        const pendingWOs = stats.totalInMonth - closedWOs;
+                                        const totalTasks = stats.closed + stats.open;
+                                        const woRate = stats.totalInMonth > 0 ? Math.round(closedWOs / stats.totalInMonth * 100) : 0;
+                                        const taskRate = totalTasks > 0 ? Math.round(stats.closed / totalTasks * 100) : 0;
+                                        return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {(() => {
+                                            const slaOnTime = stats.slaMetCount ?? 0;
+                                            const slaLate = (stats.totalTaskCount ?? 0) - slaOnTime;
+                                            return (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
+                                            {/* WO dual-number card */}
+                                            <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
+                                                <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><FileText size={120} /></div>
+                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><FileText size={18} /></div>
+                                                <div style={{ position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '12px' }}>ใบงาน</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                                                        <div>
+                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.totalInMonth}</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
+                                                        </div>
+                                                        <div style={{ width: '1px', height: '44px', background: 'rgba(255,255,255,0.3)' }} />
+                                                        <div>
+                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{closedWOs}</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            ))}
+                                            </div>
+                                            {/* Task dual-number card */}
+                                            <div style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
+                                                <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><CheckCircle2 size={120} /></div>
+                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><CheckCircle2 size={18} /></div>
+                                                <div style={{ position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '12px' }}>รายการย่อย</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                                                        <div>
+                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{totalTasks}</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
+                                                        </div>
+                                                        <div style={{ width: '1px', height: '44px', background: 'rgba(255,255,255,0.3)' }} />
+                                                        <div>
+                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.closed}</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* On-time SLA card */}
+                                            <div onClick={() => document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' })} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
+                                                <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><Zap size={120} /></div>
+                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><Zap size={18} /></div>
+                                                <div style={{ position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เสร็จทัน SLA</div>
+                                                    <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaOnTime}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>จาก {stats.closed} รายการที่เสร็จ →</div>
+                                                </div>
+                                            </div>
+                                            {/* Late SLA card */}
+                                            <div onClick={() => document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' })} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: slaLate > 0 ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
+                                                <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><AlertTriangle size={120} /></div>
+                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><AlertTriangle size={18} /></div>
+                                                <div style={{ position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เลย SLA</div>
+                                                    <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaLate}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{slaLate > 0 ? 'รายการเกินกำหนด → ดูรายละเอียด' : 'ทุกงานทันกำหนด 🎉'}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                            );
+                                        })()}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+                                            <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>ความคืบหน้าเดือนนี้</span>
+                                            <div style={{ flex: 1, background: '#e2e8f0', borderRadius: '99px', height: '6px', overflow: 'hidden' }}>
+                                                <div style={{ width: `${Math.min(closeRate, 100)}%`, height: '100%', background: slaColor, borderRadius: '99px', transition: 'width 1s ease' }} />
+                                            </div>
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: slaColor, whiteSpace: 'nowrap' }}>{closeRate}%</span>
+                                            <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>ปิดแล้ว {closedWOs} · ค้าง {stats.totalInMonth - closedWOs}</span>
                                         </div>
                                     </div>
+                                        );
+                                    })()}
 
-                                    {/* Close rate bar */}
-                                    <div style={{ marginTop: '1.25rem', height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
-                                        <div style={{ height: '100%', width: `${closeRate}%`, background: `linear-gradient(90deg, #6366f1, ${slaColor})`, borderRadius: '99px', transition: 'width 1s ease' }} />
-                                    </div>
-                                    <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>อัตราปิดงาน {closeRate}%</span>
-                                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>เป้าหมาย 100%</span>
-                                    </div>
 
-                                    {/* CTA row */}
-                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                        <button
-                                            onClick={() => document.getElementById('analytics-detail-section')?.scrollIntoView({ behavior: 'smooth' })}
-                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '12px', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}
-                                        >
-                                            <TrendingUp size={14} /> ดูรายละเอียด SLA รายโครงการ ↓
-                                        </button>
-                                        <button
-                                            onClick={() => setViewMode('operations')}
-                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', background: stats.totalInMonth - stats.closed > 0 ? '#fef2f2' : '#f0fdf4', color: stats.totalInMonth - stats.closed > 0 ? '#dc2626' : '#059669', border: `1px solid ${stats.totalInMonth - stats.closed > 0 ? '#fecaca' : '#bbf7d0'}`, borderRadius: '12px', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}
-                                        >
-                                            <Activity size={14} />
-                                            {stats.totalInMonth - stats.closed > 0
-                                                ? `ใบงานค้างอยู่ ${stats.totalInMonth - stats.closed} รายการ →`
-                                                : 'ปิดครบทุกใบงานแล้ว ✓'}
-                                        </button>
-                                    </div>
                                 </div>
                                 );
                             })() : (
