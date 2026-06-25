@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import WorkOrderCard from '../components/WorkOrderCard';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
-import { CheckSquare, Search, Calendar, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info, Users } from 'lucide-react';
+import { CheckSquare, Search, Calendar, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info, Users, History, Clock, UserCircle } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
@@ -13,11 +13,13 @@ import AdminAssignModal from '../components/AdminAssignModal';
 import AdminAssignHelperModal from '../components/AdminAssignHelperModal';
 import { formatDate } from '../utils/date';
 import CustomDateInput from '../components/CustomDateInput';
+import { db } from '../lib/firebase';
+import { collection, query as fsQuery, where, onSnapshot as fsOnSnapshot } from 'firebase/firestore';
 
 const Evaluation = () => {
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
-    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin } = useWorkOrders();
+    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin, approveRetroactiveRequest, rejectRetroactiveRequest } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -38,9 +40,14 @@ const Evaluation = () => {
         type: 'success' | 'info' | 'warning' | 'error';
     } | null>(null);
 
-    const [activeTab, setActiveTab] = useState<'evaluation' | 'helper'>('evaluation');
+    const [activeTab, setActiveTab] = useState<'evaluation' | 'helper' | 'retroactive'>('evaluation');
     const [assigningHelperTask, setAssigningHelperTask] = useState<MasterTask | null>(null);
     const [helperTaskWoId, setHelperTaskWoId] = useState<string>('');
+    const [pendingRetroReqs, setPendingRetroReqs] = useState<any[]>([]);
+    const [selectedRetroReq, setSelectedRetroReq] = useState<any | null>(null);
+    const [retroRejectReason, setRetroRejectReason] = useState('');
+    const [retroActionLoading, setRetroActionLoading] = useState(false);
+    const [showRejectInput, setShowRejectInput] = useState(false);
 
     // ✅ Deep Link: Open Work Order if ID is in URL with State Validation (Case A)
     useEffect(() => {
@@ -198,6 +205,80 @@ const Evaluation = () => {
             logService.trackPageView(user, 'EVALUATION', 'ระบบประเมินและอนุมัติ');
         }
     }, [user]);
+
+    useEffect(() => {
+        if (workOrders.length === 0) return;
+        const unsubs: (() => void)[] = [];
+        workOrders.forEach(wo => {
+            const q = fsQuery(
+                collection(db, 'workOrders', wo.id, 'retroactiveRequests'),
+                where('status', '==', 'pending')
+            );
+            const unsub = fsOnSnapshot(q, snap => {
+                const reqs = snap.docs.map(d => ({ id: d.id, workOrderId: wo.id, ...d.data() }));
+                setPendingRetroReqs(prev => {
+                    const others = prev.filter(r => r.workOrderId !== wo.id);
+                    return [...others, ...reqs];
+                });
+            }, err => console.error(`retroactiveRequests listener error [${wo.id}]:`, err));
+            unsubs.push(unsub);
+        });
+        return () => unsubs.forEach(u => u());
+    }, [workOrders.length]);
+
+    const handleRetroApprove = async () => {
+        if (!selectedRetroReq) return;
+        setRetroActionLoading(true);
+        try {
+            await approveRetroactiveRequest(selectedRetroReq.id, selectedRetroReq.workOrderId, {
+                uid: user?.id || '',
+                name: (user as any)?.name || (user as any)?.displayName || 'Admin'
+            });
+            await sendNotification({
+                recipientId: selectedRetroReq.submittedBy?.uid,
+                senderId: user?.id || 'admin',
+                senderName: (user as any)?.name || 'Admin',
+                title: 'คำขอรับรองข้อมูลย้อนหลังได้รับการอนุมัติแล้ว',
+                message: `ข้อมูลวันที่ ${selectedRetroReq.requestDate} สำหรับงาน "${selectedRetroReq.context?.taskName}" ถูกบันทึกลงระบบแล้ว`,
+                type: 'success',
+                targetPath: `/daily-report`
+            });
+            setSelectedRetroReq(null);
+            setModalAlert({ isOpen: true, title: 'อนุมัติสำเร็จ', message: 'ข้อมูลถูกบันทึกลงระบบเรียบร้อยแล้ว และแจ้งเตือนโฟรแมนแล้ว', type: 'success' });
+        } catch (err: any) {
+            setModalAlert({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: err.message || 'ไม่สามารถอนุมัติได้', type: 'error' });
+        } finally {
+            setRetroActionLoading(false);
+        }
+    };
+
+    const handleRetroReject = async () => {
+        if (!selectedRetroReq || !retroRejectReason.trim()) return;
+        setRetroActionLoading(true);
+        try {
+            await rejectRetroactiveRequest(selectedRetroReq.id, selectedRetroReq.workOrderId, {
+                uid: user?.id || '',
+                name: (user as any)?.name || (user as any)?.displayName || 'Admin'
+            }, retroRejectReason.trim());
+            await sendNotification({
+                recipientId: selectedRetroReq.submittedBy?.uid,
+                senderId: user?.id || 'admin',
+                senderName: (user as any)?.name || 'Admin',
+                title: 'คำขอรับรองข้อมูลย้อนหลังถูกปฏิเสธ',
+                message: `งาน "${selectedRetroReq.context?.taskName}" วันที่ ${selectedRetroReq.requestDate}: ${retroRejectReason.trim()}`,
+                type: 'warning',
+                targetPath: `/daily-report`
+            });
+            setSelectedRetroReq(null);
+            setRetroRejectReason('');
+            setShowRejectInput(false);
+            setModalAlert({ isOpen: true, title: 'ปฏิเสธสำเร็จ', message: 'ส่งการแจ้งเตือนกลับไปยังโฟรแมนแล้ว', type: 'info' });
+        } catch (err: any) {
+            setModalAlert({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: err.message || 'ไม่สามารถปฏิเสธได้', type: 'error' });
+        } finally {
+            setRetroActionLoading(false);
+        }
+    };
 
     const handleTaskReviewClick = (task: MasterTask) => {
         if (selectedWorkOrder?.status === 'Rejected') {
@@ -435,6 +516,31 @@ const Evaluation = () => {
                     <Users size={18} />
                     จัดสรรงานช่วย ({pendingHelperTasks.length})
                 </button>
+                <button
+                    onClick={() => setActiveTab('retroactive')}
+                    style={{
+                        padding: '10px 20px',
+                        border: 'none',
+                        background: 'none',
+                        fontSize: '1rem',
+                        fontWeight: 800,
+                        color: activeTab === 'retroactive' ? '#ea580c' : '#64748b',
+                        borderBottom: activeTab === 'retroactive' ? '3px solid #ea580c' : '3px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    <History size={18} />
+                    อนุมัติข้อมูลย้อนหลัง
+                    {pendingRetroReqs.length > 0 && (
+                        <span style={{ background: '#ea580c', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.75rem', fontWeight: 900 }}>
+                            {pendingRetroReqs.length}
+                        </span>
+                    )}
+                </button>
             </div>
 
             {/* Filters */}
@@ -510,7 +616,64 @@ const Evaluation = () => {
                 gap: '1.5rem',
                 padding: '4px'
             }}>
-                {activeTab === 'evaluation' ? (
+                {activeTab === 'retroactive' ? (
+                    pendingRetroReqs.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่มีคำขอรับรองข้อมูลย้อนหลัง</div>
+                            <div style={{ fontSize: '1rem', color: '#94a3b8', marginTop: '8px' }}>คำขอจากโฟรแมนจะปรากฏขึ้นที่นี่</div>
+                        </div>
+                    ) : (
+                        pendingRetroReqs.map(req => {
+                            const daysAgo = req.requestDate ? Math.floor((Date.now() - new Date(req.requestDate).getTime()) / 86400000) : 0;
+                            const laborCount = req.payload?.labor?.length || 0;
+                            const submittedAt = req.submittedAt ? new Date(req.submittedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+                            return (
+                                <div
+                                    key={req.id}
+                                    onClick={() => { setSelectedRetroReq(req); setShowRejectInput(false); setRetroRejectReason(''); }}
+                                    style={{
+                                        background: '#ffffff',
+                                        padding: '20px 24px',
+                                        borderRadius: '20px',
+                                        border: '1.5px solid #fed7aa',
+                                        boxShadow: '0 4px 6px -1px rgba(234, 88, 12, 0.07)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '10px'
+                                    }}
+                                    onMouseOver={e => (e.currentTarget.style.boxShadow = '0 8px 16px rgba(234,88,12,0.15)')}
+                                    onMouseOut={e => (e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(234,88,12,0.07)')}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 900, background: '#fff7ed', color: '#ea580c', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fed7aa' }}>
+                                            ย้อนหลัง {daysAgo} วัน
+                                        </span>
+                                        <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#64748b', fontWeight: 700 }}>{req.workOrderId}</span>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', marginBottom: '2px' }}>{req.context?.taskName || 'งาน'}</div>
+                                        <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>{req.context?.categoryName}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.78rem', color: '#475569' }}>
+                                        <div>📅 วันที่ขอแก้: <strong>{req.requestDate}</strong></div>
+                                        <div>📍 {req.context?.locationName || '-'} · {req.context?.projectName || '-'}</div>
+                                        <div style={{ display: 'flex', gap: '12px' }}>
+                                            <span>📊 โปรเกรส: <strong>{req.payload?.progress ?? '-'}%</strong></span>
+                                            <span>👷 คนงาน: <strong>{laborCount} คน</strong></span>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px', borderTop: '1px solid #f1f5f9' }}>
+                                        <UserCircle size={14} color="#94a3b8" />
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{req.submittedBy?.name || 'โฟรแมน'}</span>
+                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: 'auto' }}>{submittedAt}</span>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )
+                ) : activeTab === 'evaluation' ? (
                     pendingWorkOrders.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
                             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่พบงานที่รอตรวจสอบ</div>
@@ -609,6 +772,147 @@ const Evaluation = () => {
                     )
                 )}
             </div>
+
+            {selectedRetroReq && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ background: '#ffffff', borderRadius: '24px', padding: '2rem', width: '540px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ background: '#fff7ed', padding: '10px', borderRadius: '12px', color: '#ea580c' }}>
+                                <History size={22} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}>อนุมัติข้อมูลย้อนหลัง</h3>
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{selectedRetroReq.workOrderId}</p>
+                            </div>
+                            <button onClick={() => { setSelectedRetroReq(null); setShowRejectInput(false); setRetroRejectReason(''); }} style={{ border: 'none', background: '#f1f5f9', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', color: '#64748b', fontWeight: 800, fontSize: '1rem' }}>✕</button>
+                        </div>
+
+                        {/* Context info */}
+                        <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.83rem', color: '#475569' }}>
+                            <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', marginBottom: '4px' }}>{selectedRetroReq.context?.taskName}</div>
+                            <div><strong>หมวดงาน:</strong> {selectedRetroReq.context?.categoryName || '-'}</div>
+                            <div><strong>โครงการ:</strong> {selectedRetroReq.context?.projectName || '-'}</div>
+                            <div><strong>สถานที่:</strong> {selectedRetroReq.context?.locationName || '-'}</div>
+                            <div style={{ display: 'flex', gap: '16px', marginTop: '4px' }}>
+                                <span><strong>วันที่ขอแก้:</strong> {selectedRetroReq.requestDate}</span>
+                                <span><strong>ย้อนหลัง:</strong> {Math.floor((Date.now() - new Date(selectedRetroReq.requestDate).getTime()) / 86400000)} วัน</span>
+                            </div>
+                        </div>
+
+                        {/* Payload */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <div style={{ flex: 1, background: '#eff6ff', borderRadius: '12px', padding: '10px 14px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1d4ed8' }}>{selectedRetroReq.payload?.progress ?? '-'}%</div>
+                                    <div style={{ fontSize: '0.73rem', color: '#3b82f6', fontWeight: 700 }}>ความคืบหน้า</div>
+                                </div>
+                                <div style={{ flex: 1, background: '#f0fdf4', borderRadius: '12px', padding: '10px 14px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#16a34a' }}>{selectedRetroReq.payload?.labor?.length || 0}</div>
+                                    <div style={{ fontSize: '0.73rem', color: '#22c55e', fontWeight: 700 }}>คนงาน (คน)</div>
+                                </div>
+                                <div style={{ flex: 1, background: '#fdf4ff', borderRadius: '12px', padding: '10px 14px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#7c3aed', marginTop: '2px' }}>{selectedRetroReq.payload?.type || '-'}</div>
+                                    <div style={{ fontSize: '0.73rem', color: '#a855f7', fontWeight: 700 }}>ประเภทงาน</div>
+                                </div>
+                            </div>
+
+                            {selectedRetroReq.payload?.labor?.length > 0 && (
+                                <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '12px 14px' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '6px' }}>รายการคนงาน</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        {selectedRetroReq.payload.labor.map((l: any, i: number) => (
+                                            <div key={i} style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>{l.name || l.id || `คนงาน ${i + 1}`}</span>
+                                                <span style={{ color: '#64748b' }}>{l.hours ? `${l.hours} ชม.` : ''} {l.type ? `(${l.type})` : ''}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedRetroReq.payload?.note && (
+                                <div style={{ background: '#fffbeb', borderRadius: '12px', padding: '10px 14px', border: '1px solid #fde68a' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400e', marginBottom: '4px' }}>หมายเหตุ</div>
+                                    <div style={{ fontSize: '0.82rem', color: '#78350f', lineHeight: 1.5 }}>{selectedRetroReq.payload.note}</div>
+                                </div>
+                            )}
+
+                            {selectedRetroReq.payload?.photos && Object.keys(selectedRetroReq.payload.photos).length > 0 && (
+                                <div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '6px' }}>รูปภาพ ({Object.values(selectedRetroReq.payload.photos).flat().length} รูป)</div>
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                        {(Object.values(selectedRetroReq.payload.photos).flat() as string[]).slice(0, 6).map((url, i) => (
+                                            <img key={i} src={url} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }} alt="" />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Submitter info */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#f1f5f9', borderRadius: '12px', fontSize: '0.78rem', color: '#475569' }}>
+                            <UserCircle size={16} color="#94a3b8" />
+                            <span><strong>ผู้ส่งคำขอ:</strong> {selectedRetroReq.submittedBy?.name || 'โฟรแมน'}</span>
+                            <span style={{ marginLeft: 'auto', color: '#94a3b8' }}>
+                                {selectedRetroReq.submittedAt ? new Date(selectedRetroReq.submittedAt).toLocaleString('th-TH') : ''}
+                            </span>
+                        </div>
+
+                        {/* Reject reason input */}
+                        {showRejectInput && (
+                            <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#dc2626', marginBottom: '6px' }}>เหตุผลที่ปฏิเสธ (จำเป็น)</div>
+                                <textarea
+                                    value={retroRejectReason}
+                                    onChange={e => setRetroRejectReason(e.target.value)}
+                                    placeholder="ระบุเหตุผล..."
+                                    rows={3}
+                                    style={{ width: '100%', borderRadius: '12px', border: '1.5px solid #fca5a5', padding: '10px 12px', fontSize: '0.85rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            {!showRejectInput ? (
+                                <>
+                                    <button
+                                        onClick={() => setShowRejectInput(true)}
+                                        disabled={retroActionLoading}
+                                        style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px solid #fca5a5', background: '#fff', color: '#dc2626', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer' }}
+                                    >
+                                        ปฏิเสธ
+                                    </button>
+                                    <button
+                                        onClick={handleRetroApprove}
+                                        disabled={retroActionLoading}
+                                        style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: retroActionLoading ? '#86efac' : '#16a34a', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: retroActionLoading ? 'wait' : 'pointer' }}
+                                    >
+                                        {retroActionLoading ? 'กำลังบันทึก...' : 'อนุมัติ'}
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => { setShowRejectInput(false); setRetroRejectReason(''); }}
+                                        style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', color: '#64748b', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                        ยกเลิก
+                                    </button>
+                                    <button
+                                        onClick={handleRetroReject}
+                                        disabled={retroActionLoading || !retroRejectReason.trim()}
+                                        style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: retroActionLoading || !retroRejectReason.trim() ? '#fca5a5' : '#dc2626', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: retroActionLoading || !retroRejectReason.trim() ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        {retroActionLoading ? 'กำลังส่ง...' : 'ยืนยันปฏิเสธ'}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {modalAlert && modalAlert.isOpen && (
                 <div style={{

@@ -95,236 +95,34 @@ const DailyReportContent: React.FC = () => {
       {/* Daily Report Submit Summary Modal Overlay */}
       {showSummaryModal && <DailyReportSummaryModal />}
 
-      {/* Unlock Request Modal Overlay (Direct Slice) */}
+      {/* Retroactive Warning Modal */}
       {showUnlockModal && selectedTaskInfo && (
-         <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(8px)",
-            zIndex: 2e3,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {" "}
-          
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "24px",
-              padding: "2rem",
-              width: "450px",
-              maxWidth: "90%",
-              boxShadow:
-                "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-              border: "1px solid #e2e8f0",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1.25rem",
-            }}
-          >
-            {" "}
-            
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-              }}
-            >
-              {" "}
-              
-              <div
-                style={{
-                  background: "#fef2f2",
-                  padding: "10px",
-                  borderRadius: "12px",
-                  color: "#ef4444",
-                }}
-              >
-                {" "}
-                
-                <Lock size={24} />
-              </div>{" "}
-              
-              <div>
-                {" "}
-                
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: "1.15rem",
-                    fontWeight: 900,
-                    color: "#0f172a",
-                  }}
-                >
-                  ขออนุมัติปลดล็อกแก้ไขย้อนหลัง
-                </h3>{" "}
-                
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.75rem",
-                    color: "#64748b",
-                    fontWeight: 600,
-                  }}
-                >
-                  สำหรับใบงานที่ต้องการปลดล็อกเกิน 3 วันที่กำหนด
-                </p>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(8px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: "24px", padding: "2rem", width: "440px", maxWidth: "90%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)", border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ background: "#fff7ed", padding: "10px", borderRadius: "12px", color: "#ea580c" }}>
+                <AlertCircle size={24} />
               </div>
-            </div>{" "}
-            
-            <div
-              style={{
-                padding: "12px 16px",
-                background: "#eff6ff",
-                borderRadius: "14px",
-                border: "1px solid #bfdbfe",
-              }}
-            >
-              {" "}
-              
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 800,
-                  color: "#1e40af",
-                  display: "block",
-                  marginBottom: "2px",
-                }}
-              >
-                วันที่ต้องการปลดล็อก:
-              </span>{" "}
-              
-              <span
-                style={{
-                  fontSize: "0.95rem",
-                  fontWeight: 900,
-                  color: "#1e3a8a",
-                }}
-              >
-                {formatDate(pendingUnlockDate)}
-              </span>
-            </div>{" "}
-            
-            <div>
-              {" "}
-              
-              <label
-                style={{
-                  fontSize: "0.8rem",
-                  fontWeight: 800,
-                  color: "#475569",
-                  display: "block",
-                  marginBottom: "6px",
-                }}
-              >
-                เหตุผลความจำเป็นในการปลดล็อก: 
-                <span
-                  style={{
-                    color: "#ef4444",
-                  }}
-                >
-                  *
-                </span>
-              </label>{" "}
-              
-              <textarea
-                placeholder="กรุณาระบุรายละเอียด เช่น ลืมกดรายงานในระบบ, รอเอกสารยืนยัน..."
-                value={unlockReason}
-                onChange={(e) => setUnlockReason(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "12px",
-                  border: "1px solid #cbd5e1",
-                  background: "#f8fafc",
-                  fontSize: "0.85rem",
-                  outline: "none",
-                  minHeight: "80px",
-                  resize: "none",
-                  transition: "all 0.2s",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>{" "}
-            
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                marginTop: "8px",
-              }}
-            >
-              {" "}
-              
-              <button
-                onClick={() => {
-                  setShowUnlockModal(false);
-                  setUnlockReason("");
-                }}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  borderRadius: "12px",
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
-                  color: "#64748b",
-                  fontSize: "0.85rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 900, color: "#0f172a" }}>รายงานย้อนหลัง (เกิน 3 วัน)</h3>
+                <p style={{ margin: 0, fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>วันที่ {formatDate(pendingUnlockDate)}</p>
+              </div>
+            </div>
+            <div style={{ padding: "14px 16px", background: "#fff7ed", borderRadius: "14px", border: "1px solid #fed7aa" }}>
+              <p style={{ margin: 0, fontSize: "0.85rem", color: "#92400e", fontWeight: 600, lineHeight: 1.6 }}>
+                ข้อมูลที่คุณลงในวันนี้<strong>จะถูกส่งรอการรับรอง</strong>จากผู้รับผิดชอบก่อนจึงจะถูกบันทึกลงระบบ<br />
+                กรอกข้อมูลได้ตามปกติ แล้วกด <strong>"ส่งขอรับรอง"</strong>
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button onClick={() => { setShowUnlockModal(false); setUnlockReason(""); }} style={{ flex: 1, padding: "12px", borderRadius: "12px", border: "1px solid #cbd5e1", background: "#fff", color: "#64748b", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" }}>
                 ยกเลิก
-              </button>{" "}
-              
+              </button>
               <button
-                onClick={async () => {
-                  if (!unlockReason.trim()) {
-                    alert("กรุณาระบุเหตุผลในการขอปลดล็อก");
-                    return;
-                  }
-                  try {
-                    await requestRetroactiveUnlock(
-                      selectedTaskInfo.wo.id,
-                      selectedTaskInfo.categoryId,
-                      selectedTaskInfo.task.id,
-                      pendingUnlockDate,
-                      unlockReason,
-                    );
-                    alert(
-                      "ส่งคำขอปลดล็อกสำเร็จ (ได้รับการอนุมัติระบบอัตโนมัติเป็นเวลา 24 ชั่วโมง)",
-                    );
-                    setReportDate(pendingUnlockDate);
-                    setShowUnlockModal(false);
-                    setUnlockReason("");
-                  } catch (err) {
-                    console.error(err);
-                    alert("เกิดข้อผิดพลาดในการปลดล็อก");
-                  }
-                }}
-                style={{
-                  flex: 2,
-                  padding: "12px",
-                  borderRadius: "12px",
-                  border: "none",
-                  background: "#3b82f6",
-                  color: "#fff",
-                  fontSize: "0.85rem",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  boxShadow: "0 4px 6px rgba(59, 130, 246, 0.2)",
-                  transition: "all 0.2s",
-                }}
+                onClick={() => { setReportDate(pendingUnlockDate); setShowUnlockModal(false); setUnlockReason(""); }}
+                style={{ flex: 2, padding: "12px", borderRadius: "12px", border: "none", background: "#ea580c", color: "#fff", fontSize: "0.85rem", fontWeight: 900, cursor: "pointer" }}
               >
-                ยืนยันขอปลดล็อก
+                รับทราบ / ดำเนินการต่อ
               </button>
             </div>
           </div>

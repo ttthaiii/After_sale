@@ -89,6 +89,8 @@ export const DailyReportDetailPane: React.FC = () => {
     setSelectedTaskInfo,
     
     isReportDatePast3Days,
+    retroactiveSubmitDone,
+    setRetroactiveSubmitDone,
     isTimeOverlap,
     progressBounds,
     
@@ -1429,73 +1431,31 @@ export const DailyReportDetailPane: React.FC = () => {
                       </div>
                     </div>
                   )}
-                  {isReportDatePast3Days && (
-                 <div
-                  style={{
-                    background: "#fff7ed",
-                    border: "1px solid #fed7aa",
-                    borderRadius: "16px",
-                    padding: "1.25rem",
-                    marginBottom: "2rem",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "1rem",
-                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
-                  }}
-                >
-                  {" "}
-                  
-                  <div
-                    style={{
-                      background: "#ffedd5",
-                      padding: "10px",
-                      borderRadius: "12px",
-                      color: "#ea580c",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {" "}
-                    
-                    <Lock size={20} />
-                  </div>{" "}
-                  
-                  <div
-                    style={{
-                      flex: 1,
-                    }}
-                  >
-                    {" "}
-                    
-                    <h4
-                      style={{
-                        margin: "0 0 4px 0",
-                        color: "#c2410c",
-                        fontSize: "0.95rem",
-                        fontWeight: 900,
-                      }}
-                    >
-                      รายงานนี้ถูกล็อกการแก้ไขความคืบหน้าและรูปภาพ
-                    </h4>{" "}
-                    
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: "0.85rem",
-                        color: "#ea580c",
-                        fontWeight: 600,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      เนื่องจากวันที่รายงานเกิน 3 วันที่กำหนด
-                      คุณสามารถแก้ไขได้เฉพาะข้อมูลแรงงานและการเข้าทำงานเท่านั้น
-                      หากต้องการแก้ไขความคืบหน้า รูปภาพ หรือโน้ตหน้างาน
-                      กรุณากดที่วันที่รายงานและส่งคำขอปลดล็อกย้อนหลังจากแอดมิน
-                    </p>
-                  </div>
-                </div>
-              )}
+                  {isReportDatePast3Days && !retroactiveSubmitDone && (
+                    <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "16px", padding: "1rem 1.25rem", marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                      <div style={{ background: "#ffedd5", padding: "8px", borderRadius: "10px", color: "#ea580c", flexShrink: 0, display: "flex", alignItems: "center" }}>
+                        <AlertCircle size={18} />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: "0 0 2px 0", color: "#c2410c", fontSize: "0.88rem", fontWeight: 900 }}>รายงานย้อนหลัง — ต้องผ่านการรับรอง</h4>
+                        <p style={{ margin: 0, fontSize: "0.8rem", color: "#ea580c", fontWeight: 600, lineHeight: 1.5 }}>
+                          กรอกข้อมูลได้ตามปกติ เมื่อกด <strong>"ส่งขอรับรอง"</strong> ข้อมูลจะถูกส่งให้ผู้รับผิดชอบอนุมัติก่อนบันทึกลงระบบ
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {isReportDatePast3Days && retroactiveSubmitDone && (
+                    <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "16px", padding: "1rem 1.25rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{ background: "#dcfce7", padding: "8px", borderRadius: "10px", color: "#16a34a", flexShrink: 0 }}>
+                        <CheckCircle2 size={18} />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: "0 0 2px 0", color: "#15803d", fontSize: "0.88rem", fontWeight: 900 }}>ส่งคำขอรับรองแล้ว</h4>
+                        <p style={{ margin: 0, fontSize: "0.8rem", color: "#16a34a", fontWeight: 600 }}>รอผู้รับผิดชอบอนุมัติ ข้อมูลจะปรากฏหลังได้รับการอนุมัติ</p>
+                      </div>
+                      <button onClick={() => setRetroactiveSubmitDone(false)} style={{ marginLeft: "auto", fontSize: "0.75rem", padding: "4px 10px", borderRadius: "8px", border: "1px solid #bbf7d0", background: "#fff", color: "#15803d", cursor: "pointer", fontWeight: 700 }}>แก้ไขใหม่</button>
+                    </div>
+                  )}
               {selectedTaskInfo.task.estimatedSla &&
                 selectedTaskInfo.task.slaCategory &&
                 selectedTaskInfo.task.estimatedSla !==
@@ -4512,38 +4472,28 @@ export const DailyReportDetailPane: React.FC = () => {
                       บันทึกแบบร่าง
                     </button>
 
-                    <button
-                      onClick={handleSubmit}
-                      disabled={isSubmitting || isUploading}
-                      style={{
-                        padding: "12px 32px",
-                        borderRadius: "14px",
-                        border: "none",
-                        background:
-                          isSubmitting || isUploading ? "#94a3b8" : "#2563eb",
-                        color: "#fff",
-                        fontWeight: 900,
-                        cursor:
-                          isSubmitting || isUploading
-                            ? "not-allowed"
-                            : "pointer",
-                        boxShadow:
-                          isSubmitting || isUploading
-                            ? "none"
-                            : "0 4px 6px rgba(37, 99, 235, 0.2)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      {(isSubmitting || isUploading) && (
-                         <Loader2
-                          className="animate-spin"
-                          size={20}
-                        />
-                      )}
-                      {isSubmitting ? "กำลังบันทึก..." : "ยืนยันการส่งรายงาน"}
-                    </button>
+                    {!retroactiveSubmitDone && (
+                      <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting || isUploading}
+                        style={{
+                          padding: "12px 32px",
+                          borderRadius: "14px",
+                          border: "none",
+                          background: isSubmitting || isUploading ? "#94a3b8" : isReportDatePast3Days ? "#ea580c" : "#2563eb",
+                          color: "#fff",
+                          fontWeight: 900,
+                          cursor: isSubmitting || isUploading ? "not-allowed" : "pointer",
+                          boxShadow: isSubmitting || isUploading ? "none" : isReportDatePast3Days ? "0 4px 6px rgba(234,88,12,0.25)" : "0 4px 6px rgba(37,99,235,0.2)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        {(isSubmitting || isUploading) && <Loader2 className="animate-spin" size={20} />}
+                        {isSubmitting ? "กำลังส่ง..." : isReportDatePast3Days ? "ส่งขอรับรอง" : "ยืนยันการส่งรายงาน"}
+                      </button>
+                    )}
                   </Fragment>
                 )}
             </div>

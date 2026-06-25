@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { WorkOrder, Category, MasterTask, DailyReport, Project, Staff, Contractor } from '../types';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where, deleteField } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where, deleteField, deleteDoc } from 'firebase/firestore';
 
 import { TaskAssignee } from '../types';
 import { useAuth } from './AuthContext';
@@ -22,6 +22,23 @@ interface WorkOrderContextType {
     archiveWorkOrder: (id: string) => Promise<void>;
     markWorkOrderAsReviewed: (id: string) => Promise<void>;
     requestRetroactiveUnlock: (workOrderId: string, categoryId: string, taskId: string, date: string, reason: string) => Promise<void>;
+    submitRetroactiveRequest: (
+        workOrderId: string,
+        categoryId: string,
+        taskId: string,
+        date: string,
+        payload: {
+            progress: number;
+            note: string;
+            type: string;
+            labor: any[];
+            leave?: any[];
+            photos?: any;
+        },
+        submittedBy: { uid: string; name: string }
+    ) => Promise<void>;
+    approveRetroactiveRequest: (requestId: string, workOrderId: string, approvedBy: { uid: string; name: string }) => Promise<void>;
+    rejectRetroactiveRequest: (requestId: string, workOrderId: string, rejectedBy: { uid: string; name: string }, reason: string) => Promise<void>;
     generateDeliveryQrToken: (woId: string, ownerId: string) => Promise<string>;
     submitCustomerInspection: (
         woId: string, 
@@ -1427,6 +1444,180 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await updateDoc(doc(db, 'workOrders', id), { status, lastUpdate: new Date().toISOString() });
     };
 
+    const submitRetroactiveRequest = async (
+        workOrderId: string,
+        categoryId: string,
+        taskId: string,
+        date: string,
+        payload: { progress: number; note: string; type: string; labor: any[]; leave?: any[]; photos?: any },
+        submittedBy: { uid: string; name: string }
+    ) => {
+        const requestsRef = collection(db, 'workOrders', workOrderId, 'retroactiveRequests');
+        // Block duplicate pending for same task+date
+        const existing = await getDocs(query(requestsRef,
+            where('taskId', '==', taskId),
+            where('requestDate', '==', date),
+            where('status', '==', 'pending')
+        ));
+        if (!existing.empty) throw new Error('DUPLICATE_PENDING');
+
+        const wo = allWorkOrders.find(w => w?.id === workOrderId);
+        const cat = wo?.categories?.find((c: any) => c?.id === categoryId);
+        const task = cat?.tasks?.find((t: any) => t?.id === taskId);
+
+        await addDoc(requestsRef, {
+            taskId,
+            categoryId,
+            requestDate: date,
+            submittedBy,
+            submittedAt: new Date().toISOString(),
+            status: 'pending',
+            payload,
+            context: {
+                woCode: wo?.id || workOrderId,
+                projectName: wo?.projectName || '',
+                locationName: wo?.locationName || '',
+                taskName: task?.name || '',
+                categoryName: cat?.name || '',
+            },
+        });
+    };
+
+    const approveRetroactiveRequest = async (
+        requestId: string,
+        workOrderId: string,
+        approvedBy: { uid: string; name: string }
+    ) => {
+        const reqRef = doc(db, 'workOrders', workOrderId, 'retroactiveRequests', requestId);
+        const reqSnap = await getDoc(reqRef);
+        if (!reqSnap.exists()) throw new Error('REQUEST_NOT_FOUND');
+        const req = reqSnap.data();
+        if (req.status !== 'pending') throw new Error('REQUEST_NOT_PENDING');
+
+        const { taskId, categoryId, requestDate, payload } = req;
+        const woCode = workOrderId;
+
+        // Determine save path — same logic as addTaskUpdate
+        const isWOA = woCode.toUpperCase().includes('WOA') || woCode.toUpperCase().includes('WOP');
+        const now = new Date().toISOString();
+
+        if (isWOA) {
+            // Derive subtask ID the same way addTaskUpdate does
+            const subtaskId = getSubtaskId(taskId);
+            // Get currentRevision from allWorkOrders in-memory, fallback to Firestore
+            const woMem = allWorkOrders.find(w => w?.id === workOrderId);
+            const taskMem = woMem?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
+            let currentRev = taskMem?.currentRevision || 'rev00';
+            // If not in memory, fetch from Firestore
+            if (!taskMem) {
+                try {
+                    const subtaskRef = collection(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions');
+                    const revSnap = await getDocs(subtaskRef);
+                    if (!revSnap.empty) {
+                        const activeRev = revSnap.docs.find(d => d.data().status === 'active') || revSnap.docs.sort((a, b) => b.id.localeCompare(a.id))[0];
+                        if (activeRev) currentRev = activeRev.id;
+                    }
+                } catch (_) {}
+            }
+            const reportRef = doc(db,
+                'workOrders', workOrderId,
+                'categories', categoryId,
+                'tasks', taskId,
+                'subtasks', subtaskId,
+                'revisions', currentRev,
+                'dailyReports', requestDate
+            );
+            await setDoc(reportRef, {
+                ...payload,
+                id: requestDate,
+                date: `${requestDate}T08:00:00.000Z`,
+                createdBy: req.submittedBy.uid,
+                createdAt: req.submittedAt,
+                updatedBy: approvedBy.uid,
+                updatedAt: now,
+                serverTimestamp: now,
+                approvedBy: approvedBy.uid,
+                approvedAt: now,
+                isRetroactive: true,
+            }, { merge: true });
+            // Touch task document so main onSnapshot fires and context re-fetches history
+            const taskRefWoa = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
+            await updateDoc(taskRefWoa, { dailyProgress: payload.progress, updatedAt: now });
+        } else {
+            const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
+            const taskSnap = await getDoc(taskRef);
+            const existing = taskSnap.data();
+            const history: any[] = existing?.history || [];
+            const idx = history.findIndex((h: any) => h.date?.startsWith(requestDate));
+            const entry = {
+                ...payload,
+                id: requestDate,
+                date: `${requestDate}T08:00:00.000Z`,
+                createdBy: req.submittedBy.uid,
+                createdAt: req.submittedAt,
+                updatedBy: approvedBy.uid,
+                updatedAt: now,
+                serverTimestamp: now,
+                approvedBy: approvedBy.uid,
+                approvedAt: now,
+                isRetroactive: true,
+            };
+            if (idx >= 0) history[idx] = entry;
+            else history.push(entry);
+            await updateDoc(taskRef, { history, dailyProgress: payload.progress, updatedAt: now });
+        }
+
+        await updateDoc(reqRef, {
+            status: 'approved',
+            approvedBy,
+            resolvedAt: now,
+        });
+
+        // Delete the pending draft so form clears after approval
+        try {
+            const draftSubId = getSubtaskId(taskId);
+            const woMem2 = allWorkOrders.find(w => w?.id === workOrderId);
+            const taskMem2 = woMem2?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
+            const draftRev = taskMem2?.currentRevision || currentRev;
+            const draftRef = isWOA
+                ? doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', draftSubId, 'revisions', draftRev, 'dailyReportsDraft', requestDate)
+                : doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'dailyreportDraft', requestDate);
+            await deleteDoc(draftRef);
+        } catch (_) {}
+    };
+
+    const rejectRetroactiveRequest = async (
+        requestId: string,
+        workOrderId: string,
+        rejectedBy: { uid: string; name: string },
+        reason: string
+    ) => {
+        const reqRef = doc(db, 'workOrders', workOrderId, 'retroactiveRequests', requestId);
+        const reqSnap = await getDoc(reqRef);
+        const reqData = reqSnap.exists() ? reqSnap.data() : null;
+        await updateDoc(reqRef, {
+            status: 'rejected',
+            rejectedBy,
+            rejectedReason: reason,
+            resolvedAt: new Date().toISOString(),
+        });
+
+        // Clear isPendingRetroactive flag from draft so foreman can resubmit
+        if (reqData) {
+            try {
+                const { taskId, categoryId, requestDate } = reqData;
+                const isWoaRej = workOrderId.toUpperCase().includes('WOA') || workOrderId.toUpperCase().includes('WOP');
+                const subIdRej = getSubtaskId(taskId);
+                const taskMemRej = allWorkOrders.find(w => w?.id === workOrderId)?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
+                const revRej = taskMemRej?.currentRevision || 'rev00';
+                const draftRefRej = isWoaRej
+                    ? doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subIdRej, 'revisions', revRej, 'dailyReportsDraft', requestDate)
+                    : doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'dailyreportDraft', requestDate);
+                await updateDoc(draftRefRej, { isPendingRetroactive: false });
+            } catch (_) {}
+        }
+    };
+
     const requestRetroactiveUnlock = async (workOrderId: string, categoryId: string, taskId: string, date: string, reason: string) => {
         const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
         const taskDoc = allWorkOrders.find(w => w?.id === workOrderId)?.categories?.find(c => c?.id === categoryId)?.tasks?.find(t => t?.id === taskId);
@@ -1787,6 +1978,9 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             archiveWorkOrder,
             markWorkOrderAsReviewed,
             requestRetroactiveUnlock,
+            submitRetroactiveRequest,
+            approveRetroactiveRequest,
+            rejectRetroactiveRequest,
             generateDeliveryQrToken,
             submitCustomerInspection,
             logCustomerQrView,

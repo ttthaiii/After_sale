@@ -101,6 +101,8 @@ interface DailyReportContextType {
   isSubmitting: boolean;
   setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
   submittingRef: React.MutableRefObject<boolean>;
+  retroactiveSubmitDone: boolean;
+  setRetroactiveSubmitDone: React.Dispatch<React.SetStateAction<boolean>>;
   activeModal: "Internal" | "Outsource" | null;
   setActiveModal: React.Dispatch<React.SetStateAction<"Internal" | "Outsource" | null>>;
   timePickerTarget: TimePickerTarget | null;
@@ -142,6 +144,7 @@ interface DailyReportContextType {
   updateTask: any;
   updateWorkOrderStatus: any;
   requestRetroactiveUnlock: any;
+  submitRetroactiveRequest: any;
   generateDeliveryQrToken: any;
   submitCustomerInspection: any;
   
@@ -283,6 +286,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     updateTask,
     updateWorkOrderStatus,
     requestRetroactiveUnlock,
+    submitRetroactiveRequest,
     generateDeliveryQrToken,
     submitCustomerInspection,
   } = useWorkOrders();
@@ -431,6 +435,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   >(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const [retroactiveSubmitDone, setRetroactiveSubmitDone] = useState(false);
   const [activeModal, setActiveModal] = useState<
     "Internal" | "Outsource" | null
   >(null);
@@ -725,6 +730,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             setLaborOtNoonPhotos(draftData.laborOtNoonPhotos || []);
             setLaborOtEveningPhotos(draftData.laborOtEveningPhotos || []);
             setActivePhotoTab("site");
+            if (draftData.isPendingRetroactive) {
+              setRetroactiveSubmitDone(true);
+            }
             setIsEditingExisting(isTaskFinished ? false : true);
             return;
           }
@@ -1079,6 +1087,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         user?.role !== "Manager");
 
     setSelectedTaskInfo({ task: { ...task, isReadOnly, isHelper }, wo, categoryId });
+    setRetroactiveSubmitDone(false);
     setProgress(currentP < minP ? minP : currentP);
     setNote("");
     setLabor([]);
@@ -1168,7 +1177,6 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const isProgressNotePhotosEditable =
     isEditingExisting &&
-    !isReportDatePast3Days &&
     !isTaskFinished &&
     !selectedTaskInfo?.task?.isReadOnly &&
     !(selectedTaskInfo?.wo?.pendingAdminReassign === true ||
@@ -2017,6 +2025,57 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         updatedBy: foremanEmpId,
         updatedAt: new Date().toISOString(),
       };
+      if (isReportDatePast3Days) {
+        await submitRetroactiveRequest(
+          selectedTaskInfo.wo.id,
+          selectedTaskInfo.categoryId,
+          selectedTaskInfo.task.id,
+          reportDate,
+          {
+            progress: newUpdate.progress,
+            note: newUpdate.note,
+            type: newUpdate.type as string,
+            labor: newUpdate.labor,
+            leave: newUpdate.leave,
+            photos: newUpdate.photos,
+          },
+          { uid: user?.id || foremanEmpId, name: (user as any)?.name || (user as any)?.displayName || 'โฟรแมน' }
+        );
+        setRetroactiveSubmitDone(true);
+        setShowSummaryModal(false);
+        // Save pending draft so form data persists while waiting for approval
+        try {
+          const _isWoa = selectedTaskInfo.wo.id.toUpperCase().includes("WOA") || selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+          const _woId = selectedTaskInfo.wo.id;
+          const _catId = selectedTaskInfo.categoryId;
+          const _tId = selectedTaskInfo.task.id;
+          const _subId = _tId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
+          const _taskDoc = workOrders.find(w => w?.id === _woId)?.categories?.find((c: any) => c?.id === _catId)?.tasks?.find((t: any) => t?.id === _tId);
+          const _rev = _taskDoc?.currentRevision || "rev00";
+          const _draftRef = _isWoa
+            ? doc(db, "workOrders", _woId, "categories", _catId, "tasks", _tId, "subtasks", _subId, "revisions", _rev, "dailyReportsDraft", reportDate)
+            : doc(db, "workOrders", _woId, "categories", _catId, "tasks", _tId, "dailyreportDraft", reportDate);
+          await setDoc(_draftRef, {
+            progress, note, labor, reportType, reportDate,
+            sitePhotos: sitePhotos.filter(Boolean),
+            laborRegularPhotos, laborOtMorningPhotos, laborOtNoonPhotos, laborOtEveningPhotos,
+            isPendingRetroactive: true,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (_e) { console.error("saveRetroactiveDraft failed:", _e); }
+        try {
+          await sendNotification({
+            recipientRole: 'Admin',
+            senderId: user?.id || foremanEmpId,
+            senderName: (user as any)?.name || (user as any)?.displayName || 'โฟรแมน',
+            title: 'คำขอรับรองข้อมูลย้อนหลัง',
+            message: `${(user as any)?.name || 'โฟรแมน'} ขอรับรองข้อมูลวันที่ ${reportDate} (${selectedTaskInfo.wo.id}) — กรุณาตรวจสอบ`,
+            type: 'warning',
+            targetPath: '/evaluation',
+          });
+        } catch (_) {}
+        return;
+      }
       await addTaskUpdate(
         selectedTaskInfo.wo.id,
         selectedTaskInfo.categoryId,
@@ -2080,9 +2139,15 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setReportType("Update");
         setReportDate(new Date().toISOString().split("T")[0]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Submit failed:", error);
-      alert("บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      if (error?.message === 'DUPLICATE_PENDING') {
+        alert("มีคำขอรับรองสำหรับวันนี้รออยู่แล้ว กรุณารอการรับรองก่อน");
+        setRetroactiveSubmitDone(true);
+        setShowSummaryModal(false);
+      } else {
+        alert("บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      }
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -2361,6 +2426,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isSubmitting,
         setIsSubmitting,
         submittingRef,
+        retroactiveSubmitDone,
+        setRetroactiveSubmitDone,
         activeModal,
         setActiveModal,
         timePickerTarget,
@@ -2394,6 +2461,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         updateTask,
         updateWorkOrderStatus,
         requestRetroactiveUnlock,
+        submitRetroactiveRequest,
         generateDeliveryQrToken,
         submitCustomerInspection,
         
