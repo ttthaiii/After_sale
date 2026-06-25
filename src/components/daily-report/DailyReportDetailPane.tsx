@@ -1,4 +1,4 @@
-import React, { Fragment } from "react";
+import React, { Fragment, useState } from "react";
 import {
   HardHat,
   Camera,
@@ -104,6 +104,13 @@ export const DailyReportDetailPane: React.FC = () => {
     setIsEditingExisting,
     setActiveModal,
   } = useDailyReport();
+
+  const [expandedPhotos, setExpandedPhotos] = useState<Set<string>>(new Set());
+  const togglePhotos = (key: string) => setExpandedPhotos(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   const isAwaitingAdmin = React.useMemo(() => {
     return selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin;
@@ -4323,50 +4330,64 @@ export const DailyReportDetailPane: React.FC = () => {
                                 }
 
                                 if (allPhotos.length === 0) return null;
+                                const photoKey = `${h.id}-${hDateStr}`;
+                                const isExpanded = expandedPhotos.has(photoKey);
                                 return (
                                   <div
                                     style={{ marginTop: "10px" }}
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <div style={{ fontSize: "0.72rem", color: "#94a3b8", fontWeight: 700, marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                                      📷 รูปถ่าย ({allPhotos.length} รูป)
-                                    </div>
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                                      {allPhotos.map((p, pIdx) => (
-                                        <div
-                                          key={pIdx}
-                                          onClick={() => setZoomImage(p.url)}
-                                          style={{
-                                            cursor: "pointer",
-                                            borderRadius: "8px",
-                                            overflow: "hidden",
-                                            width: "60px",
-                                            height: "60px",
-                                            position: "relative",
-                                            border: "2px solid #e2e8f0",
-                                            flexShrink: 0,
-                                            transition: "all 0.15s",
-                                          }}
-                                          onMouseOver={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = "#6366f1"; }}
-                                          onMouseOut={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
-                                          title={p.label}
-                                        >
-                                          <img
-                                            src={p.url}
-                                            alt={p.label}
-                                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                          />
-                                          <div style={{
-                                            position: "absolute", bottom: 0, left: 0, right: 0,
-                                            background: "rgba(0,0,0,0.5)", color: "#fff",
-                                            fontSize: "0.55rem", textAlign: "center", padding: "1px 2px",
-                                            fontWeight: 600, lineHeight: 1.2
-                                          }}>
-                                            {p.label}
+                                    <button
+                                      onClick={() => togglePhotos(photoKey)}
+                                      style={{
+                                        display: "inline-flex", alignItems: "center", gap: "5px",
+                                        fontSize: "0.72rem", color: isExpanded ? "#6366f1" : "#64748b",
+                                        background: isExpanded ? "#eef2ff" : "#f1f5f9",
+                                        border: `1px solid ${isExpanded ? "#c7d2fe" : "#e2e8f0"}`,
+                                        borderRadius: "6px", padding: "3px 10px",
+                                        fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
+                                      }}
+                                    >
+                                      📷 รูปถ่าย ({allPhotos.length} รูป) {isExpanded ? "▲" : "▼"}
+                                    </button>
+                                    {isExpanded && (
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                                        {allPhotos.map((p, pIdx) => (
+                                          <div
+                                            key={pIdx}
+                                            onClick={() => setZoomImage(p.url)}
+                                            style={{
+                                              cursor: "pointer",
+                                              borderRadius: "8px",
+                                              overflow: "hidden",
+                                              width: "60px",
+                                              height: "60px",
+                                              position: "relative",
+                                              border: "2px solid #e2e8f0",
+                                              flexShrink: 0,
+                                              transition: "all 0.15s",
+                                            }}
+                                            onMouseOver={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = "#6366f1"; }}
+                                            onMouseOut={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                                            title={p.label}
+                                          >
+                                            <img
+                                              src={p.url}
+                                              alt={p.label}
+                                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                            />
+                                            <div style={{
+                                              position: "absolute", bottom: 0, left: 0, right: 0,
+                                              background: "rgba(0,0,0,0.5)", color: "#fff",
+                                              fontSize: "0.55rem", textAlign: "center", padding: "1px 2px",
+                                              fontWeight: 600, lineHeight: 1.2
+                                            }}>
+                                              {p.label}
+                                            </div>
                                           </div>
-                                        </div>
-                                      ))}
-                                    </div>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })()}
