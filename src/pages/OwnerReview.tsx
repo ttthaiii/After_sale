@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
 import { 
     CheckCircle2, XCircle, Camera, AlertTriangle, 
     Building2, MapPin, Package, UserCheck, FileText, 
@@ -154,6 +154,7 @@ export default function OwnerReview() {
                 revisionCreatedAt: now,
                 currentRevision: nextRev,
                 dailyProgress: 0,
+                completedAt: deleteField(), // clear stale timestamp so Round N+1 SLA calculates correctly
                 updatedAt: now
             });
 

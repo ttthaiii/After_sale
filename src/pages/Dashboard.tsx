@@ -676,7 +676,7 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                                         {/* Stage 2: งานเสร็จ */}
                                                         <div style={stageWrap}>
                                                             <div style={nodeStyles[lastProg >= 100 ? 'done' : 'wait']}><Check size={20} /></div>
-                                                            <div style={lbl}><strong style={{ fontSize: '13px', color: '#1e293b', display: 'block' }}>งานเสร็จ</strong>100%<br/><span style={lbl2}>{fmtDate(revMaxDate)}</span></div>
+                                                            <div style={lbl}><strong style={{ fontSize: '13px', color: '#1e293b', display: 'block' }}>งานเสร็จ</strong>{lastProg >= 100 ? '100%' : `${lastProg}%`}<br/><span style={lbl2}>{lastProg >= 100 ? fmtDate(revMaxDate) : '—'}</span></div>
                                                         </div>
                                                         {/* Conn 2→3 */}
                                                         <div style={conn}>
@@ -1916,6 +1916,8 @@ const Dashboard = () => {
     const handleLaborDetailClick = (projectId: string, dateStr: string) => {
         const project = projects.find((p: any) => p.id === projectId);
         if (!project || !dateStr) return;
+        const _matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
+        const _viewingForeman = isAdminOrManager ? selectedForemanId : null;
         const woGroups: any[] = [];
         const projectWOs = workOrders.filter((wo: any) => wo.projectId === projectId);
         projectWOs.forEach((wo: any) => {
@@ -1924,6 +1926,11 @@ const Dashboard = () => {
             let hasActivityToday = false;
             wo.categories?.forEach((cat: any) => {
                 cat.tasks.forEach((task: any) => {
+                    const _owners: string[] = task.responsibleStaffIds || [];
+                    const _isOwner = _viewingForeman
+                        ? _owners.includes(_viewingForeman) || (!_owners.length && wo.reporterId === _viewingForeman)
+                        : _owners.some((id: string) => _matchUid(id)) || (!_owners.length && _matchUid(wo.reporterId || ''));
+                    if (!_isOwner) return;
                     totalTasksInWO++;
                     const history = task.history || [];
                     const todayLog = history.find((h: any) => h.date.startsWith(dateStr));
@@ -3516,7 +3523,7 @@ const Dashboard = () => {
                                                     <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#0d9488', background: '#f0fdf4', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>+/- วัน</th>
                                                     <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderLeft: '1px solid #e2e8f0', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>ช่วงเวลาที่ใช้</th>
                                                     <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>วันทำจริง</th>
-                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>ชม.</th>
+                                                    <th style={{ padding: '4px 8px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#b45309', background: '#fff7ed', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>ชม.รวม</th>
                                                     <th style={{ padding: '4px 8px 10px', textAlign: 'center', color: '#6d28d9', background: '#faf5ff', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 33, zIndex: 20 }}>REV.</th>
                                                     <th style={{ padding: '4px 8px 10px', textAlign: 'center', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>สถานะ</th>
                                                     <th style={{ padding: '4px 0.75rem 10px', textAlign: 'center', position: 'sticky', top: 33, zIndex: 20, background: '#fff', borderBottom: '2px solid #e2e8f0' }}>จัดการ</th>
@@ -3644,48 +3651,48 @@ const Dashboard = () => {
                                                             <React.Fragment key={`${task.woId}-${task.id}`}>
                                                                 {showHeader && (
                                                                     <tr>
-                                                                        <td colSpan={14} style={{ padding: '12px 12px 4px 12px' }}>
-                                                                            <div style={{ 
-                                                                                display: 'flex', 
-                                                                                alignItems: 'center', 
+                                                                        <td colSpan={14} style={{ padding: '5px 8px 2px 8px' }}>
+                                                                            <div style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
                                                                                 justifyContent: 'space-between',
-                                                                                padding: '8px 16px',
+                                                                                padding: '4px 10px',
                                                                                 background: 'linear-gradient(90deg, #f8fafc 0%, #ffffff 100%)',
-                                                                                borderRadius: '12px',
+                                                                                borderRadius: '8px',
                                                                                 border: '1px solid #e2e8f0',
-                                                                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                                                                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                                                                             }}>
-                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                                    <div style={{ 
-                                                                                        width: '32px', 
-                                                                                        height: '32px', 
-                                                                                        borderRadius: '8px', 
-                                                                                        background: '#eef2ff', 
-                                                                                        display: 'flex', 
-                                                                                        alignItems: 'center', 
-                                                                                        justifyContent: 'center' 
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                    <div style={{
+                                                                                        width: '22px',
+                                                                                        height: '22px',
+                                                                                        borderRadius: '6px',
+                                                                                        background: '#eef2ff',
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'center',
+                                                                                        justifyContent: 'center'
                                                                                     }}>
-                                                                                        <FileText size={16} color="#4f46e5" />
+                                                                                        <FileText size={12} color="#4f46e5" />
                                                                                     </div>
                                                                                     <div>
-                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                            <span style={{ fontWeight: 900, color: '#1e293b', fontSize: '1rem', letterSpacing: '-0.01em' }}>{task.woId}</span>
-                                                                                            <span style={{ 
-                                                                                                padding: '2px 8px', 
-                                                                                                background: '#4f46e5', 
-                                                                                                color: '#fff', 
-                                                                                                borderRadius: '6px', 
-                                                                                                fontSize: '0.7rem', 
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                            <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.82rem', letterSpacing: '-0.01em' }}>{task.woId}</span>
+                                                                                            <span style={{
+                                                                                                padding: '1px 6px',
+                                                                                                background: '#4f46e5',
+                                                                                                color: '#fff',
+                                                                                                borderRadius: '4px',
+                                                                                                fontSize: '0.62rem',
                                                                                                 fontWeight: 800,
                                                                                                 textTransform: 'uppercase'
                                                                                             }}>CASE</span>
-                                                                                        </div>
-                                                                                        <div style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 600, marginTop: '2px' }}>
-                                                                                            {task.projectName} <span style={{ opacity: 0.5, margin: '0 4px' }}>•</span> {task.locationName}
+                                                                                            <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>
+                                                                                                {task.projectName} <span style={{ opacity: 0.5, margin: '0 2px' }}>•</span> {task.locationName}
+                                                                                            </span>
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
-                                                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
+                                                                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8' }}>
                                                                                     สถานะ: <span style={{ color: woStatusColor, fontWeight: 800 }}>{woStatusLabel}</span>
                                                                                 </div>
                                                                             </div>
@@ -3701,7 +3708,7 @@ const Dashboard = () => {
                                                                         position: 'relative'
                                                                     }}
                                                                 >
-                                                                    <td style={{ padding: '0.75rem 1rem', position: 'relative' }}>
+                                                                    <td style={{ padding: '0.35rem 0.6rem', position: 'relative' }}>
                                                                         {/* Group Connector Line */}
                                                                         {!isLastInGroup && (
                                                                             <div style={{ 
@@ -3723,15 +3730,15 @@ const Dashboard = () => {
                                                                                 border: '2px solid #fff',
                                                                                 boxShadow: '0 0 0 1px #f1f5f9'
                                                                             }} />
-                                                                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>
+                                                                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.82rem' }}>
                                                                                 {task.name || 'ไม่ระบุชื่อรายการ'}
                                                                             </span>
                                                                         </div>
                                                                     </td>
                                                                     <td style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                            <div style={{ padding: '6px', borderRadius: '8px', background: '#f8fafc' }}>
-                                                                                <MapPin size={14} color="#94a3b8" />
+                                                                            <div style={{ padding: '3px', borderRadius: '6px', background: '#f8fafc' }}>
+                                                                                <MapPin size={12} color="#94a3b8" />
                                                                             </div>
                                                                             {task.position || '-'}
                                                                         </div>
@@ -3739,11 +3746,11 @@ const Dashboard = () => {
                                                                     <td style={{ textAlign: 'center' }}>
                                                                         <div style={{
                                                                             display: 'inline-flex',
-                                                                            padding: '6px 12px',
+                                                                            padding: '2px 7px',
                                                                             background: '#f1f5f9',
                                                                             color: '#475569',
-                                                                            borderRadius: '10px',
-                                                                            fontSize: '0.75rem',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '0.7rem',
                                                                             fontWeight: 700,
                                                                             border: '1px solid #e2e8f0'
                                                                         }}>
@@ -3815,15 +3822,15 @@ const Dashboard = () => {
                                                                     <td style={{ padding: '0 4px', textAlign: 'center' }}>
                                                                         {task.status === 'Completed' && task.evaluationStatus === 'Assigned' ? (
                                                                             <span style={{
-                                                                                padding: '5px 10px',
+                                                                                padding: '2px 7px',
                                                                                 background: '#fff7ed',
                                                                                 color: '#ea580c',
-                                                                                borderRadius: '12px',
-                                                                                fontSize: '0.75rem',
+                                                                                borderRadius: '8px',
+                                                                                fontSize: '0.7rem',
                                                                                 fontWeight: 800,
                                                                                 display: 'inline-flex',
                                                                                 alignItems: 'center',
-                                                                                gap: '6px',
+                                                                                gap: '4px',
                                                                                 border: '1px solid #fed7aa'
                                                                             }}>
                                                                                 <UserCheck size={14} />
@@ -3831,11 +3838,11 @@ const Dashboard = () => {
                                                                             </span>
                                                                         ) : (
                                                                             <span style={{
-                                                                                padding: '5px 10px',
+                                                                                padding: '2px 7px',
                                                                                 background: p === 100 ? '#ecfdf5' : p > 0 ? '#eff6ff' : '#f8fafc',
                                                                                 color: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#64748b',
-                                                                                borderRadius: '12px',
-                                                                                fontSize: '0.75rem',
+                                                                                borderRadius: '8px',
+                                                                                fontSize: '0.7rem',
                                                                                 fontWeight: 800,
                                                                                 display: 'inline-flex',
                                                                                 alignItems: 'center',
@@ -3862,23 +3869,23 @@ const Dashboard = () => {
                                                                                 });
                                                                             }}
                                                                             className="premium-action-btn"
-                                                                            style={{ 
-                                                                                padding: '10px 18px', 
-                                                                                background: '#ffffff', 
+                                                                            style={{
+                                                                                padding: '4px 10px',
+                                                                                background: '#ffffff',
                                                                                 border: '1px solid #e2e8f0',
-                                                                                borderRadius: '12px',
+                                                                                borderRadius: '8px',
                                                                                 color: '#4f46e5',
-                                                                                fontSize: '0.75rem',
+                                                                                fontSize: '0.7rem',
                                                                                 fontWeight: 800,
                                                                                 cursor: 'pointer',
                                                                                 display: 'inline-flex',
                                                                                 alignItems: 'center',
-                                                                                gap: '8px',
+                                                                                gap: '5px',
                                                                                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                                                                                 transition: 'all 0.2s'
                                                                             }}
                                                                         >
-                                                                            <Activity size={16} /> ดูประวัติงาน
+                                                                            <Activity size={13} /> ดูประวัติงาน
                                                                         </button>
                                                                     </td>
                                                                 </tr>
