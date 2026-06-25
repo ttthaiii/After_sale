@@ -28,7 +28,20 @@ const formatSubtaskId = (id: string | undefined): string => {
 const getCompletedAtTime = (wo: any, tasks: any[]): number | null => {
   const isAllCompleted = tasks.length > 0 && tasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
   if (!isAllCompleted) return null;
-  
+
+  // ถ้ายังมี task รอลูกค้าประเมิน → ยังไม่เสร็จสมบูรณ์จริง → ไม่แสดง completedAt
+  const hasPendingEval = tasks.some((t: any) =>
+    (t.status || '').toLowerCase() === 'for-checking' ||
+    ((t.status || '').toLowerCase() === 'completed' && t.evaluationStatus === 'Assigned')
+  );
+  if (hasPendingEval) {
+    // งานรอลูกค้าประเมิน → แสดงวันที่ progress ถึง 100% ของ rev ปัจจุบัน (updatedAt ล่าสุด)
+    const pendingTaskUpdates = tasks
+      .filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.updatedAt)
+      .map((t: any) => new Date(t.updatedAt).getTime());
+    return pendingTaskUpdates.length > 0 ? Math.max(...pendingTaskUpdates) : null;
+  }
+
   if (wo.completedAt) {
     return new Date(wo.completedAt).getTime();
   }

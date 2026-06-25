@@ -622,6 +622,93 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                             </div>
                                         </div>
 
+                                        {/* Mini timeline for this revision */}
+                                        {(() => {
+                                            const revMs = logs.map((l: any) => new Date(l.date).getTime()).filter(Number.isFinite);
+                                            if (!revMs.length) return null;
+                                            const revFirstDate = new Date(Math.min(...revMs));
+                                            const revMaxDate = new Date(Math.max(...revMs));
+                                            const isLastRev = revIdx === sortedRevKeys.length - 1;
+                                            const isRejected = logs[0]?.revisionStatus === 'closed_rejected';
+                                            const _qrRaw = (isLastRev && task.wo?.inspectionTimeline?.qrGeneratedAt)
+                                                ? new Date(task.wo.inspectionTimeline.qrGeneratedAt) : null;
+                                            // Only valid if QR was generated AFTER work completion (else it's a previous rev's QR)
+                                            const qrDate = (_qrRaw && _qrRaw.getTime() > revMaxDate.getTime()) ? _qrRaw : null;
+                                            const approvalDate = (!isRejected && task.wo?.completedAt)
+                                                ? new Date(task.wo.completedAt) : null;
+                                            const daysBetween = (a: Date | null, b: Date | null) =>
+                                                (a && b) ? Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000)) : null;
+                                            const daysWork = daysBetween(revFirstDate, revMaxDate);
+                                            const daysToQr = daysBetween(revMaxDate, qrDate);
+                                            const daysResult = daysBetween(qrDate || revMaxDate, approvalDate);
+                                            const resultStatus = isRejected ? 'reject' : (isLastRev && lastProg >= 100) ? (approvalDate ? 'done' : 'pending') : 'wait';
+
+                                            const nodeBase: React.CSSProperties = { width: '46px', height: '46px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 };
+                                            const nodeStyles: Record<string, React.CSSProperties> = {
+                                                done:    { ...nodeBase, background: '#1D9E75', color: '#fff' },
+                                                reject:  { ...nodeBase, background: '#E24B4A', color: '#fff' },
+                                                pending: { ...nodeBase, background: '#EF9F27', color: '#fff' },
+                                                wait:    { ...nodeBase, background: '#f1f5f9', border: '1.5px solid #cbd5e1', color: '#94a3b8' },
+                                            };
+                                            const connLine = (done: boolean, danger = false, dashed = false): React.CSSProperties => ({
+                                                height: '3px', width: '100%',
+                                                background: dashed ? 'repeating-linear-gradient(90deg,#EF9F27 0,#EF9F27 6px,transparent 6px,transparent 11px)'
+                                                    : danger ? '#E24B4A' : done ? '#1D9E75' : '#e2e8f0',
+                                            });
+                                            const stageWrap: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '96px' };
+                                            const lbl: React.CSSProperties = { fontSize: '13px', color: '#64748b', marginTop: '8px', textAlign: 'center', lineHeight: '1.5' };
+                                            const lbl2: React.CSSProperties = { fontSize: '12px', color: '#94a3b8' };
+                                            const conn: React.CSSProperties = { flex: 1, minWidth: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '34px' };
+
+                                            return (
+                                                <div style={{ padding: '16px 24px 12px', background: 'rgba(0,0,0,0.03)', borderBottom: `1px solid ${col.border}` }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
+                                                        {/* Stage 1: เริ่มงาน */}
+                                                        <div style={stageWrap}>
+                                                            <div style={nodeStyles.done}><CheckCircle2 size={20} /></div>
+                                                            <div style={lbl}><strong style={{ fontSize: '13px', color: '#1e293b', display: 'block' }}>โฟรแมน</strong>เริ่มงาน<br/><span style={lbl2}>{fmtDate(revFirstDate)}</span></div>
+                                                        </div>
+                                                        {/* Conn 1→2 */}
+                                                        <div style={conn}>
+                                                            <div style={connLine(true)}></div>
+                                                            {daysWork !== null && daysWork > 0 && <span style={{ ...lbl2, marginTop: '3px', whiteSpace: 'nowrap' }}>{daysWork} วัน</span>}
+                                                        </div>
+                                                        {/* Stage 2: งานเสร็จ */}
+                                                        <div style={stageWrap}>
+                                                            <div style={nodeStyles[lastProg >= 100 ? 'done' : 'wait']}><Check size={20} /></div>
+                                                            <div style={lbl}><strong style={{ fontSize: '13px', color: '#1e293b', display: 'block' }}>งานเสร็จ</strong>100%<br/><span style={lbl2}>{fmtDate(revMaxDate)}</span></div>
+                                                        </div>
+                                                        {/* Conn 2→3 */}
+                                                        <div style={conn}>
+                                                            <div style={connLine(!!qrDate)}></div>
+                                                            {daysToQr !== null && <span style={{ ...lbl2, marginTop: '3px', whiteSpace: 'nowrap' }}>{daysToQr} วัน</span>}
+                                                        </div>
+                                                        {/* Stage 3: ส่ง QR */}
+                                                        <div style={stageWrap}>
+                                                            <div style={nodeStyles[qrDate ? 'done' : 'wait']}><FileText size={20} /></div>
+                                                            <div style={lbl}><strong style={{ fontSize: '13px', color: '#1e293b', display: 'block' }}>ส่ง QR</strong><span style={lbl2}>{qrDate ? fmtDate(qrDate) : '—'}</span></div>
+                                                        </div>
+                                                        {/* Conn 3→4 */}
+                                                        <div style={conn}>
+                                                            <div style={connLine(resultStatus === 'done', isRejected, resultStatus === 'pending')}></div>
+                                                            {daysResult !== null && <span style={{ ...lbl2, color: isRejected ? '#dc2626' : '#94a3b8', marginTop: '3px', whiteSpace: 'nowrap' }}>{daysResult} วัน</span>}
+                                                        </div>
+                                                        {/* Stage 4: ผลตรวจ */}
+                                                        <div style={stageWrap}>
+                                                            <div style={nodeStyles[resultStatus]}>
+                                                                {resultStatus === 'reject' ? <X size={20} /> : resultStatus === 'done' ? <CheckCircle2 size={20} /> : <Clock size={20} />}
+                                                            </div>
+                                                            <div style={{ ...lbl, color: isRejected ? '#dc2626' : '#64748b' }}>
+                                                                <strong style={{ fontSize: '13px', color: isRejected ? '#dc2626' : '#1e293b', display: 'block' }}>ลูกค้า</strong>
+                                                                {isRejected ? 'ไม่ผ่าน' : resultStatus === 'done' ? 'ตรวจผ่าน' : 'รอตรวจ'}
+                                                                <br/><span style={lbl2}>{approvalDate ? fmtDate(approvalDate) : '—'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* Daily entries within this revision */}
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             {logs.map((log: any, logIdx: number) => {
@@ -865,7 +952,7 @@ const Dashboard = () => {
     const [selectedComparisonCategory, setSelectedComparisonCategory] = useState<string | null>(null);
     const [selectedOpCategory, setSelectedOpCategory] = useState('urgent');
     const opListRef = useRef<HTMLDivElement>(null);
-    const hasAutoSelectedCategory = useRef(false);
+    const userHasManuallySelected = useRef(false);
     const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
     const [donutFilter, setDonutFilter] = useState<string | null>(null);
 
@@ -1243,22 +1330,38 @@ const Dashboard = () => {
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
                     if (!isOwnerTask(t, wo)) return;
-                    const isWaitingCustomerEval = t.status === 'Completed' && t.evaluationStatus === 'Assigned';
-                    const isCompleted = !isWaitingCustomerEval && (t.status === 'Completed' || t.status === 'Verified');
-                    if (isCompleted) {
-                        closed++;
-                        // SLA counting — same scope as closed task count (inScopeWOs + isOwnerTask)
-                        totalTaskCount++;
+                    const tStatus = (t.status || '').toLowerCase();
+                    const isWaitingCustomerEval = tStatus === 'completed' && t.evaluationStatus === 'Assigned';
+                    const isCompleted = !isWaitingCustomerEval && (tStatus === 'completed' || tStatus === 'verified');
+                    // งานถึง 100% แล้ว (รวม for-checking) = นับ SLA ฝั่งช่าง
+                    const isWorkDone = isCompleted || tStatus === 'for-checking' || isWaitingCustomerEval || (t.dailyProgress ?? t.progress ?? 0) === 100;
+                    if (isCompleted) closed++;
+                    else if (!isWorkDone) open++;
+                    if (isWorkDone) {
+                        // SLA counting — work is done when progress hits 100%, customer eval time not counted
                         const slaLimit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                        const slaStart = t.startDate
-                            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
-                            : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
-                        const lastUpdate = (t.history || []).slice(-1)[0];
-                        const slaEnd = lastUpdate ? new Date(lastUpdate.date).getTime() : now;
-                        if ((slaEnd - slaStart) / (1000 * 3600) <= slaLimit) {
-                            slaMetCount++;
+                        const slaStart = t.slaStartTime
+                            ? new Date(t.slaStartTime).getTime()
+                            : (t.startDate
+                                ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                                : new Date(wo.createdAt).getTime());
+                        // slaEnd: completedAt → max(history dates) → updatedAt → skip
+                        // qrGeneratedAt excluded: generated same day as start (not work completion)
+                        // wo.completedAt excluded: customer acceptance date, not work completion
+                        const _histMsArr = (t.history || []).map((h: any) => new Date(h.date).getTime()).filter(Number.isFinite);
+                        const _maxHistMs = _histMsArr.length ? Math.max(..._histMsArr) : null;
+                        const slaEnd =
+                            t.completedAt ? new Date(t.completedAt).getTime() :
+                            _maxHistMs !== null ? _maxHistMs :
+                            t.updatedAt ? new Date(t.updatedAt).getTime() :
+                            null;
+                        if (slaEnd !== null && slaEnd >= slaStart) {
+                            totalTaskCount++;
+                            if ((slaEnd - slaStart) / (1000 * 3600) <= slaLimit) {
+                                slaMetCount++;
+                            }
                         }
-                    } else open++;
+                    }
                 });
             });
         });
@@ -1284,7 +1387,7 @@ const Dashboard = () => {
             });
         });
 
-        const slaScore = totalTaskCount > 0 ? Math.round(slaMetCount / totalTaskCount * 100) : 100;
+        const slaScore = totalTaskCount > 0 ? Math.round(slaMetCount / totalTaskCount * 100) : null;
         const daysInMonth = new Date(year, month, 0).getDate();
         const filterStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
         const filterEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
@@ -1313,9 +1416,19 @@ const Dashboard = () => {
                         : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woSlaStart);
                     let isSlaMet = false;
                     let duration = 0;
-                    if (t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified') {
+                    const tStatus = (t.status || '').toLowerCase();
+                    const isWaitingEval = tStatus === 'completed' && t.evaluationStatus === 'Assigned';
+                    const isFullyDone = !isWaitingEval && (tStatus === 'completed' || tStatus === 'verified');
+                    if (isFullyDone) {
                         const lastUpdate = history[history.length - 1];
-                        const end = lastUpdate ? new Date(lastUpdate.date).getTime() : now;
+                        // Never use `now` — would count customer wait time against foreman
+                        const end =
+                            t.completedAt ? new Date(t.completedAt).getTime() :
+                            lastUpdate ? new Date(lastUpdate.date).getTime() :
+                            wo.inspectionTimeline?.qrGeneratedAt ? new Date(wo.inspectionTimeline.qrGeneratedAt).getTime() :
+                            wo.completedAt ? new Date(wo.completedAt).getTime() :
+                            null;
+                        if (end === null || end < start) return; // no valid end, or stale completedAt from prior round
 
                         const workHours = history.reduce((acc: number, h: any) => {
                             let hTotal = 0;
@@ -1743,8 +1856,9 @@ const Dashboard = () => {
                     const foremanIds: string[] = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
                     const isMyTask = isAdminOrManager || foremanIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
                     if (!isMyTask) return;
-                    const isDone = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
-                    const isWaiting = t.status === 'Completed' && t.evaluationStatus === 'Assigned';
+                    const tStatusLower = (t.status || '').toLowerCase();
+                    const isDone = tStatusLower === 'completed' || tStatusLower === 'verified';
+                    const isWaiting = tStatusLower === 'completed' && t.evaluationStatus === 'Assigned';
                     if (!isDone || isWaiting) return;
                     const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                     const last = history[history.length - 1];
@@ -1778,27 +1892,22 @@ const Dashboard = () => {
         return { months, trend };
     }, [selectedMonth, allAccessibleWOs, isAdminOrManager, user]);
 
-    // Auto-select first non-empty category on data load (runs once)
+    // Auto-select category based on data — re-runs when urgentTasks changes, respects manual selection
     useEffect(() => {
-        if (hasAutoSelectedCategory.current) return;
+        if (userHasManuallySelected.current) return;
         if (allAccessibleWOs.length === 0) return;
-        hasAutoSelectedCategory.current = true;
 
-        const urgentCount = (stats.urgentTasks || []).flatMap((wo: any) =>
-            (wo.categories || []).flatMap((cat: any) => (cat.tasks || []))
-        ).filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified').length;
-        if (urgentCount > 0) return; // keep 'urgent'
-
-        // Check WO status directly — don't depend on subcollection tasks being loaded
+        if ((stats.urgentTasks || []).length > 0) {
+            setSelectedOpCategory('urgent');
+            return;
+        }
         const hasInProgress = allAccessibleWOs.some((wo: any) =>
             !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Rejected'].includes(wo.status)
         );
         if (hasInProgress) { setSelectedOpCategory('inProgress'); return; }
-
         if ((stats.evaluating || 0) > 0) { setSelectedOpCategory('evaluating'); return; }
-        // pendingAdmin excluded — foreman can't action it, don't default there
-        // all empty → stay on 'urgent' (shows ไม่มีงาน)
-    }, [allAccessibleWOs, stats]);
+        setSelectedOpCategory('urgent'); // all empty → show urgent (ไม่มีงาน)
+    }, [(stats.urgentTasks || []).length, allAccessibleWOs.length, stats.evaluating]);
 
     const maxDevRaw = stats.laborByProject.length > 0 ? Math.max(100, ...stats.laborByProject.map((p: any) => Math.abs(p.deviation))) : 100;
     const maxDev = Math.ceil(maxDevRaw / 50) * 50;
@@ -1873,12 +1982,16 @@ const Dashboard = () => {
                     map[name].count++;
                     const revCount = t.currentRevision ? parseInt(String(t.currentRevision).replace(/[^0-9]/g, '')) || 0 : 0;
                     map[name].totalRev += revCount;
-                    const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                    const startMs = t.startDate ? new Date(t.startDate).getTime() : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
-                    const last = history[history.length - 1];
-                    if (last) {
-                        const days = (new Date(last.date).getTime() - startMs) / 86400000;
-                        map[name].totalDays += Math.max(0, days);
+                    const history = t.history || [];
+                    // ใช้ logic เดียวกับ Task Performance Details table (expectedHours)
+                    const totalLaborHrs = history.reduce((sum: number, h: any) =>
+                        sum + (h.labor || []).reduce((s: number, l: any) => {
+                            const eh = l.expectedHours || {};
+                            return s + (eh.normal || 0) + (eh.otNoon || 0) + (eh.otEvening || 0) + (eh.otMorning || 0);
+                        }, 0), 0);
+                    const workDays = totalLaborHrs >= 8 ? Math.round(totalLaborHrs / 8) : (totalLaborHrs > 0 ? 1 : 0);
+                    if (workDays > 0) {
+                        map[name].totalDays += workDays;
                         map[name].completedCount++;
                     }
                 });
@@ -2427,6 +2540,7 @@ const Dashboard = () => {
                                     )
                                 );
                                 const selectAndScroll = (cat: string) => {
+                                    userHasManuallySelected.current = true;
                                     setSelectedOpCategory(cat);
                                     setDonutFilter(null);
                                     setTimeout(() => opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -2759,10 +2873,18 @@ const Dashboard = () => {
                         <>
                             {/* Performance Hero Card — Foreman only */}
                             {isForeman ? (() => {
-                                const slaColor = stats.slaScore >= 85 ? '#1D9E75' : stats.slaScore >= 65 ? '#378ADD' : stats.slaScore >= 40 ? '#EF9F27' : '#E24B4A';
-                                const statusLabel = stats.slaScore >= 85 ? 'ยอดเยี่ยม' : stats.slaScore >= 65 ? 'ดี' : stats.slaScore >= 40 ? 'ควรปรับปรุง' : 'ต้องแก้ไขด่วน';
-                                const statusBg = stats.slaScore >= 85 ? '#E1F5EE' : stats.slaScore >= 65 ? '#E6F1FB' : stats.slaScore >= 40 ? '#FAEEDA' : '#FCEBEB';
-                                const statusTextColor = stats.slaScore >= 85 ? '#0F6E56' : stats.slaScore >= 65 ? '#185FA5' : stats.slaScore >= 40 ? '#854F0B' : '#A32D2D';
+                                // derive from healthCardProjects — same source as Project Health Pulse
+                                const relevantProjects = selectedSCurveProject
+                                    ? healthCardProjects.filter((p: any) => p.id === selectedSCurveProject)
+                                    : healthCardProjects;
+                                const hcTotal = relevantProjects.reduce((s: number, p: any) => s + p.cases.length, 0);
+                                const hcMet = relevantProjects.reduce((s: number, p: any) => s + p.cases.filter((c: any) => c.deviation >= 0).length, 0);
+                                const hasScore = hcTotal > 0;
+                                const score = hasScore ? Math.round(hcMet / hcTotal * 100) : 0;
+                                const slaColor = !hasScore ? '#94a3b8' : score >= 85 ? '#1D9E75' : score >= 65 ? '#378ADD' : score >= 40 ? '#EF9F27' : '#E24B4A';
+                                const statusLabel = !hasScore ? 'ไม่มีข้อมูล' : score >= 85 ? 'ยอดเยี่ยม' : score >= 65 ? 'ดี' : score >= 40 ? 'ควรปรับปรุง' : 'ต้องแก้ไขด่วน';
+                                const statusBg = !hasScore ? '#f8fafc' : score >= 85 ? '#E1F5EE' : score >= 65 ? '#E6F1FB' : score >= 40 ? '#FAEEDA' : '#FCEBEB';
+                                const statusTextColor = !hasScore ? '#64748b' : score >= 85 ? '#0F6E56' : score >= 65 ? '#185FA5' : score >= 40 ? '#854F0B' : '#A32D2D';
                                 const closedWOs = stats.closedWOsInScope ?? 0;
                                 const closeRate = stats.totalInMonth > 0 ? Math.round(closedWOs / stats.totalInMonth * 100) : 0;
                                 const lateCount = (stats.urgentTasks || []).filter((wo: any) => wo.statusInfo?.level === 'critical').length;
@@ -2786,7 +2908,7 @@ const Dashboard = () => {
                                                 <circle cx="80" cy="80" r="65" fill="none" stroke="#f1f5f9" strokeWidth="12"/>
                                                 {/* Progress arc */}
                                                 <circle cx="80" cy="80" r="65" fill="none" stroke={`url(#slaGrad)`} strokeWidth="12"
-                                                    strokeDasharray={`${(stats.slaScore / 100) * (2 * Math.PI * 65)} ${2 * Math.PI * 65}`}
+                                                    strokeDasharray={`${(score / 100) * (2 * Math.PI * 65)} ${2 * Math.PI * 65}`}
                                                     strokeLinecap="round" transform="rotate(-90 80 80)"
                                                     style={{ transition: 'stroke-dasharray 1s ease', filter: `drop-shadow(0 0 6px ${slaColor}66)` }}
                                                 />
@@ -2795,7 +2917,7 @@ const Dashboard = () => {
                                             </svg>
                                             {/* Center text overlay */}
                                             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                                                <div style={{ fontSize: '32px', fontWeight: 900, color: slaColor, lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.slaScore}%</div>
+                                                <div style={{ fontSize: '32px', fontWeight: 900, color: slaColor, lineHeight: 1, letterSpacing: '-0.03em' }}>{hasScore ? `${score}%` : 'N/A'}</div>
                                                 <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginTop: '4px' }}>SLA score</div>
                                             </div>
                                         </div>
@@ -2817,8 +2939,14 @@ const Dashboard = () => {
                                         return (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         {(() => {
-                                            const slaOnTime = stats.slaMetCount ?? 0;
-                                            const slaLate = (stats.totalTaskCount ?? 0) - slaOnTime;
+                                            // Use same source as SLA gauge (healthCardProjects) for consistency
+                                            const _hcRel = selectedSCurveProject
+                                                ? healthCardProjects.filter((p: any) => p.id === selectedSCurveProject)
+                                                : healthCardProjects;
+                                            const _hcTot = _hcRel.reduce((s: number, p: any) => s + p.cases.length, 0);
+                                            const _hcMet = _hcRel.reduce((s: number, p: any) => s + p.cases.filter((c: any) => c.deviation >= 0).length, 0);
+                                            const slaOnTime = _hcMet;
+                                            const slaLate = _hcTot - _hcMet;
                                             return (
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
                                             {/* WO dual-number card */}
@@ -2901,7 +3029,7 @@ const Dashboard = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
                                     <StatCard title="งานทั้งหมดที่ดูแล" value={stats.totalInMonth} icon={<Activity size={24} />} color="#3b82f6" gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)" subtext={<span>ใหม่ <b>{stats.newThisMonth}</b> / ค้าง <b>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>} />
                                     <StatCard title="งานที่ปิดจบสำเร็จ" value={stats.closed} icon={<CheckCircle2 size={24} />} color="#10b981" gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)" subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้" />
-                                    <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={`${stats.slaScore}%`} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : 'ควรปรับปรุงความเร็ว'} />
+                                    <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={stats.slaScore !== null && stats.slaScore !== undefined ? `${stats.slaScore}%` : 'N/A'} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore != null && stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : stats.slaScore != null ? 'ควรปรับปรุงความเร็ว' : 'ยังไม่มีงานที่วัดได้'} />
                                     <StatCard title="ชั่วโมงการทำงานรวม" value={`${stats.totalHours.toLocaleString()} ชม.`} icon={<Activity size={24} />} color="#8b5cf6" gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)" subtext="ลงแรงงานจริงสะสมรายเดือน" />
                                 </div>
                             )}
@@ -3458,10 +3586,19 @@ const Dashboard = () => {
                                                         const tDeadlineMs = tStartMs + tSlaHrs * 3600000;
                                                         const tDeadlineDate = new Date(tDeadlineMs);
 
-                                                        // Completion date (task or WO level)
+                                                        // Completion date — วันที่งานช่างเสร็จ 100% ไม่ใช่วันที่ลูกค้ารับมอบ
                                                         const woCompletedAt = wo.completedAt ? new Date(wo.completedAt) : null;
+                                                        // max(history dates) — same logic as History.tsx
+                                                        // rev01 work is always later than rev00, so max = current rev's last date
+                                                        let latestHistMs = 0;
+                                                        (task.history || []).forEach((h: any) => {
+                                                            const d = new Date(h.date).getTime();
+                                                            if (!isNaN(d) && d > latestHistMs) latestHistMs = d;
+                                                        });
                                                         const taskCompletedAt = task.completedAt
                                                             ? new Date(task.completedAt)
+                                                            : latestHistMs > 0
+                                                            ? new Date(latestHistMs)
                                                             : (isWoCompleted && woCompletedAt ? woCompletedAt : null);
 
                                                         // Calendar days from startDate to completion
@@ -3719,6 +3856,9 @@ const Dashboard = () => {
                                                                                     locationName: task.locationName,
                                                                                     history: task.history || [],
                                                                                     rejectReason: task.rejectReason || null,
+                                                                                    currentRevision: task.currentRevision || null,
+                                                                                    completedAt: task.completedAt || null,
+                                                                                    wo: { inspectionTimeline: wo.inspectionTimeline || null, completedAt: wo.completedAt || null },
                                                                                 });
                                                                             }}
                                                                             className="premium-action-btn"

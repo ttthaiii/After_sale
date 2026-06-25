@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { WorkOrder, Category, MasterTask, DailyReport, Project, Staff, Contractor } from '../types';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where, deleteField } from 'firebase/firestore';
 
 import { TaskAssignee } from '../types';
 import { useAuth } from './AuthContext';
@@ -1138,11 +1138,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 // Map status values for LB compatibility
                 let lbStatus = isCompleted ? 'for-checking' : 'in-progress';
                 
+                const progressNow = new Date().toISOString();
                 if (isWoaWop || isSubtaskId) {
                     await updateDoc(taskRef, {
                         dailyProgress: newProgress,
                         status: lbStatus,
-                        updatedAt: new Date().toISOString()
+                        updatedAt: progressNow,
+                        ...(isCompleted ? { completedAt: progressNow } : {})
                     });
 
                     // Update subtask as well
@@ -1155,7 +1157,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     await updateDoc(taskRef, {
                         dailyProgress: newProgress,
                         status: isCompleted ? 'Completed' : 'In Progress',
-                        updatedAt: new Date().toISOString()
+                        updatedAt: progressNow,
+                        ...(isCompleted ? { completedAt: progressNow } : {})
                     });
                 }
             }
@@ -1600,6 +1603,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         responsibleStaffIds: [ownerId],
                         assignees: assignees,
                         subtaskOperatorId: ownerId,
+                        completedAt: deleteField(), // clear stale Round N timestamp so Round N+1 SLA calculates correctly
                         updatedAt: now
                     });
                     
