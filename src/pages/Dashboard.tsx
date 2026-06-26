@@ -626,7 +626,10 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                         {(() => {
                                             const revMs = logs.map((l: any) => new Date(l.date).getTime()).filter(Number.isFinite);
                                             if (!revMs.length) return null;
-                                            const revFirstDate = new Date(Math.min(...revMs));
+                                            // Use task.startDate if set and earlier than first log (handles retroactive start date changes)
+                                            const startDateMs = task.startDate ? new Date(task.startDate.split('T')[0] + 'T00:00:00').getTime() : null;
+                                            const firstLogMs = Math.min(...revMs);
+                                            const revFirstDate = new Date(startDateMs && startDateMs < firstLogMs ? startDateMs : firstLogMs);
                                             const revMaxDate = new Date(Math.max(...revMs));
                                             const isLastRev = revIdx === sortedRevKeys.length - 1;
                                             const isRejected = logs[0]?.revisionStatus === 'closed_rejected';
@@ -655,14 +658,15 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                                 background: dashed ? 'repeating-linear-gradient(90deg,#EF9F27 0,#EF9F27 6px,transparent 6px,transparent 11px)'
                                                     : danger ? '#E24B4A' : done ? '#1D9E75' : '#e2e8f0',
                                             });
-                                            const stageWrap: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '96px' };
-                                            const lbl: React.CSSProperties = { fontSize: '13px', color: '#64748b', marginTop: '8px', textAlign: 'center', lineHeight: '1.5' };
-                                            const lbl2: React.CSSProperties = { fontSize: '12px', color: '#94a3b8' };
-                                            const conn: React.CSSProperties = { flex: 1, minWidth: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '34px' };
+                                            const stageWrap: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '88px' };
+                                            const lbl: React.CSSProperties = { fontSize: '12px', color: '#64748b', marginTop: '6px', textAlign: 'center', lineHeight: '1.5' };
+                                            const lbl2: React.CSSProperties = { fontSize: '11px', color: '#94a3b8' };
+                                            // paddingTop = (nodeSize - lineHeight) / 2 = (46 - 3) / 2 ≈ 21px — aligns line center to circle center
+                                            const conn: React.CSSProperties = { flex: 1, minWidth: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '21px' };
 
                                             return (
-                                                <div style={{ padding: '16px 24px 12px', background: 'rgba(0,0,0,0.03)', borderBottom: `1px solid ${col.border}` }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
+                                                <div style={{ padding: '14px 20px 12px', background: 'rgba(0,0,0,0.03)', borderBottom: `1px solid ${col.border}` }}>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', overflowX: 'auto' }}>
                                                         {/* Stage 1: เริ่มงาน */}
                                                         <div style={stageWrap}>
                                                             <div style={nodeStyles.done}><CheckCircle2 size={20} /></div>
@@ -3602,11 +3606,12 @@ const Dashboard = () => {
                                                             const d = new Date(h.date).getTime();
                                                             if (!isNaN(d) && d > latestHistMs) latestHistMs = d;
                                                         });
+                                                        const isTaskDone = task.dailyProgress >= 100 || task.status === 'Completed' || task.status === 'Verified' || isWoCompleted;
                                                         const taskCompletedAt = task.completedAt
                                                             ? new Date(task.completedAt)
-                                                            : latestHistMs > 0
+                                                            : (isTaskDone && latestHistMs > 0)
                                                             ? new Date(latestHistMs)
-                                                            : (isWoCompleted && woCompletedAt ? woCompletedAt : null);
+                                                            : (isTaskDone && isWoCompleted && woCompletedAt ? woCompletedAt : null);
 
                                                         // Calendar days from startDate to completion
                                                         const tStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00') : null;
