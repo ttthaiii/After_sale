@@ -145,6 +145,7 @@ export const PreHandoverDetailPane: React.FC = () => {
     isPhEditingExisting,
     setIsPhEditingExisting,
     isPhExistingReport,
+    phProgressBounds,
     isSubmitting,
     isUploading,
     isSidebarOpen,
@@ -648,19 +649,29 @@ export const PreHandoverDetailPane: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '1.5rem' }}>
                 <div style={{ flex: 1 }}>
                   <input
-                    type="range" min={0} max={100} step={5} value={progress}
-                    onChange={e => setProgress(Number(e.target.value))}
+                    type="range"
+                    min="0" max="100" step={5} value={progress}
+                    onChange={e => {
+                      const val = Number(e.target.value);
+                      const allowedMin = phProgressBounds.min > 0 ? phProgressBounds.min + 1 : 0;
+                      setProgress(Math.min(phProgressBounds.max, Math.max(allowedMin, val)));
+                    }}
                     style={{
                       width: '100%', height: '10px', borderRadius: '6px', appearance: 'none',
-                      background: `linear-gradient(to right, #0d9488 0%, #0d9488 ${progress}%, #e2e8f0 ${progress}%, #e2e8f0 100%)`,
-                      cursor: 'pointer', outline: 'none',
+                      background: `linear-gradient(to right, #475569 0%, #475569 ${phProgressBounds.min}%, #0d9488 ${phProgressBounds.min}%, #0d9488 ${progress}%, #e2e8f0 ${progress}%, #e2e8f0 100%)`,
+                      cursor: 'pointer', outline: 'none', transition: 'all 0.2s',
                     }}
                   />
                 </div>
                 <div style={{ position: 'relative', width: '100px' }}>
                   <input
-                    type="number" min={0} max={100} value={progress}
-                    onChange={e => setProgress(Math.min(100, Math.max(0, Number(e.target.value))))}
+                    type="number" min="0" max="100" value={progress}
+                    onChange={e => {
+                      const val = parseInt(e.target.value, 10);
+                      if (isNaN(val)) setProgress(0);
+                      else setProgress(Math.min(100, Math.max(0, val)));
+                    }}
+                    onBlur={() => setProgress(Math.min(phProgressBounds.max, Math.max(phProgressBounds.min, progress)))}
                     style={{
                       width: '100%', padding: '8px 28px 8px 12px', borderRadius: '10px',
                       border: '1px solid #3b82f6', fontSize: '1rem', fontWeight: 900,
@@ -672,21 +683,39 @@ export const PreHandoverDetailPane: React.FC = () => {
                 </div>
               </div>
               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', marginBottom: '1rem' }}>
-                * ความคืบหน้าปัจจุบันต้องระบุมากกว่า {cat.dailyProgress || 0}%
+                {(() => {
+                  if (isPhExistingReport && !isPhEditingExisting)
+                    return `* รายงานนี้ถูกบันทึกไว้แล้วที่ ${progress}%`;
+                  if (phProgressBounds.isToday)
+                    return `* ความคืบหน้าปัจจุบันต้องระบุมากกว่า ${phProgressBounds.min}%`;
+                  const rangeMin = phProgressBounds.min > 0 ? phProgressBounds.min + 1 : 0;
+                  return `* สำหรับวันที่เลือก ต้องระบุระหว่าง ${rangeMin}% ถึง ${phProgressBounds.max}%`;
+                })()}
               </div>
+              {isPhEditable && progress > 0 && phProgressBounds.min === 0 && (
+                <button onClick={() => setProgress(0)}
+                  style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', marginBottom: '0.5rem' }}>
+                  ล้างค่า
+                </button>
+              )}
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {[0, 25, 50, 75, 100].map(v => (
-                  <button key={v} onClick={() => setProgress(v)}
+                {[0, 25, 50, 75, 100].map(v => {
+                  const isLocked = (phProgressBounds.min > 0 ? v <= phProgressBounds.min : v < phProgressBounds.min) || v > phProgressBounds.max;
+                  return (
+                  <button key={v} onClick={() => { if (!isLocked) setProgress(v); }} disabled={isLocked}
                     style={{
-                      padding: '5px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700,
-                      border: 'none', cursor: 'pointer',
-                      background: progress === v ? '#0d9488' : '#f1f5f9',
-                      color: progress === v ? '#fff' : '#64748b',
+                      flex: 1, padding: '8px 0', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700,
+                      border: '1px solid', cursor: isLocked ? 'not-allowed' : 'pointer',
+                      borderColor: progress === v ? '#0d9488' : isLocked ? '#e2e8f0' : '#cbd5e1',
+                      background: progress === v ? '#0d9488' : isLocked ? '#f1f5f9' : '#fff',
+                      color: progress === v ? '#fff' : isLocked ? '#b0b8c4' : '#475569',
+                      opacity: isLocked ? 0.5 : 1,
                       transition: 'all 0.15s',
                     }}>
                     {v === 100 ? 'เสร็จสิ้น' : `${v}%`}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -10,16 +10,17 @@ import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 import AdminAssignModal from '../components/AdminAssignModal';
+import PreHandoverAssignModal from '../components/PreHandoverAssignModal';
 import AdminAssignHelperModal from '../components/AdminAssignHelperModal';
 import { formatDate } from '../utils/date';
 import CustomDateInput from '../components/CustomDateInput';
 import { db } from '../lib/firebase';
-import { collection, query as fsQuery, where, onSnapshot as fsOnSnapshot } from 'firebase/firestore';
+import { collection, query as fsQuery, where, onSnapshot as fsOnSnapshot, collectionGroup } from 'firebase/firestore';
 
 const Evaluation = () => {
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
-    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin, approveRetroactiveRequest, rejectRetroactiveRequest } = useWorkOrders();
+    const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin, approveRetroactiveRequest, rejectRetroactiveRequest, approvePreHandoverWO, approvePhRetroactiveRequest, rejectPhRetroactiveRequest, reviewRejectedPhWO } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -48,6 +49,16 @@ const Evaluation = () => {
     const [retroRejectReason, setRetroRejectReason] = useState('');
     const [retroActionLoading, setRetroActionLoading] = useState(false);
     const [showRejectInput, setShowRejectInput] = useState(false);
+    const [pendingPhRetroReqs, setPendingPhRetroReqs] = useState<any[]>([]);
+    const [selectedPhRetroReq, setSelectedPhRetroReq] = useState<any | null>(null);
+    const [phRetroRejectReason, setPhRetroRejectReason] = useState('');
+    const [phRetroActionLoading, setPhRetroActionLoading] = useState(false);
+    const [showPhRejectInput, setShowPhRejectInput] = useState(false);
+    const [rejectedPhWOs, setRejectedPhWOs] = useState<any[]>([]);
+    const [selectedRejectedPhWo, setSelectedRejectedPhWo] = useState<any | null>(null);
+    const [phReassignDate, setPhReassignDate] = useState('');
+    const [phReassignLoading, setPhReassignLoading] = useState(false);
+    const [isPreHandoverAssignOpen, setIsPreHandoverAssignOpen] = useState(false);
 
     // ✅ Deep Link: Open Work Order if ID is in URL with State Validation (Case A)
     useEffect(() => {
@@ -226,6 +237,69 @@ const Evaluation = () => {
         return () => unsubs.forEach(u => u());
     }, [workOrders.length]);
 
+    // PreHandover retroactive requests listener
+    useEffect(() => {
+        if (workOrders.length === 0) return;
+        const phWOs = workOrders.filter(wo => (wo as any).type === 'PreHandover');
+        if (phWOs.length === 0) return;
+        const unsubs: (() => void)[] = [];
+        phWOs.forEach(wo => {
+            const cats: any[] = (wo as any).categories || [];
+            cats.forEach((cat: any) => {
+                const q = fsQuery(
+                    collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phRetroactiveRequests'),
+                    where('status', '==', 'pending')
+                );
+                const unsub = fsOnSnapshot(q, snap => {
+                    const reqs = snap.docs.map(d => ({
+                        id: d.id,
+                        woId: wo.id,
+                        catId: cat.id,
+                        woCode: wo.id,
+                        catName: cat.name,
+                        projectName: projects.find(p => p.id === wo.projectId)?.name || '',
+                        locationName: (wo as any).locationName || (wo as any).address || '',
+                        ...d.data(),
+                        _type: 'prehandover',
+                    }));
+                    setPendingPhRetroReqs(prev => {
+                        const others = prev.filter(r => !(r.woId === wo.id && r.catId === cat.id));
+                        return [...others, ...reqs];
+                    });
+                }, err => console.error(`phRetroactiveRequests listener error [${wo.id}/${cat.id}]:`, err));
+                unsubs.push(unsub);
+            });
+        });
+        return () => unsubs.forEach(u => u());
+    }, [workOrders.length, projects.length]);
+
+    // Listener: rejected PreHandover WOs awaiting admin review
+    useEffect(() => {
+        const phRejected = workOrders.filter((wo: any) =>
+            wo.type === 'PreHandover' &&
+            wo.status === 'Rejected' &&
+            (wo.pendingAdminReassign === true || wo.reviewedByAdmin === false)
+        ).map((wo: any) => ({
+            ...wo,
+            projectName: projects.find(p => p.id === wo.projectId)?.name || '',
+        }));
+        setRejectedPhWOs(phRejected);
+    }, [workOrders, projects]);
+
+    const handlePhReassignConfirm = async () => {
+        if (!selectedRejectedPhWo) return;
+        setPhReassignLoading(true);
+        try {
+            await reviewRejectedPhWO(selectedRejectedPhWo.id, phReassignDate || undefined);
+            setSelectedRejectedPhWo(null);
+            setPhReassignDate('');
+        } catch (err) {
+            alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+        } finally {
+            setPhReassignLoading(false);
+        }
+    };
+
     const handleRetroApprove = async () => {
         if (!selectedRetroReq) return;
         setRetroActionLoading(true);
@@ -277,6 +351,65 @@ const Evaluation = () => {
             setModalAlert({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: err.message || 'ไม่สามารถปฏิเสธได้', type: 'error' });
         } finally {
             setRetroActionLoading(false);
+        }
+    };
+
+    const handlePhRetroApprove = async () => {
+        if (!selectedPhRetroReq) return;
+        setPhRetroActionLoading(true);
+        try {
+            await approvePhRetroactiveRequest(
+                selectedPhRetroReq.woId,
+                selectedPhRetroReq.catId,
+                selectedPhRetroReq.id,
+                { uid: user?.id || '', name: (user as any)?.name || 'Admin' }
+            );
+            await sendNotification({
+                recipientId: selectedPhRetroReq.requestedById,
+                senderId: user?.id || 'admin',
+                senderName: (user as any)?.name || 'Admin',
+                title: 'คำขอรับรองย้อนหลัง (ก่อนโอน) ได้รับการอนุมัติแล้ว',
+                message: `วันที่ ${selectedPhRetroReq.id} หมวด "${selectedPhRetroReq.catName}" ถูกปลดล็อค 48 ชั่วโมง — กรุณากรอกรายงานและส่งได้เลย`,
+                type: 'success',
+                targetPath: `/daily-report`
+            });
+            setSelectedPhRetroReq(null);
+            setModalAlert({ isOpen: true, title: 'อนุมัติสำเร็จ', message: 'ปลดล็อควันที่แล้ว โฟรแมนสามารถกรอกรายงานย้อนหลังได้ภายใน 48 ชั่วโมง', type: 'success' });
+        } catch (err: any) {
+            setModalAlert({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: err.message || 'ไม่สามารถอนุมัติได้', type: 'error' });
+        } finally {
+            setPhRetroActionLoading(false);
+        }
+    };
+
+    const handlePhRetroReject = async () => {
+        if (!selectedPhRetroReq || !phRetroRejectReason.trim()) return;
+        setPhRetroActionLoading(true);
+        try {
+            await rejectPhRetroactiveRequest(
+                selectedPhRetroReq.woId,
+                selectedPhRetroReq.catId,
+                selectedPhRetroReq.id,
+                { uid: user?.id || '', name: (user as any)?.name || 'Admin' },
+                phRetroRejectReason.trim()
+            );
+            await sendNotification({
+                recipientId: selectedPhRetroReq.requestedById,
+                senderId: user?.id || 'admin',
+                senderName: (user as any)?.name || 'Admin',
+                title: 'คำขอรับรองย้อนหลัง (ก่อนโอน) ถูกปฏิเสธ',
+                message: `หมวด "${selectedPhRetroReq.catName}" วันที่ ${selectedPhRetroReq.id}: ${phRetroRejectReason.trim()}`,
+                type: 'warning',
+                targetPath: `/daily-report`
+            });
+            setSelectedPhRetroReq(null);
+            setPhRetroRejectReason('');
+            setShowPhRejectInput(false);
+            setModalAlert({ isOpen: true, title: 'ปฏิเสธสำเร็จ', message: 'ส่งการแจ้งเตือนกลับไปยังโฟรแมนแล้ว', type: 'info' });
+        } catch (err: any) {
+            setModalAlert({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: err.message || 'ไม่สามารถปฏิเสธได้', type: 'error' });
+        } finally {
+            setPhRetroActionLoading(false);
         }
     };
 
@@ -358,6 +491,47 @@ const Evaluation = () => {
         transition: 'all 0.2s'
     };
 
+    const handlePreHandoverConfirm = async (
+        confirmedSla: string,
+        assignments: { catId: string; foremanId: string; foremanName: string }[],
+        scheduledDate: string
+    ) => {
+        if (!selectedWorkOrder) return;
+        const woId = selectedWorkOrder.id;
+        const woLocation = selectedWorkOrder.locationName || woId;
+        await approvePreHandoverWO(woId, confirmedSla, assignments, scheduledDate);
+
+        // Notify each unique assigned foreman
+        const notifiedForemen = new Set<string>();
+        for (const a of assignments) {
+            if (!a.foremanId || notifiedForemen.has(a.foremanId)) continue;
+            notifiedForemen.add(a.foremanId);
+            try {
+                await sendNotification({
+                    recipientId: a.foremanId,
+                    senderId: user?.id || 'admin',
+                    senderName: user?.name || 'Admin',
+                    title: 'ได้รับมอบหมายงานตรวจรับก่อนโอน',
+                    message: `คุณได้รับมอบหมายงานตรวจรับ ${woId} (${woLocation}) กำหนดแล้วเสร็จ: ${confirmedSla}`,
+                    type: 'info',
+                    targetPath: `/daily-report?id=${woId}`,
+                });
+            } catch (err) {
+                console.error('Failed to send PreHandover assignment notification:', err);
+            }
+        }
+
+        setIsPreHandoverAssignOpen(false);
+        setIsDetailModalOpen(false);
+        setSelectedWorkOrder(null);
+        setModalAlert({
+            isOpen: true,
+            title: 'อนุมัติสำเร็จ',
+            message: `มอบหมายงานตรวจรับ ${woId} เรียบร้อยแล้ว`,
+            type: 'success'
+        });
+    };
+
     return (
         <div>
             {currentTask && (
@@ -377,6 +551,19 @@ const Evaluation = () => {
                     wo={selectedWorkOrder}
                     onTaskClick={handleTaskReviewClick}
                     taskDecisions={taskDecisions}
+                    onPreHandoverAssign={selectedWorkOrder.type === 'PreHandover' && selectedWorkOrder.status === 'Evaluating'
+                        ? () => setIsPreHandoverAssignOpen(true)
+                        : undefined}
+                />
+            )}
+
+            {selectedWorkOrder?.type === 'PreHandover' && isPreHandoverAssignOpen && (
+                <PreHandoverAssignModal
+                    isOpen={isPreHandoverAssignOpen}
+                    onClose={() => setIsPreHandoverAssignOpen(false)}
+                    wo={selectedWorkOrder}
+                    staffList={staff}
+                    onConfirm={handlePreHandoverConfirm}
                 />
             )}
 
@@ -494,7 +681,7 @@ const Evaluation = () => {
                     }}
                 >
                     <CheckSquare size={18} />
-                    ประเมินใบงาน ({pendingWorkOrders.length})
+                    ประเมินใบงาน ({pendingWorkOrders.length + rejectedPhWOs.length})
                 </button>
                 <button
                     onClick={() => setActiveTab('helper')}
@@ -535,9 +722,9 @@ const Evaluation = () => {
                 >
                     <History size={18} />
                     อนุมัติข้อมูลย้อนหลัง
-                    {pendingRetroReqs.length > 0 && (
+                    {(pendingRetroReqs.length + pendingPhRetroReqs.length) > 0 && (
                         <span style={{ background: '#ea580c', color: '#fff', borderRadius: '999px', padding: '1px 8px', fontSize: '0.75rem', fontWeight: 900 }}>
-                            {pendingRetroReqs.length}
+                            {pendingRetroReqs.length + pendingPhRetroReqs.length}
                         </span>
                     )}
                 </button>
@@ -617,13 +804,14 @@ const Evaluation = () => {
                 padding: '4px'
             }}>
                 {activeTab === 'retroactive' ? (
-                    pendingRetroReqs.length === 0 ? (
+                    (pendingRetroReqs.length + pendingPhRetroReqs.length) === 0 ? (
                         <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
                             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่มีคำขอรับรองข้อมูลย้อนหลัง</div>
                             <div style={{ fontSize: '1rem', color: '#94a3b8', marginTop: '8px' }}>คำขอจากโฟรแมนจะปรากฏขึ้นที่นี่</div>
                         </div>
                     ) : (
-                        pendingRetroReqs.map(req => {
+                        <>
+                        {pendingRetroReqs.map(req => {
                             const daysAgo = req.requestDate ? Math.floor((Date.now() - new Date(req.requestDate).getTime()) / 86400000) : 0;
                             const laborCount = req.payload?.labor?.length || 0;
                             const submittedAt = req.submittedAt ? new Date(req.submittedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
@@ -632,16 +820,9 @@ const Evaluation = () => {
                                     key={req.id}
                                     onClick={() => { setSelectedRetroReq(req); setShowRejectInput(false); setRetroRejectReason(''); }}
                                     style={{
-                                        background: '#ffffff',
-                                        padding: '20px 24px',
-                                        borderRadius: '20px',
-                                        border: '1.5px solid #fed7aa',
-                                        boxShadow: '0 4px 6px -1px rgba(234, 88, 12, 0.07)',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '10px'
+                                        background: '#ffffff', padding: '20px 24px', borderRadius: '20px',
+                                        border: '1.5px solid #fed7aa', boxShadow: '0 4px 6px -1px rgba(234,88,12,0.07)',
+                                        cursor: 'pointer', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: '10px'
                                     }}
                                     onMouseOver={e => (e.currentTarget.style.boxShadow = '0 8px 16px rgba(234,88,12,0.15)')}
                                     onMouseOut={e => (e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(234,88,12,0.07)')}
@@ -671,30 +852,121 @@ const Evaluation = () => {
                                     </div>
                                 </div>
                             );
-                        })
+                        })}
+                        {pendingPhRetroReqs.map(req => {
+                            const daysAgo = req.id ? Math.floor((Date.now() - new Date(req.id).getTime()) / 86400000) : 0;
+                            const requestedAt = req.requestedAt ? new Date(req.requestedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+                            return (
+                                <div
+                                    key={`ph-${req.woId}-${req.catId}-${req.id}`}
+                                    onClick={() => { setSelectedPhRetroReq(req); setShowPhRejectInput(false); setPhRetroRejectReason(''); }}
+                                    style={{
+                                        background: '#ffffff', padding: '20px 24px', borderRadius: '20px',
+                                        border: '1.5px solid #99f6e4', boxShadow: '0 4px 6px -1px rgba(13,148,136,0.07)',
+                                        cursor: 'pointer', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: '10px'
+                                    }}
+                                    onMouseOver={e => (e.currentTarget.style.boxShadow = '0 8px 16px rgba(13,148,136,0.15)')}
+                                    onMouseOut={e => (e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(13,148,136,0.07)')}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 900, background: '#f0fdfa', color: '#0d9488', padding: '2px 8px', borderRadius: '6px', border: '1px solid #99f6e4' }}>
+                                                🏗️ ก่อนโอน
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 900, background: '#fff7ed', color: '#ea580c', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fed7aa' }}>
+                                                ย้อนหลัง {daysAgo} วัน
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#64748b', fontWeight: 700 }}>{req.woCode}</span>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', marginBottom: '2px' }}>{req.catName || 'หมวดงาน'}</div>
+                                        <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>{req.projectName}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.78rem', color: '#475569' }}>
+                                        <div>📅 วันที่ขอแก้: <strong>{req.id}</strong></div>
+                                        <div>📍 {req.locationName || '-'}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px', borderTop: '1px solid #f1f5f9' }}>
+                                        <UserCircle size={14} color="#0d9488" />
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{req.requestedBy || 'โฟรแมน'}</span>
+                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: 'auto' }}>{requestedAt}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        </>
                     )
                 ) : activeTab === 'evaluation' ? (
-                    pendingWorkOrders.length === 0 ? (
+                    pendingWorkOrders.length === 0 && rejectedPhWOs.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '6rem 2rem', color: '#64748b', background: '#ffffff', borderRadius: '32px', border: '2px dashed #e2e8f0', gridColumn: '1 / -1' }}>
                             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569' }}>ไม่พบงานที่รอตรวจสอบ</div>
                             <div style={{ fontSize: '1rem', color: '#94a3b8', marginTop: '8px' }}>รายการที่รอประเมินจะปรากฏขึ้นที่นี่</div>
                         </div>
                     ) : (
-                        pendingWorkOrders.map(wo => (
-                            <WorkOrderCard
-                                key={wo.id}
-                                wo={wo}
-                                variant="compact"
-                                showStatusBadge={true}
-                                onClick={() => handleCardClick(wo)}
-                                style={highlightedId === wo.id ? { 
-                                    border: '2px solid #3b82f6', 
-                                    boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)',
-                                    background: '#eff6ff',
-                                    transform: 'scale(1.02)'
-                                } : {}}
-                            />
-                        ))
+                        <>
+                            {pendingWorkOrders.map(wo => (
+                                <WorkOrderCard
+                                    key={wo.id}
+                                    wo={wo}
+                                    variant="compact"
+                                    showStatusBadge={true}
+                                    onClick={() => handleCardClick(wo)}
+                                    style={highlightedId === wo.id ? {
+                                        border: '2px solid #3b82f6',
+                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)',
+                                        background: '#eff6ff',
+                                        transform: 'scale(1.02)'
+                                    } : {}}
+                                />
+                            ))}
+                            {rejectedPhWOs.length > 0 && (
+                                <>
+                                    <div style={{ gridColumn: '1 / -1', marginTop: pendingWorkOrders.length > 0 ? '8px' : 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                            <div style={{ height: '2px', flex: 1, background: '#fee2e2', borderRadius: '2px' }} />
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 900, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                🏗️ ตีกลับ — ก่อนโอน ({rejectedPhWOs.length})
+                                            </span>
+                                            <div style={{ height: '2px', flex: 1, background: '#fee2e2', borderRadius: '2px' }} />
+                                        </div>
+                                    </div>
+                                    {rejectedPhWOs.map((wo: any) => {
+                                        const rejectedCats = (wo.categories || []).filter((c: any) => c.customerStatus === 'rejected');
+                                        return (
+                                            <div
+                                                key={wo.id}
+                                                onClick={() => { setSelectedRejectedPhWo(wo); setPhReassignDate(''); }}
+                                                style={{ background: '#fff5f5', borderRadius: '20px', border: '2px solid #fca5a5', padding: '20px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(239,68,68,0.08)' }}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
+                                                            <span style={{ fontSize: '0.65rem', fontWeight: 900, background: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fca5a5' }}>🏗️ ก่อนโอน</span>
+                                                            <span style={{ fontSize: '0.65rem', fontWeight: 900, background: '#fff1f2', color: '#e11d48', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fda4af' }}>⚠️ ถูกปฏิเสธ</span>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#64748b' }}>{wo.id}</div>
+                                                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{wo.locationName || wo.projectName || '—'}</div>
+                                                    </div>
+                                                    <button style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', padding: '6px 14px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer' }}>
+                                                        มอบหมายใหม่
+                                                    </button>
+                                                </div>
+                                                {rejectedCats.length > 0 && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        {rejectedCats.map((cat: any) => (
+                                                            <div key={cat.id} style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fee2e2', padding: '5px 10px', borderRadius: '8px', fontWeight: 700 }}>
+                                                                ✕ {cat.name} — {cat.customerRejectReason || 'ไม่ระบุเหตุผล'}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </>
                     )
                 ) : (
                     pendingHelperTasks.length === 0 ? (
@@ -907,6 +1179,136 @@ const Evaluation = () => {
                                     >
                                         {retroActionLoading ? 'กำลังส่ง...' : 'ยืนยันปฏิเสธ'}
                                     </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedRejectedPhWo && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ background: '#ffffff', borderRadius: '24px', padding: '2rem', width: '520px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ background: '#fee2e2', padding: '10px', borderRadius: '12px' }}><AlertCircle size={22} color="#dc2626" /></div>
+                            <div style={{ flex: 1 }}>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>มอบหมายรอบการแก้ไขใหม่ — ก่อนโอน</h3>
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#dc2626', fontWeight: 600 }}>{selectedRejectedPhWo.id}</p>
+                            </div>
+                            <button onClick={() => setSelectedRejectedPhWo(null)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', color: '#64748b', fontWeight: 800 }}>✕</button>
+                        </div>
+
+                        {/* Rejected categories */}
+                        <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 900, color: '#dc2626', marginBottom: '4px' }}>หมวดงานที่ถูกปฏิเสธ:</div>
+                            {(selectedRejectedPhWo.categories || []).filter((c: any) => c.customerStatus === 'rejected').map((cat: any) => (
+                                <div key={cat.id} style={{ fontSize: '0.82rem', color: '#7f1d1d', background: '#fee2e2', padding: '6px 10px', borderRadius: '8px', fontWeight: 700 }}>
+                                    ✕ {cat.name}
+                                    {cat.customerRejectReason && <div style={{ fontSize: '0.75rem', fontWeight: 400, marginTop: '2px', color: '#991b1b' }}>{cat.customerRejectReason}</div>}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* New scheduled date */}
+                        <div>
+                            <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>วันที่นัดดำเนินการใหม่ (ไม่บังคับ)</label>
+                            <input
+                                type="date"
+                                value={phReassignDate}
+                                onChange={e => setPhReassignDate(e.target.value)}
+                                style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #e2e8f0', fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit' }}
+                            />
+                        </div>
+
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '10px 14px', fontSize: '0.8rem', color: '#92400e' }}>
+                            การยืนยันจะ: ปลดล็อคใบงาน → โฟรแมนแก้ไขหมวดงานที่ถูกปฏิเสธ → กด progress ครบ 100% → สร้าง QR ส่งมอบใหม่
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button onClick={() => setSelectedRejectedPhWo(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#64748b', fontSize: '0.85rem', fontWeight: 900, cursor: 'pointer' }}>ยกเลิก</button>
+                            <button
+                                onClick={handlePhReassignConfirm}
+                                disabled={phReassignLoading}
+                                style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: phReassignLoading ? '#fca5a5' : '#dc2626', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: phReassignLoading ? 'not-allowed' : 'pointer' }}
+                            >
+                                {phReassignLoading ? 'กำลังมอบหมาย...' : '✓ ยืนยันมอบหมายรอบใหม่'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedPhRetroReq && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ background: '#ffffff', borderRadius: '24px', padding: '2rem', width: '540px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ background: '#f0fdfa', padding: '10px', borderRadius: '12px', color: '#0d9488' }}>
+                                <History size={22} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}>อนุมัติย้อนหลัง — ตรวจรับก่อนโอน</h3>
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#0d9488', fontWeight: 600 }}>{selectedPhRetroReq.woCode}</p>
+                            </div>
+                            <button onClick={() => { setSelectedPhRetroReq(null); setShowPhRejectInput(false); setPhRetroRejectReason(''); }} style={{ border: 'none', background: '#f1f5f9', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', color: '#64748b', fontWeight: 800, fontSize: '1rem' }}>✕</button>
+                        </div>
+
+                        {/* Info */}
+                        <div style={{ background: '#f0fdfa', borderRadius: '14px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.83rem', color: '#475569', border: '1px solid #99f6e4' }}>
+                            <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', marginBottom: '4px' }}>{selectedPhRetroReq.catName}</div>
+                            <div><strong>โครงการ:</strong> {selectedPhRetroReq.projectName || '-'}</div>
+                            <div><strong>สถานที่:</strong> {selectedPhRetroReq.locationName || '-'}</div>
+                            <div style={{ display: 'flex', gap: '16px', marginTop: '4px' }}>
+                                <span><strong>วันที่ขอแก้:</strong> {selectedPhRetroReq.id}</span>
+                                <span><strong>ย้อนหลัง:</strong> {Math.floor((Date.now() - new Date(selectedPhRetroReq.id).getTime()) / 86400000)} วัน</span>
+                            </div>
+                        </div>
+
+                        {/* Notice */}
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '12px 14px', fontSize: '0.82rem', color: '#92400e', lineHeight: 1.6 }}>
+                            <strong>การอนุมัติจะ:</strong> ปลดล็อควันที่นี้ให้โฟรแมนสามารถกรอกและส่งรายงานได้ภายใน <strong>48 ชั่วโมง</strong> โดยไม่มีการเขียนข้อมูลลงระบบโดยตรง โฟรแมนต้องกรอกและยืนยันรายงานด้วยตนเอง
+                        </div>
+
+                        <div><strong style={{ fontSize: '0.82rem', color: '#475569' }}>ผู้ส่งคำขอ:</strong> {selectedPhRetroReq.requestedBy || 'โฟรแมน'} · {selectedPhRetroReq.requestedAt ? new Date(selectedPhRetroReq.requestedAt).toLocaleString('th-TH') : ''}</div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {!showPhRejectInput ? (
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button
+                                        onClick={() => setShowPhRejectInput(true)}
+                                        style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#ef4444', fontSize: '0.85rem', fontWeight: 900, cursor: 'pointer' }}
+                                    >
+                                        ปฏิเสธ
+                                    </button>
+                                    <button
+                                        onClick={handlePhRetroApprove}
+                                        disabled={phRetroActionLoading}
+                                        style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: phRetroActionLoading ? '#99f6e4' : '#0d9488', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: phRetroActionLoading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px rgba(13,148,136,0.2)' }}
+                                    >
+                                        {phRetroActionLoading ? 'กำลังดำเนินการ...' : '✓ อนุมัติ — ปลดล็อควันที่'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <textarea
+                                        value={phRetroRejectReason}
+                                        onChange={e => setPhRetroRejectReason(e.target.value)}
+                                        placeholder="ระบุเหตุผลที่ปฏิเสธ..."
+                                        rows={3}
+                                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #fca5a5', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <button onClick={() => setShowPhRejectInput(false)} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#64748b', fontSize: '0.85rem', fontWeight: 900, cursor: 'pointer' }}>ยกเลิก</button>
+                                        <button
+                                            onClick={handlePhRetroReject}
+                                            disabled={phRetroActionLoading || !phRetroRejectReason.trim()}
+                                            style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: phRetroActionLoading || !phRetroRejectReason.trim() ? '#fca5a5' : '#dc2626', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: phRetroActionLoading || !phRetroRejectReason.trim() ? 'not-allowed' : 'pointer' }}
+                                        >
+                                            {phRetroActionLoading ? 'กำลังส่ง...' : 'ยืนยันปฏิเสธ'}
+                                        </button>
+                                    </div>
                                 </>
                             )}
                         </div>

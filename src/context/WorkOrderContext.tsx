@@ -12,6 +12,7 @@ interface WorkOrderContextType {
     updateTask: (workOrderId: string, categoryId: string, taskId: string, updates: Partial<MasterTask>) => Promise<void>;
     addWorkOrder: (wo: WorkOrder) => Promise<void>;
     updateWorkOrderStatus: (id: string, status: string) => Promise<void>;
+    approvePreHandoverWO: (woId: string, confirmedSla: string, assignments: { catId: string; foremanId: string; foremanName: string }[], scheduledDate: string) => Promise<void>;
     saveEvaluation: (id: string, status: string, categories: any[]) => Promise<void>;
     addTaskUpdate: (workOrderId: string, categoryId: string, taskId: string, report: DailyReport) => Promise<void>;
     projects: Project[];
@@ -39,6 +40,8 @@ interface WorkOrderContextType {
     ) => Promise<void>;
     approveRetroactiveRequest: (requestId: string, workOrderId: string, approvedBy: { uid: string; name: string }) => Promise<void>;
     rejectRetroactiveRequest: (requestId: string, workOrderId: string, rejectedBy: { uid: string; name: string }, reason: string) => Promise<void>;
+    approvePhRetroactiveRequest: (woId: string, catId: string, requestDate: string, approvedBy: { uid: string; name: string }) => Promise<void>;
+    rejectPhRetroactiveRequest: (woId: string, catId: string, requestDate: string, rejectedBy: { uid: string; name: string }, reason: string) => Promise<void>;
     generateDeliveryQrToken: (woId: string, ownerId: string) => Promise<string>;
     submitCustomerInspection: (
         woId: string, 
@@ -57,6 +60,12 @@ interface WorkOrderContextType {
             handoverCare: number;
         }
     ) => Promise<void>;
+    submitPhCustomerInspection: (
+        woId: string,
+        catApprovals: Record<string, { status: 'approved' | 'rejected'; reason?: string }>,
+        survey?: { workQuality: number; siteCleanliness: number; foremanProfessionalism: number; specAccuracy: number; handoverCare: number }
+    ) => Promise<void>;
+    reviewRejectedPhWO: (woId: string, newScheduledDate?: string) => Promise<void>;
     logCustomerQrView: (woId: string) => Promise<void>;
     markWorkOrderAsOpenedByAdmin: (id: string) => Promise<void>;
     requestSupport: (workOrderId: string, categoryId: string, taskId: string) => Promise<void>;
@@ -1444,6 +1453,37 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await updateDoc(doc(db, 'workOrders', id), { status, lastUpdate: new Date().toISOString() });
     };
 
+    const approvePreHandoverWO = async (
+        woId: string,
+        confirmedSla: string,
+        assignments: { catId: string; foremanId: string; foremanName: string }[],
+        scheduledDate: string
+    ) => {
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'workOrders', woId), {
+            status: 'Approved',
+            phActualSla: confirmedSla,
+            scheduledDate,
+            startDate: new Date().toISOString(),
+            lastUpdate: new Date().toISOString(),
+            reviewedByAdmin: true,
+            adminReviewedAt: new Date().toISOString()
+        });
+        for (const a of assignments) {
+            batch.update(doc(db, 'workOrders', woId, 'categories', a.catId), {
+                assignedForemanId: a.foremanId,
+                assignedForemanName: a.foremanName,
+                currentRevision: 'rev00'
+            });
+            batch.set(doc(db, 'workOrders', woId, 'categories', a.catId, 'revisions', 'rev00'), {
+                revisionId: 'rev00',
+                status: 'active',
+                createdAt: new Date().toISOString()
+            });
+        }
+        await batch.commit();
+    };
+
     const submitRetroactiveRequest = async (
         workOrderId: string,
         categoryId: string,
@@ -1584,6 +1624,40 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 : doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'dailyreportDraft', requestDate);
             await deleteDoc(draftRef);
         } catch (_) {}
+    };
+
+    const approvePhRetroactiveRequest = async (
+        woId: string,
+        catId: string,
+        requestDate: string,
+        approvedBy: { uid: string; name: string }
+    ) => {
+        const now = new Date().toISOString();
+        const reqRef = doc(db, 'workOrders', woId, 'categories', catId, 'phRetroactiveRequests', requestDate);
+        // Unlock the date on the category for 48 hours
+        const catRef = doc(db, 'workOrders', woId, 'categories', catId);
+        const catSnap = await getDoc(catRef);
+        const existing = catSnap.data() || {};
+        const phUnlockedDates = existing.phUnlockedDates || {};
+        phUnlockedDates[requestDate] = {
+            unlockedUntil: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+            approvedBy: approvedBy.uid,
+            approvedAt: now,
+        };
+        await updateDoc(catRef, { phUnlockedDates });
+        await updateDoc(reqRef, { status: 'approved', approvedBy, resolvedAt: now });
+    };
+
+    const rejectPhRetroactiveRequest = async (
+        woId: string,
+        catId: string,
+        requestDate: string,
+        rejectedBy: { uid: string; name: string },
+        reason: string
+    ) => {
+        const now = new Date().toISOString();
+        const reqRef = doc(db, 'workOrders', woId, 'categories', catId, 'phRetroactiveRequests', requestDate);
+        await updateDoc(reqRef, { status: 'rejected', rejectedBy, rejectReason: reason, resolvedAt: now });
     };
 
     const rejectRetroactiveRequest = async (
@@ -1899,6 +1973,128 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await updateDoc(woRef, woUpdates);
     };
 
+    const submitPhCustomerInspection = async (
+        woId: string,
+        catApprovals: Record<string, { status: 'approved' | 'rejected'; reason?: string }>,
+        survey?: { workQuality: number; siteCleanliness: number; foremanProfessionalism: number; specAccuracy: number; handoverCare: number }
+    ) => {
+        const woRef = doc(db, 'workOrders', woId);
+        const woSnap = await getDoc(woRef);
+        if (!woSnap.exists()) throw new Error('Work Order not found');
+        const now = new Date().toISOString();
+        let hasRejections = false;
+        const rejectedCatNames: string[] = [];
+
+        const categoriesSnap = await getDocs(collection(db, 'workOrders', woId, 'categories'));
+        for (const catDoc of categoriesSnap.docs) {
+            const catData = catDoc.data();
+            const decision = catApprovals[catDoc.id];
+            if (!decision) continue;
+            if (decision.status === 'approved') {
+                const currentRev = catData.currentRevision || 'rev00';
+                await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'revisions', currentRev), {
+                    status: 'closed_approved', approvedAt: now
+                }, { merge: true });
+                await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id), {
+                    customerStatus: 'approved', customerApprovedAt: now,
+                });
+                try {
+                    if (catData.assignedForemanId) {
+                        await addDoc(collection(db, 'notifications'), {
+                            recipientId: catData.assignedForemanId, senderId: 'customer', senderName: 'ลูกค้า',
+                            title: 'งานตรวจรับก่อนโอน — ผ่านแล้ว',
+                            message: `หมวดงาน "${catData.name || catDoc.id}" (ใบงาน ${woId}) ได้รับการอนุมัติจากลูกค้าเรียบร้อยแล้ว`,
+                            type: 'success', targetPath: `/daily-report?id=${woId}`, isRead: false, createdAt: serverTimestamp()
+                        });
+                    }
+                } catch (_) {}
+            } else {
+                hasRejections = true;
+                rejectedCatNames.push(catData.name || catDoc.id);
+                const currentRev = catData.currentRevision || 'rev00';
+                const revNum = parseInt(currentRev.replace('rev', '')) || 0;
+                const nextRev = `rev${String(revNum + 1).padStart(2, '0')}`;
+                await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'revisions', currentRev), {
+                    status: 'closed_rejected', rejectReason: decision.reason || '', rejectedAt: now
+                }, { merge: true });
+                await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'revisions', nextRev), {
+                    revisionId: nextRev, status: 'active', createdAt: now
+                });
+                await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id), {
+                    customerStatus: 'rejected', customerRejectedAt: now, customerRejectReason: decision.reason || '',
+                    dailyProgress: 0, lastProgressUpdate: now,
+                    currentRevision: nextRev,
+                });
+                try {
+                    if (catData.assignedForemanId) {
+                        await addDoc(collection(db, 'notifications'), {
+                            recipientId: catData.assignedForemanId, senderId: 'customer', senderName: 'ลูกค้า',
+                            title: 'งานตรวจรับก่อนโอน — ถูกปฏิเสธ',
+                            message: `หมวดงาน "${catData.name || catDoc.id}" (ใบงาน ${woId}) ถูกปฏิเสธจากลูกค้า: ${decision.reason || 'กรุณาตรวจสอบและแก้ไข'}`,
+                            type: 'error', targetPath: `/daily-report?id=${woId}`, isRead: false, createdAt: serverTimestamp()
+                        });
+                    }
+                } catch (_) {}
+            }
+        }
+
+        const woUpdates: any = { 'inspectionTimeline.inspectionSubmittedAt': now, lastUpdate: now };
+        if (hasRejections) {
+            woUpdates.status = 'Rejected';
+            woUpdates.reviewedByAdmin = false;
+            woUpdates.pendingAdminReassign = true;
+            try {
+                await addDoc(collection(db, 'notifications'), {
+                    recipientRole: 'Admin', senderId: 'customer', senderName: 'ลูกค้า',
+                    title: 'ใบงานก่อนโอนถูกปฏิเสธโดยลูกค้า',
+                    message: `ใบงาน ${woId} ถูกปฏิเสธในหมวดงาน: ${rejectedCatNames.join(', ')}`,
+                    type: 'error', targetPath: `/evaluation`, isRead: false, createdAt: serverTimestamp()
+                });
+            } catch (_) {}
+        } else {
+            woUpdates.status = 'Completed';
+            woUpdates.completedAt = now;
+            if (survey) woUpdates.satisfactionSurvey = { ...survey, submittedAt: now };
+            try {
+                await addDoc(collection(db, 'notifications'), {
+                    recipientRole: 'Admin', senderId: 'customer', senderName: 'ลูกค้า',
+                    title: 'ใบงานก่อนโอนได้รับการอนุมัติ',
+                    message: `ใบงาน ${woId} ตรวจรับก่อนโอนเรียบร้อยแล้ว`,
+                    type: 'success', targetPath: `/evaluation`, isRead: false, createdAt: serverTimestamp()
+                });
+            } catch (_) {}
+        }
+        await updateDoc(woRef, woUpdates);
+    };
+
+    const reviewRejectedPhWO = async (woId: string, newScheduledDate?: string) => {
+        const now = new Date().toISOString();
+        const updates: any = {
+            status: 'In Progress',
+            reviewedByAdmin: true,
+            pendingAdminReassign: false,
+            adminReviewedAt: now,
+            lastUpdate: now,
+        };
+        if (newScheduledDate) updates.scheduledDate = newScheduledDate;
+        await updateDoc(doc(db, 'workOrders', woId), updates);
+
+        const catsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories'));
+        for (const catDoc of catsSnap.docs) {
+            const catData = catDoc.data();
+            if (catData.customerStatus === 'rejected' && catData.assignedForemanId) {
+                try {
+                    await addDoc(collection(db, 'notifications'), {
+                        recipientId: catData.assignedForemanId, senderId: 'admin', senderName: 'ผู้ดูแลระบบ',
+                        title: 'งานตรวจรับก่อนโอน — รอดำเนินการแก้ไข',
+                        message: `หมวดงาน "${catData.name || catDoc.id}" (ใบงาน ${woId}) ได้รับอนุมัติให้แก้ไขใหม่${newScheduledDate ? ` กำหนดการ: ${newScheduledDate}` : ''}`,
+                        type: 'warning', targetPath: `/daily-report?id=${woId}`, isRead: false, createdAt: serverTimestamp()
+                    });
+                } catch (_) {}
+            }
+        }
+    };
+
     const deleteWorkOrder = async (id: string) => {
         await updateDoc(doc(db, 'workOrders', id), { status: 'Cancelled', isArchived: true });
     };
@@ -1968,6 +2164,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             updateTask,
             addWorkOrder,
             updateWorkOrderStatus,
+            approvePreHandoverWO,
             saveEvaluation,
             addTaskUpdate,
             projects,
@@ -1981,8 +2178,12 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             submitRetroactiveRequest,
             approveRetroactiveRequest,
             rejectRetroactiveRequest,
+            approvePhRetroactiveRequest,
+            rejectPhRetroactiveRequest,
             generateDeliveryQrToken,
             submitCustomerInspection,
+            submitPhCustomerInspection,
+            reviewRejectedPhWO,
             logCustomerQrView,
             markWorkOrderAsOpenedByAdmin,
             requestSupport

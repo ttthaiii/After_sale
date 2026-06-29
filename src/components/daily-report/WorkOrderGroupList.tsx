@@ -9,6 +9,9 @@ import {
   Package,
   LayoutDashboard,
   AlertTriangle,
+  ClipboardList,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useDailyReport } from "../../context/DailyReportContext";
 import { GroupSLACountdown } from "./SLACountdowns";
@@ -82,6 +85,10 @@ export const WorkOrderGroupList: React.FC = () => {
     inProgressTasks: rawInProgressTasks,
     pendingInspectionTasks: rawPendingInspectionTasks,
     pendingDeliveryWorkOrders: rawPendingDeliveryWorkOrders,
+    preHandoverWorkOrders,
+    setSelectedPhCatInfo,
+    selectedPhCatInfo,
+    setSelectedTaskInfo,
     handleSelectTask,
     getTaskImage,
     realProjects,
@@ -97,6 +104,7 @@ export const WorkOrderGroupList: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrModalWo, setQrModalWo] = useState<any>(null);
   const [ipOverride, setIpOverride] = useState('');
+  const [collapsedPhWos, setCollapsedPhWos] = useState<Record<string, boolean>>({});
 
 
   useEffect(() => {
@@ -933,7 +941,8 @@ export const WorkOrderGroupList: React.FC = () => {
             {pendingDeliveryWorkOrders.length === 0 &&
             newTasks.length === 0 &&
             inProgressTasks.length === 0 &&
-            pendingInspectionTasks.length === 0 ? (
+            pendingInspectionTasks.length === 0 &&
+            preHandoverWorkOrders.length === 0 ? (
                <div
                 style={{
                   textAlign: "center",
@@ -954,6 +963,163 @@ export const WorkOrderGroupList: React.FC = () => {
               </div>
             ) : (
                <Fragment>
+                {/* ─── PreHandover Section ─── */}
+                {preHandoverWorkOrders.length > 0 && (
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <h3 style={{
+                      fontSize: '0.8rem', fontWeight: 800, color: '#0d9488',
+                      marginLeft: '8px', marginBottom: '10px',
+                      textTransform: 'uppercase',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}>
+                      <ClipboardList size={12} style={{ color: '#0d9488' }} />
+                      ตรวจรับก่อนโอน (PreHandover)
+                    </h3>
+                    {preHandoverWorkOrders.map(({ wo, assignedCategories }) => {
+                      const project = realProjects.find((p: any) => p.id === wo.projectId);
+                      const woCollapsed = collapsedPhWos[wo.id];
+                      const phSlaHoursMap: Record<string, number> = {
+                        Immediately: 4, '24h': 24, '1-3d': 72,
+                        '3-7d': 168, '7-14d': 336, '14-30d': 720,
+                      };
+                      const phSlaHours = phSlaHoursMap[wo.phActualSla] || phSlaHoursMap[wo.phEstimatedSla] || 720;
+                      const phStartMs = wo.startDate ? new Date(wo.startDate).getTime() : Date.now();
+                      const phDeadlineMs = phStartMs + phSlaHours * 3600 * 1000;
+                      const phDeadlineDate = new Date(phDeadlineMs);
+                      const slaLabel = phDeadlineDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+                      const daysLeft = Math.ceil((phDeadlineMs - Date.now()) / 86400000);
+                      const daysLabel = daysLeft > 0 ? `อีก ${daysLeft} วัน` : daysLeft === 0 ? 'วันนี้!' : `เกิน ${Math.abs(daysLeft)} วัน`;
+                      const allDone = assignedCategories.every((cat: any) => (cat.dailyProgress || 0) >= 100);
+                      return (
+                        <div key={wo.id} style={{
+                          borderRadius: '16px', border: '1px solid #99f6e4',
+                          background: '#f0fdfa', marginBottom: '12px', overflow: 'hidden',
+                        }}>
+                          {/* WO header */}
+                          <div
+                            onClick={() => setCollapsedPhWos(prev => ({ ...prev, [wo.id]: !prev[wo.id] }))}
+                            style={{
+                              padding: '10px 14px', display: 'flex', alignItems: 'center',
+                              justifyContent: 'space-between', cursor: 'pointer',
+                              background: allDone ? '#ccfbf1' : '#f0fdfa',
+                              borderBottom: woCollapsed ? 'none' : '1px solid #99f6e4',
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{
+                                  fontSize: '0.65rem', fontWeight: 800, color: '#0f766e',
+                                  background: '#ccfbf1', padding: '2px 6px', borderRadius: '4px',
+                                  textTransform: 'uppercase',
+                                }}>
+                                  {wo.id}
+                                </span>
+                                {allDone && (
+                                  <span style={{
+                                    fontSize: '0.62rem', fontWeight: 800, color: '#059669',
+                                    background: '#d1fae5', padding: '2px 6px', borderRadius: '4px',
+                                  }}>✓ ครบ 100%</span>
+                                )}
+                                {(() => {
+                                  const isPhWoOwner = assignedCategories.some(
+                                    (cat: any) => cat.assignedForemanId === user?.employeeId || cat.assignedForemanId === user?.id
+                                  );
+                                  const canShowQr = wo.status === 'pending_delivery' || !!wo.deliveryQrToken;
+                                  if (!allDone && !canShowQr) return null;
+                                  return (
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        try {
+                                          let token = wo.deliveryQrToken;
+                                          if (!token) {
+                                            if (!isPhWoOwner) { alert('เฉพาะโฟรแมนที่รับผิดชอบหมวดงานนี้เท่านั้นที่สร้าง QR ได้'); return; }
+                                            if (window.confirm('สร้าง QR Code ส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?')) {
+                                              token = await generateDeliveryQrToken(wo.id, user?.employeeId || user?.id || 'unknown');
+                                            } else return;
+                                          }
+                                          setQrModalWo(wo);
+                                          setShowQrModal(true);
+                                        } catch (err) {
+                                          alert('เกิดข้อผิดพลาดในการสร้าง QR');
+                                        }
+                                      }}
+                                      style={{
+                                        fontSize: '0.62rem', fontWeight: 900, color: '#fff',
+                                        background: canShowQr ? 'linear-gradient(135deg, #0d9488 0%, #059669 100%)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                        border: 'none', padding: '3px 8px', borderRadius: '6px',
+                                        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                                      }}
+                                    >
+                                      📱 {canShowQr ? 'ดู QR ส่งมอบ' : 'สร้าง QR ส่งมอบ'}
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#134e4a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {wo.locationName || project?.name || '—'}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: daysLeft < 0 ? '#ef4444' : daysLeft <= 3 ? '#f59e0b' : '#5eead4', marginTop: '1px' }}>
+                                ครบ: {slaLabel} ({daysLabel}) · {assignedCategories.length} หมวด
+                              </div>
+                            </div>
+                            <div style={{ color: '#0d9488', flexShrink: 0, marginLeft: '8px' }}>
+                              {woCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                            </div>
+                          </div>
+
+                          {/* Category list */}
+                          {!woCollapsed && (
+                            <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {assignedCategories.map((cat: any) => {
+                                const isSelected = selectedPhCatInfo?.cat.id === cat.id && selectedPhCatInfo?.wo.id === wo.id;
+                                const progress = cat.dailyProgress || 0;
+                                const progressColor = progress >= 100 ? '#10b981' : progress > 0 ? '#3b82f6' : '#e2e8f0';
+                                return (
+                                  <div
+                                    key={cat.id}
+                                    onClick={() => {
+                                      const isPhWoRejectedAwaitingAdmin = wo.status === 'Rejected' && !wo.reviewedByAdmin;
+                                      if (isPhWoRejectedAwaitingAdmin) {
+                                        setModalAlert({ isOpen: true, title: 'รอแอดมินมอบหมายรอบใหม่', message: 'ใบงานนี้ถูกลูกค้าปฏิเสธ — รอแอดมินอนุมัติรอบการแก้ไขก่อนจึงจะเริ่มงานได้', type: 'warning' });
+                                        return;
+                                      }
+                                      setSelectedPhCatInfo({ wo, cat }); setSelectedTaskInfo(null);
+                                    }}
+                                    style={{
+                                      borderRadius: '12px', background: isSelected ? '#f0fdfa' : '#fff',
+                                      border: `1px solid ${isSelected ? '#0d9488' : '#e2e8f0'}`,
+                                      padding: '10px 12px', cursor: 'pointer',
+                                      boxShadow: isSelected ? '0 0 0 2px #99f6e4' : 'none',
+                                      transition: 'all 0.15s',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {cat.name}
+                                        </div>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{cat.defectCount || 0} จุด</div>
+                                      </div>
+                                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: progress === 0 ? '#94a3b8' : progressColor, marginLeft: '8px' }}>
+                                        {progress}%
+                                      </span>
+                                    </div>
+                                    <div style={{ height: '6px', borderRadius: '3px', background: '#f1f5f9', overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${progress}%`, background: progressColor, borderRadius: '3px', transition: 'width 0.3s' }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* ─── End PreHandover Section ─── */}
                 {pendingDeliveryWorkOrders.length > 0 && (
                    <div
                     style={{

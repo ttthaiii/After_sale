@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Clock } from "lucide-react";
 import { TimeLeft, SLACountdownProps, GroupSLACountdownProps } from "../../types/dailyReport.types";
 import { formatDate, formatDateTime } from "../../utils/date";
+import { todayTH } from "../../lib/dateUtils";
 
 // Helper: format deadline date
 export const formatDeadline = (timestamp: number | string | undefined) => {
@@ -85,7 +86,7 @@ export const SLACountdown: React.FC<SLACountdownProps & { isHelper?: boolean }> 
     ? formatDate(appointmentDate)
     : "ไม่ระบุ";
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayTH();
   const isAppTodayOrPast = appointmentDate ? appointmentDate <= todayStr : true;
   const step2Text = actualStartDate
     ? `เริ่มจริงเมื่อ ${formatDate(actualStartDate)}`

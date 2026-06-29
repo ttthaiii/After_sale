@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
 import { db, storage } from "../lib/firebase";
+import { todayTH } from "../lib/dateUtils";
 import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc, updateDoc, getDocs } from "firebase/firestore";
 import { useWorkOrders } from "./WorkOrderContext";
 import { useAuth } from "./AuthContext";
@@ -145,6 +146,7 @@ interface DailyReportContextType {
   selectedPhCatInfo: { wo: any; cat: any } | null;
   setSelectedPhCatInfo: React.Dispatch<React.SetStateAction<{ wo: any; cat: any } | null>>;
   phDailyHistory: any[];
+  phProgressBounds: { min: number; max: number; isToday: boolean };
   submitPhDailyReport: (noteType?: string) => Promise<void>;
   savePhDraft: () => Promise<void>;
   phDraftedDates: Set<string>;
@@ -461,7 +463,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     useState<TimePickerTarget | null>(null);
   const [reportType, setReportType] = useState<"Update" | "Problem">("Update");
   const [reportDate, setReportDate] = useState(
-    new Date().toISOString().split("T")[0],
+    todayTH(),
   );
   const [realContractors, setRealContractors] = useState<RealContractor[]>([]);
   const [realProjects, setRealProjects] = useState<RealProject[]>([]);
@@ -485,7 +487,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!selectedTaskInfo) return false;
     const { task } = selectedTaskInfo;
     const history = task.history || [];
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = todayTH();
     const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt, task.currentRevision);
     const historyBeforeToday = filteredHistory
       .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
@@ -700,7 +702,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (priorEntries.length > 0) {
         min = priorEntries[0].progress;
       } else {
-        const isToday = reportDate === new Date().toISOString().split("T")[0];
+        const isToday = reportDate === todayTH();
         min = isToday ? (selectedTaskInfo.task.dailyProgress || 0) : 0;
       }
       
@@ -1097,7 +1099,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     const history = task.history || [];
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = todayTH();
     const filteredHistory = filterHistoryByRevision(history, task.revisionCreatedAt, task.currentRevision);
     const historyBeforeToday = filteredHistory
       .filter((h) => (h.date?.split("T")[0] || "") < todayStr)
@@ -1134,11 +1136,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setLaborOtNoonPhotos([]);
     setLaborOtEveningPhotos([]);
     setReportType("Update");
-    setReportDate(new Date().toISOString().split("T")[0]);
+    setReportDate(todayTH());
   };
 
   const getDateStatus = (dateStr: string, task: WorkTask, wo: WorkOrder) => {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = todayTH();
     if (dateStr > todayStr) {
       return "disabled";
     }
@@ -1192,14 +1194,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (allowedMax < max) max = allowedMax;
       }
     });
-    const isToday = reportDate === new Date().toISOString().split("T")[0];
+    const isToday = reportDate === todayTH();
     const effectiveMax = isToday ? 100 : Math.min(max, 99);
     return { min, max: effectiveMax, isToday };
   }, [selectedTaskInfo, reportDate]);
 
   const isReportDatePast3Days = useMemo(() => {
     if (!selectedTaskInfo) return false;
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = todayTH();
     const todayVal = new Date(todayStr).getTime();
     const dateVal = new Date(reportDate).getTime();
     const diffTime = todayVal - dateVal;
@@ -2179,7 +2181,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setLaborOtNoonPhotos([]);
         setLaborOtEveningPhotos([]);
         setReportType("Update");
-        setReportDate(new Date().toISOString().split("T")[0]);
+        setReportDate(todayTH());
       }
     } catch (error: any) {
       console.error("Submit failed:", error);
@@ -2422,14 +2424,34 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setLaborOtMorningPhotos([]);
     setLaborOtNoonPhotos([]);
     setLaborOtEveningPhotos([]);
-    setReportDate(new Date().toISOString().split('T')[0]);
+    setReportDate(todayTH());
     const { wo, cat } = selectedPhCatInfo;
-    getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports')).then(snap => {
-      const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
-      setPhDailyHistory(hist);
+    const phRev = cat.currentRevision || 'rev00';
+    getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports')).then(async snap => {
+      if (snap.size > 0) {
+        const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+        setPhDailyHistory(hist);
+      } else {
+        // Fallback 1: intermediate path phRevisions/rev00/phDailyReports (before collection rename)
+        const phRev2 = cat.currentRevision || 'rev00';
+        const midSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phRevisions', phRev2, 'phDailyReports'));
+        if (midSnap.size > 0) {
+          const hist = midSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+          setPhDailyHistory(hist);
+        } else if (!cat.currentRevision) {
+          // Fallback 2: original flat path phDailyReports (before revision layer)
+          const flatSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports'));
+          const hist = flatSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+          setPhDailyHistory(hist);
+        } else {
+          setPhDailyHistory([]);
+        }
+      }
     });
-  }, [selectedPhCatInfo?.wo.id, selectedPhCatInfo?.cat.id]);
+  }, [selectedPhCatInfo?.wo.id, selectedPhCatInfo?.cat.id, selectedPhCatInfo?.cat.currentRevision]);
 
   // Load existing report for selected date (PreHandover)
   useEffect(() => {
@@ -2437,10 +2459,27 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPhRetroactiveSubmitDone(false);
     setIsPhEditingExisting(false);
     const { wo, cat } = selectedPhCatInfo;
-    getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports', reportDate)).then(snap => {
-      if (snap.exists()) {
+    const phRev = cat.currentRevision || 'rev00';
+    getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports', reportDate)).then(async snap => {
+      // Collect all candidate docs from every legacy path, pick the richest one
+      const phRev2 = cat.currentRevision || 'rev00';
+      const [midSnap2, flatSnap2] = await Promise.all([
+        snap.exists() ? Promise.resolve(null) : getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phRevisions', phRev2, 'phDailyReports', reportDate)),
+        snap.exists() ? Promise.resolve(null) : getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports', reportDate)),
+      ]);
+      const candidates = [snap, midSnap2, flatSnap2].filter(s => s?.exists());
+      // Prefer doc with labor data, then highest progress
+      const resolvedSnap = candidates.sort((a, b) => {
+        const aData = a!.data() as any;
+        const bData = b!.data() as any;
+        const aHasLabor = (aData.labor?.length || 0) > 0 ? 1 : 0;
+        const bHasLabor = (bData.labor?.length || 0) > 0 ? 1 : 0;
+        if (bHasLabor !== aHasLabor) return bHasLabor - aHasLabor;
+        return (bData.progress || 0) - (aData.progress || 0);
+      })[0] || null;
+      if (resolvedSnap?.exists()) {
         // Existing submitted report — load data, keep editing locked (false)
-        const d = snap.data();
+        const d = resolvedSnap.data();
         setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
         setNote(d.note || '');
         setLabor(d.labor || []);
@@ -2452,7 +2491,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsPhEditingExisting(false);
       } else {
         // No main report — check for draft
-        getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReportsDraft', reportDate)).then(draftSnap => {
+        getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReportsDraft', reportDate)).then(draftSnap => {
           if (draftSnap.exists()) {
             const d = draftSnap.data();
             setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
@@ -2485,7 +2524,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [phRetroactiveSubmitDone, setPhRetroactiveSubmitDone] = useState(false);
 
   const getPhDateStatus = (dateStr: string): "disabled" | "reported" | "unlocked" | "locked" => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayTH();
     if (dateStr > todayStr) return 'disabled';
     if (selectedPhCatInfo) {
       const scheduled = selectedPhCatInfo.wo.scheduledDate;
@@ -2501,7 +2540,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const isPhReportDatePast3Days = useMemo(() => {
     if (!selectedPhCatInfo || !reportDate) return false;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayTH();
     const diffDays = Math.ceil((new Date(todayStr).getTime() - new Date(reportDate).getTime()) / 86400000);
     if (diffDays <= 3) return false;
     const cat = selectedPhCatInfo.cat;
@@ -2511,6 +2550,31 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const isPhExistingReport = useMemo(() => {
     return phDailyHistory.some((h: any) => h.id === reportDate || h.date === reportDate);
   }, [phDailyHistory, reportDate]);
+
+  const phProgressBounds = useMemo(() => {
+    if (!selectedPhCatInfo) return { min: 0, max: 100, isToday: true };
+    const targetDate = reportDate;
+    let min = 0;
+    let max = 100;
+    phDailyHistory.forEach((h: any) => {
+      const hDate = (h.date || h.id || '').split('T')[0];
+      if (!hDate) return;
+      if (hDate < targetDate) {
+        if (h.progress > min) min = h.progress;
+      } else if (hDate > targetDate) {
+        const allowedMax = h.progress - 1;
+        if (allowedMax < max) max = allowedMax;
+      }
+    });
+    const isToday = targetDate === todayTH();
+    // For today: min is at least the current category dailyProgress
+    if (isToday) {
+      const catProgress = selectedPhCatInfo.cat.dailyProgress || 0;
+      if (catProgress > min) min = catProgress;
+    }
+    const effectiveMax = isToday ? 100 : Math.min(max, 99);
+    return { min, max: effectiveMax, isToday };
+  }, [selectedPhCatInfo, phDailyHistory, reportDate]);
 
   const submitPhRetroactiveRequest = async (): Promise<void> => {
     if (!selectedPhCatInfo) return;
@@ -2538,9 +2602,20 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       alert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
       return;
     }
+    // Progress bounds validation (same as AfterSale)
+    const allowedMinVal = phProgressBounds.min > 0 ? phProgressBounds.min : -1;
+    if (progress <= allowedMinVal) {
+      alert(`ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${phProgressBounds.min}% (ตามประวัติก่อนหน้า)`);
+      return;
+    }
+    if (progress > phProgressBounds.max) {
+      alert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}%${!phProgressBounds.isToday && progress === 100 ? ' (ห้ามลงปิดงาน 100% ย้อนหลัง)' : ' (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)'}`);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const { wo, cat } = selectedPhCatInfo;
+      const phRev = cat.currentRevision || 'rev00';
       const foremanEmpId = user?.employeeId || user?.id || '';
       const laborPayload = labor
         .filter(l => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
@@ -2596,17 +2671,17 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         submittedBy_id: foremanEmpId,
         submittedAt: new Date().toISOString(),
       };
-      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports', reportDate), payload);
+      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports', reportDate), payload);
       await updateDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id), {
         dailyProgress: progress,
         lastProgressUpdate: new Date().toISOString(),
       });
       // Delete draft if exists
       try {
-        await deleteDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReportsDraft', reportDate));
+        await deleteDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReportsDraft', reportDate));
         setPhDraftedDates(prev => { const n = new Set(prev); n.delete(reportDate); return n; });
       } catch (_) {}
-      const snap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports'));
+      const snap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports'));
       const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
       setPhDailyHistory(hist);
@@ -2620,6 +2695,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsSubmitting(true);
     try {
       const { wo, cat } = selectedPhCatInfo;
+      const phRev = cat.currentRevision || 'rev00';
       const draftPayload = {
         progress,
         note,
@@ -2636,7 +2712,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         updatedAt: new Date().toISOString(),
         updatedBy: user?.employeeId || user?.id || '',
       };
-      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReportsDraft', reportDate), draftPayload);
+      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReportsDraft', reportDate), draftPayload);
       setPhDraftedDates(prev => new Set([...prev, reportDate]));
       alert('บันทึกแบบร่างเรียบร้อยแล้ว');
     } catch (err) {
@@ -2753,6 +2829,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         selectedPhCatInfo,
         setSelectedPhCatInfo,
         phDailyHistory,
+        phProgressBounds,
         submitPhDailyReport,
         savePhDraft,
         phDraftedDates,

@@ -28,6 +28,7 @@ import { useDailyReport, filterHistoryByRevision } from "../../context/DailyRepo
 import { SLACountdown } from "./SLACountdowns";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
 import { formatDate } from "../../utils/date";
+import { todayTH } from "../../lib/dateUtils";
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
@@ -3513,7 +3514,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           range?.split(" - ")[1] || "";
 
                         const isSlotTimeAllowed = (slotIdx: number) => {
-                          const todayStr = new Date().toISOString().split("T")[0];
+                          const todayStr = todayTH();
                           if (reportDate < todayStr) return true;
                           if (reportDate > todayStr) return false;
 

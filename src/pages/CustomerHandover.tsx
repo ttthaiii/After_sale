@@ -3,10 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { db } from '../lib/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { 
-    Star, Sparkles, Building2, ChevronDown, ChevronUp, 
-    Loader2, CheckCircle2, AlertTriangle, 
-    MapPin, User, Phone, Camera
+import {
+    Star, Sparkles, Building2, ChevronDown, ChevronUp,
+    Loader2, CheckCircle2, AlertTriangle, ClipboardList,
+    MapPin, Camera
 } from 'lucide-react';
 
 const getAfterPhotos = (task: any): string[] => {
@@ -36,7 +36,7 @@ export default function CustomerHandover() {
     const [searchParams] = useSearchParams();
     const woId = searchParams.get('woId') || '';
     
-    const { submitCustomerInspection, logCustomerQrView } = useWorkOrders();
+    const { submitCustomerInspection, submitPhCustomerInspection, logCustomerQrView } = useWorkOrders();
 
     // States
     const [loading, setLoading] = useState(true);
@@ -62,6 +62,11 @@ export default function CustomerHandover() {
     const [defectCategories] = useState<Record<string, Record<string, boolean>>>({});
     const [contactNames, setContactNames] = useState<Record<string, string>>({});
     const [contactPhones, setContactPhones] = useState<Record<string, string>>({});
+
+    // PreHandover-specific
+    const [phCategoryReports, setPhCategoryReports] = useState<Record<string, any>>({});
+    const [catApprovals, setCatApprovals] = useState<Record<string, { status: 'approved' | 'rejected'; reason?: string }>>({});
+    const [catRejectReasons, setCatRejectReasons] = useState<Record<string, string>>({});
 
     // 5-Star Ratings
     const [workQuality, setWorkQuality] = useState(5);
@@ -158,7 +163,22 @@ export default function CustomerHandover() {
                     };
                     
                     setWorkOrder(fullWorkOrder);
-                    
+
+                    // If PreHandover: fetch dailyReports from current revision (latest per category)
+                    if (woData.type === 'PreHandover') {
+                        const phReports: Record<string, any> = {};
+                        for (const cat of categories) {
+                            try {
+                                const phRev = cat.currentRevision || 'rev00';
+                                const phSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', cat.id, 'revisions', phRev, 'dailyReports'));
+                                const reports = phSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                                    .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+                                if (reports.length > 0) phReports[cat.id] = reports[0];
+                            } catch (_) {}
+                        }
+                        setPhCategoryReports(phReports);
+                    }
+
                     // Log view
                     await logCustomerQrView(woSnap.id);
 
@@ -342,9 +362,6 @@ export default function CustomerHandover() {
         );
     }
 
-    const hasRejections = Object.values(approvals).some(a => a.status === 'rejected');
-    const isAllApproved = eligibleTasks.length > 0 && eligibleTasks.every((task: any) => approvals[task.id]?.status === 'approved');
-
     const renderRating = (label: string, val: number, setVal: (n: number) => void) => (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e8edf2' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#475569' }}>{label}</span>
@@ -357,6 +374,162 @@ export default function CustomerHandover() {
             </div>
         </div>
     );
+
+    // ─── PreHandover Branch ───────────────────────────────────────────────────
+    if (workOrder?.type === 'PreHandover') {
+        const phCategories = workOrder.categories || [];
+        const phHasRejections = Object.values(catApprovals).some(a => a.status === 'rejected');
+        const phIsAllDecided = phCategories.length > 0 && phCategories.every((cat: any) => !!catApprovals[cat.id]);
+        const phIsAllApproved = phIsAllDecided && !phHasRejections;
+
+        const handlePhSelectAction = (catId: string, status: 'approved' | 'rejected') => {
+            setCatApprovals(prev => {
+                if (prev[catId]?.status === status) { const n = { ...prev }; delete n[catId]; return n; }
+                return { ...prev, [catId]: { status, reason: catRejectReasons[catId] || '' } };
+            });
+        };
+
+        const handlePhSubmit = async () => {
+            const undecided = phCategories.filter((cat: any) => !catApprovals[cat.id]);
+            if (undecided.length > 0) { alert('กรุณาประเมินทุกหมวดงาน (ผ่าน / ส่งแก้ไข) ให้ครบก่อนยืนยัน'); return; }
+            const incompleteReject = phCategories.find((cat: any) => catApprovals[cat.id]?.status === 'rejected' && !catRejectReasons[cat.id]?.trim());
+            if (incompleteReject) { alert(`กรุณาระบุเหตุผลสำหรับหมวดงาน "${incompleteReject.name}" ที่สั่งแก้ไข`); return; }
+
+            // Merge reasons into catApprovals
+            const finalApprovals = { ...catApprovals };
+            Object.keys(finalApprovals).forEach(id => { if (finalApprovals[id].status === 'rejected') finalApprovals[id] = { ...finalApprovals[id], reason: catRejectReasons[id] || '' }; });
+
+            setSubmitting(true);
+            try {
+                const surveyPayload = phHasRejections ? undefined : { workQuality, siteCleanliness, foremanProfessionalism, specAccuracy, handoverCare };
+                await submitPhCustomerInspection(workOrder.id, finalApprovals, surveyPayload);
+                setSubmitType(phHasRejections ? 'reject' : 'approve');
+                setSubmitted(true);
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
+            } finally {
+                setSubmitting(false);
+            }
+        };
+
+        return (
+            <div style={{ background: '#f0fdfa', minHeight: '100vh', display: 'flex', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui' }}>
+                <div style={{ background: '#ffffff', width: '100%', maxWidth: '640px', borderRadius: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', height: 'fit-content' }}>
+
+                    {/* Header */}
+                    <div style={{ padding: '20px 24px', borderBottom: '1px solid #ccfbf1', background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)', borderRadius: '24px 24px 0 0' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ccfbf1', padding: '4px 10px', borderRadius: '50px', border: '1px solid #99f6e4', marginBottom: '8px' }}>
+                            <ClipboardList size={12} color="#0d9488" />
+                            <span style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0d9488', letterSpacing: '0.05em' }}>PRE-HANDOVER INSPECTION</span>
+                        </div>
+                        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>แบบฟอร์มตรวจรับก่อนโอน</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', color: '#0d9488', fontSize: '0.78rem' }}>
+                            <MapPin size={12} />
+                            <span>โครงการ: {projectName} {workOrder.locationName ? `| ${workOrder.locationName}` : ''}</span>
+                        </div>
+                    </div>
+
+                    <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+                        <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', padding: '12px 14px', borderRadius: '14px', fontSize: '0.8rem', fontWeight: 700, color: '#0f766e', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                            <ClipboardList size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
+                            <div>กรุณาตรวจสอบรายการหมวดงานด้านล่าง และกด "ผ่าน" หรือ "ส่งแก้ไข" ทุกรายการก่อนยืนยันรับมอบงาน</div>
+                        </div>
+
+                        {/* Category list */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <h3 style={{ margin: '0 0 2px 4px', fontSize: '0.82rem', fontWeight: 900, color: '#475569', textTransform: 'uppercase' }}>หมวดงานทั้งหมด ({phCategories.length})</h3>
+                            {phCategories.map((cat: any) => {
+                                const decision = catApprovals[cat.id];
+                                const latestReport = phCategoryReports[cat.id];
+                                const photos: string[] = (latestReport?.sitePhotos || []).filter(Boolean).slice(0, 4);
+                                const isExpanded = !!expandedTaskIds[cat.id];
+                                return (
+                                    <div key={cat.id} style={{ background: '#fff', borderRadius: '14px', border: `1px solid ${decision?.status === 'approved' ? '#86efac' : decision?.status === 'rejected' ? '#fca5a5' : '#e2e8f0'}`, overflow: 'hidden' }}>
+                                        {/* Row header */}
+                                        <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1e293b' }}>{cat.name}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                                                    {latestReport ? `รายงานล่าสุด: ${latestReport.date}` : 'ไม่มีข้อมูลรายงาน'}
+                                                    {` · ความคืบหน้า ${cat.dailyProgress || 0}%`}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                <button onClick={() => handlePhSelectAction(cat.id, 'approved')} style={{ border: 'none', padding: '5px 11px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer', background: decision?.status === 'approved' ? '#22c55e' : '#f1f5f9', color: decision?.status === 'approved' ? '#fff' : '#475569' }}>ผ่าน</button>
+                                                <button onClick={() => handlePhSelectAction(cat.id, 'rejected')} style={{ border: 'none', padding: '5px 11px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer', background: decision?.status === 'rejected' ? '#ef4444' : '#f1f5f9', color: decision?.status === 'rejected' ? '#fff' : '#475569' }}>ส่งแก้ไข</button>
+                                                {(photos.length > 0 || decision?.status === 'rejected') && (
+                                                    <button onClick={() => setExpandedTaskIds(p => ({ ...p, [cat.id]: !isExpanded }))} style={{ border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
+                                                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {/* Expanded: photos + reject reason */}
+                                        {isExpanded && (
+                                            <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9', background: '#fafbfc', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                {photos.length > 0 && (
+                                                    <div>
+                                                        <div style={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <Camera size={12} /><span>รูปถ่ายจากรายงานล่าสุด</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                            {photos.map((p, i) => (
+                                                                <img key={i} src={typeof p === 'string' ? p : URL.createObjectURL(p)} alt="" style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {decision?.status === 'rejected' && (
+                                                    <div>
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', marginBottom: '4px' }}>ระบุเหตุผลที่ส่งแก้ไข *</div>
+                                                        <textarea
+                                                            value={catRejectReasons[cat.id] || ''}
+                                                            onChange={e => setCatRejectReasons(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                                                            placeholder="เช่น งานฉาบปูนไม่เรียบ, สีไม่สม่ำเสมอ..."
+                                                            rows={2}
+                                                            style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #fca5a5', fontSize: '0.83rem', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Rating — only when all approved */}
+                        {phIsAllApproved && (
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <h3 style={{ margin: '0 0 4px 0', fontSize: '0.85rem', fontWeight: 900, color: '#0f172a' }}>แบบประเมินความพึงพอใจ</h3>
+                                {renderRating('คุณภาพงาน', workQuality, setWorkQuality)}
+                                {renderRating('ความสะอาดหน้างาน', siteCleanliness, setSiteCleanliness)}
+                                {renderRating('ความเป็นมืออาชีพของโฟรแมน', foremanProfessionalism, setForemanProfessionalism)}
+                                {renderRating('ความถูกต้องตามสเปก', specAccuracy, setSpecAccuracy)}
+                                {renderRating('ความระมัดระวังในการส่งมอบ', handoverCare, setHandoverCare)}
+                            </div>
+                        )}
+
+                        {/* Submit button */}
+                        {phIsAllDecided && (
+                            <button
+                                onClick={handlePhSubmit}
+                                disabled={submitting}
+                                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: submitting ? '#99f6e4' : phHasRejections ? '#dc2626' : '#0d9488', color: '#fff', fontSize: '0.9rem', fontWeight: 900, cursor: submitting ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(13,148,136,0.2)' }}
+                            >
+                                {submitting ? 'กำลังบันทึก...' : phHasRejections ? 'ยืนยันส่งแก้ไข' : 'ยืนยันรับมอบงาน'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    // ─── End PreHandover Branch ────────────────────────────────────────────────
+
+    const hasRejections = Object.values(approvals).some(a => a.status === 'rejected');
+    const isAllApproved = eligibleTasks.length > 0 && eligibleTasks.every((task: any) => approvals[task.id]?.status === 'approved');
 
     return (
         <div style={{ background: '#f4f6fa', minHeight: '100vh', display: 'flex', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui' }}>
