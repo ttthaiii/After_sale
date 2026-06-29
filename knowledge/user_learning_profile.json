@@ -1,0 +1,128 @@
+{
+  "schema_version": 2,
+  "user": "pongsada.p",
+  "updated": "2026-06-23",
+  "global": {
+    "english_comfort": "low",
+    "glossing_depth": "high",
+    "strong_areas": [
+      "closed-learning-loop"
+    ],
+    "weak_areas": [
+      "single-source-of-truth",
+      "out-of-scope"
+    ]
+  },
+  "person": {
+    "strengths": [
+      "closed-learning-loop"
+    ],
+    "weaknesses": [
+      "single-source-of-truth",
+      "out-of-scope"
+    ],
+    "dev_path": "reinforce: single-source-of-truth",
+    "answer_style": "plain-thai · reason-then-label · lean (no padding) · praise-only-hard-wins · vet-analogies · gloss-every-term",
+    "self_reported": {
+      "background": "civil-eng grad; strong logic; ~2yr vibe-coding web apps business-side; basic-and-below DB/UX-UI; limited tech vocab",
+      "strengths": [
+        "system/process design",
+        "efficiency optimization",
+        "logic & reasoning",
+        "big-picture across angles"
+      ],
+      "goal": "UNDERSTAND (not master) computer architecture + AI harness engineering — make AI work well/cheap/sharp; manager-depth",
+      "goal_tag": "understand comp-arch + AI-harness eng",
+      "engaged_by": "decision-making, process thinking, conditions, optimization",
+      "stuck_by": "forced to decide/assemble without understanding — feels like guessing",
+      "confidence": "low (self-report; confirm via behaviour)",
+      "captured": "2026-06-23"
+    }
+  },
+  "traits": [
+    {
+      "key": "self-reported-stuck-under-uncertainty",
+      "label": "engaged by optimizing decisions; stuck when forced to choose without understanding",
+      "tally": 1,
+      "status": "provisional",
+      "last_seen": "2026-06-23",
+      "examples": [
+        "self-report 2026-06-23: dislikes deciding under uncertainty - feels like guessing"
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "topic": "closed-learning-loop",
+      "exposures": 1,
+      "quiz_attempts": 3,
+      "quiz_correct": 3,
+      "mastery": 1.0,
+      "status": "mastered",
+      "last_seen": "2026-06-08",
+      "notes": "first quiz: nailed closed-loop, used-not-stored, adaptive glossing"
+    },
+    {
+      "topic": "single-source-of-truth",
+      "exposures": 2,
+      "quiz_attempts": 5,
+      "quiz_correct": 2,
+      "mastery": 0.4,
+      "status": "learning",
+      "last_seen": "2026-06-23",
+      "notes": "S6-S8 quiz. Q2 (goal_tag root-cause fix) correct. Q1 missed: described the goal_tag data-flow instead of canonical+pointer+conflict-rule — still conflates single-source with mechanism. Q3 missed: answered 'true' that passing Verify-7b = S7 done-as-planned; the lesson (a check verifies only what it asserts; pass != complete) did NOT land. Re-teach: canonical-vs-mirror + verify-scope."
+    },
+    {
+      "topic": "scope-grill",
+      "exposures": 1,
+      "quiz_attempts": 2,
+      "quiz_correct": 1,
+      "mastery": 0.5,
+      "status": "proficient",
+      "last_seen": "2026-06-22",
+      "notes": "Q1: grasped clarify-first spirit, missed the 'G0 is skippable so trigger would be lost' mechanism. Q2: knew out_of_scope prompts clarification but missed that it is a PERSISTED list-of-non-goals compared at close. Re-teach: detect-before-skip + record-vs-just-ask."
+    },
+    {
+      "topic": "out-of-scope",
+      "exposures": 1,
+      "quiz_attempts": 2,
+      "quiz_correct": 0,
+      "mastery": 0.0,
+      "status": "learning",
+      "last_seen": "2026-06-22",
+      "notes": "not-sure x2; re-taught: timing (scrutinize=post-build too late vs skeptical_reviewer=pre-execution gate) + never-always-load (token weight; ironically rejected-idea e). keep glossing high"
+    }
+  ],
+  "history": [
+    {
+      "date": "2026-06-08",
+      "topic": "closed-learning-loop",
+      "score": 1.0,
+      "note": "first quiz: nailed closed-loop, used-not-stored, adaptive glossing"
+    },
+    {
+      "date": "2026-06-22",
+      "topic": "single-source-of-truth",
+      "score": 0.5,
+      "note": "Q1 (root cause of footer drift = agent hand-estimated low) nailed it. Q2 (single source: header/footer both pull from session_tokens.md) missed — confused 'shown numbers differ' with 'different source'; the gap is timing (snapshot vs live), not source. Reinforced with the airport-clock analogy. Strong on spotting the mistake, needs the snapshot-vs-live nuance."
+    },
+    {
+      "date": "2026-06-22",
+      "topic": "scope-grill",
+      "score": 0.5,
+      "note": "Q1: grasped clarify-first spirit, missed the 'G0 is skippable so trigger would be lost' mechanism. Q2: knew out_of_scope prompts clarification but missed that it is a PERSISTED list-of-non-goals compared at close. Re-teach: detect-before-skip + record-vs-just-ask."
+    },
+    {
+      "date": "2026-06-22",
+      "topic": "out-of-scope",
+      "score": 0.0,
+      "note": "not-sure x2; re-taught: timing (scrutinize=post-build too late vs skeptical_reviewer=pre-execution gate) + never-always-load (token weight; ironically rejected-idea e). keep glossing high"
+    },
+    {
+      "date": "2026-06-23",
+      "topic": "single-source-of-truth",
+      "score": 0.333,
+      "note": "S6-S8 quiz. Q2 (goal_tag root-cause fix) correct. Q1 missed: described the goal_tag data-flow instead of canonical+pointer+conflict-rule — still conflates single-source with mechanism. Q3 missed: answered 'true' that passing Verify-7b = S7 done-as-planned; the lesson (a check verifies only what it asserts; pass != complete) did NOT land. Re-teach: canonical-vs-mirror + verify-scope."
+    }
+  ]
+}

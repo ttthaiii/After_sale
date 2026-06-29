@@ -1,29 +1,53 @@
-# INVARIANTS.md — Destructive Action Gates
+# INVARIANTS.md — Hard Constraints for This Codebase
 
-> Hard stops for this project. Every AI agent must check this file before any irreversible action.
+> These rules apply to ALL agents and ALL sessions. No exceptions.
+> Source of truth for destructive-action gates. CLAUDE.md + AGENTS.md reference this file.
 
 ---
 
 ## I1 · Destructive Action Gate
 
-Before any of these actions → emit `[gate]` → ask user → wait for explicit "yes":
+Before executing any action below → emit gate and WAIT for user confirmation.
 
-- Deleting files or directories
-- Overwriting existing database documents (e.g. Firebase Firestore mock data or manual recovery scripts)
-- Running destructive commands like `rm`, `git reset --hard`, `git push --force`, `git checkout --`
-- Deploying Cloud Functions directly to production (`firebase deploy`) without explicit staging confirmation
+| Action | Why |
+|---|---|
+| Delete or overwrite any file in `src/` or `knowledge/` | Irreversible without git |
+| Any edit to files in `src/db/` | Changes DB structure or data shape |
+| Change/rename/remove TypeScript type or interface with DB column fields | Drizzle derives schema from TS types — silent breakage |
+| Any symbol in `index_variables.json` with type `DBTable`, `DBColumn`, or `DrizzleSchema` | Cascading data corruption |
+| Batch operations affecting >5 files at once | Hard to audit and roll back |
+| Any action outside current roadmap task scope | Scope creep risk |
+
+Gate format — emit and pause:
+```
+[gate] Action: `<what>` · Scope: `<files/tables affected>` · Risk: `<why>` · Waiting: confirm
+```
+Do NOT proceed until user confirms.
 
 ---
 
-## I2 · Hard Stop Rules
+## I2 · DB Structure Hard Stop
 
-If any of these hard stop rules are violated, the agent must trigger a `HALT` action (db-gate lock).
+**Any trigger below = HALT immediately. Do NOT touch anything until user says "yes" explicitly.**
 
-- **Firebase Single Entrypoint**: DO NOT call `initializeApp()` anywhere in `src/` except in `src/lib/firebase.ts`. All Firebase Auth, Firestore, and Storage instances must be imported from `src/lib/firebase.ts`.
-- **Package Isolation**: DO NOT import components, services, or utilities directly across the boundaries of `src/` and `cloud-functions/`. They run in separate environments (browser vs Node.js) and have separate `package.json` configurations.
-- **Thai Character UTF-8 Encoding**: Every script, indexer, or code editor operation MUST enforce `UTF-8` encoding (e.g., using `encoding='utf-8'` in python `open()` or `read_text()`). Storing or reading Thai text in non-UTF-8 formats is strictly forbidden.
-- **No Direct State Mutations**: In React components, always use setter functions (`useState` / `useContext` dispatches) to modify states. Do not mutate state objects or arrays directly.
-- **D1 / Local DB Backups Protection**: DO NOT overwrite or delete `db_backup_*.json` files. These contain valuable recovery snapshots.
+Triggers (any one is enough):
+- Edit to any file in `src/db/` (schema, migration, seed, connection, queries)
+- Rename, remove, or change TypeScript type/interface that has DB column fields
+- Any symbol in `index_variables.json` with type `DBTable`, `DBColumn`, or `DrizzleSchema`
+- Adding/removing columns, changing column types, altering table relationships
+
+Gate — emit and WAIT before any tool call:
+```
+[db-gate] File: `<path>` · Symbol: `<name>` · Change: `<what will change>`
+          DB impact: `<tables/columns affected>` · Data risk: `<what could break>`
+          → Waiting for explicit "yes" — NOT proceeding until confirmed
+```
+
+On user confirm → proceed (still subject to I1 gate).
+On unclear or no response → treat as deny. Re-state impact and ask again.
+
+**"It's just a TypeScript type" is NOT an exemption.**
+Drizzle derives DB schema from TypeScript types — a type rename silently breaks migrations and queries.
 
 ---
 
@@ -40,26 +64,71 @@ Run: `python scripts/symbol_indexer.py` to regenerate.
 ## I4 · Pre-Edit Symbol Check (Required)
 
 Before editing any symbol that appears in `knowledge/index_variables.json`:
+
 ```bash
 grep -A 8 '"SymbolName"' knowledge/index_variables.json   # check used_in array
 ```
+
 Emit and log:
 ```
 [pre-edit] Symbol: `<name>` · used_in: <N files> · safe to edit: <yes|needs review>
 ```
 
+---
+
 ## I5 · Roadmap Entry Required
 
-Every task (bug fix, feature, enhancement) must exist in `docs/master_roadmap.md` before execution. The roadmap gate requires tasks to start in `[ ]` state and complete in `[X]` state.
+Every task (bug fix, feature, enhancement) must exist in `docs/master_roadmap.md` before execution.
 Never duplicate task IDs. grep roadmap before creating.
 
 ---
 
 ## Protected Zones
 
-- `CLAUDE.md` · `AGENTS.md` · `INVARIANTS.md` — Agent harness core configuration files
-- `docs/master_roadmap.md` — System task ledger
-- `knowledge/` — Agent indexing directory
-- `.sessions/` — Agent session state directory
-- `db_backup_2026-04-20T05-38-30-906Z.json` — Backup database file
-- `cloud-functions/package.json` — Cloud functions packaging rules
+| Path | Status | Rule |
+|---|---|---|
+| `src/db/` | PROTECTED | I2 Hard Stop |
+| `knowledge/` | PROTECTED | I1 Gate required |
+| `src/` | GUARDED | I1 Gate for delete/overwrite |
+| `.agents/` | GUARDED | I1 Gate for structural changes |
+
+---
+
+## I6 · Sequential Roadmap ID Assignment (Parallel Agents)
+
+In parallel fan-out, orchestrator MUST pre-assign roadmap IDs before spawning:
+1. `grep -c "\[ \] T-" docs/master_roadmap.md` → identify current last T-N
+2. Pre-assign T-N+1, T-N+2 ... for each planned section in this Cycle
+3. Write ALL entries as `[ ]` in roadmap BEFORE any spawn call
+4. Pass assigned T-ID to each sub-agent in the Delegation Contract
+
+**Sub-agents MUST NOT self-assign roadmap IDs.** Parallel agents reading the same roadmap simultaneously will generate duplicate T-IDs.
+
+---
+
+## I7 · Cycle Token Merge (After Every Cycle N)
+
+After orchestrator reads all cycle_N_*.json results:
+1. Sum `tokens_estimated` from every result file in the Cycle
+2. Add sum to SESSION_TOTAL in working memory
+3. Write updated SESSION_TOTAL to `.sessions/session_tokens.md`
+4. Check R3 threshold immediately after write
+
+If any result file is missing `tokens_estimated` → add 2,000 tokens flat as conservative buffer.
+**Missing this step = SESSION_TOTAL silently undercounts parallel work → threshold triggers missed (CFP-009)**
+
+---
+
+## I8 · CFP ID Pre-Assignment (Parallel Agents)
+
+When spawning parallel sub-agents where any might log a CFP entry:
+1. Before spawning: `grep -c "^## CFP-" CODING_FAILURE_PATTERNS.md` → get current count N
+2. Pre-assign CFP-(N+1), CFP-(N+2) … for each sub-agent that may log
+3. Write empty placeholder `<!-- CFP-<ID> reserved -->` at end of file BEFORE spawn
+4. Pass assigned CFP-ID to each sub-agent in Delegation Contract
+5. Sub-agents MUST NOT self-assign CFP IDs (race condition risk — same pattern as T-IDs)
+
+On merge: orchestrator verifies each placeholder was filled. Missing fill = sub-agent did not log → remove placeholder.
+If sub-agent logs beyond its assigned range → orchestrator renumbers on merge and updates CODING_FAILURE_PATTERNS.md.
+
+**Missing this step = duplicate CFP numbers when ≥2 agents both call `grep -c` simultaneously (V6 vulnerability)**

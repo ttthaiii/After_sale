@@ -1,0 +1,640 @@
+{
+  "CFP-005": {
+    "status": "active",
+    "description": "Skipping MECE Plan / Modifying Code Without Plan Alignment",
+    "fixes": [],
+    "topic": "phase-gate-skip",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-006": {
+    "status": "resolved-pending",
+    "description": "Unbounded Loop \u2192 Token Exhaustion",
+    "fixes": [
+      {
+        "applied_date": "2026-06-02",
+        "by_model": "claude-sonnet-4-6",
+        "description": "settings.json C0.5 hook stderr->stdout + CLAUDE.md R1 footer Pre strengthened with file-read mandate + BC-footer-read stale detection",
+        "status": "pending"
+      }
+    ],
+    "topic": "token-tracking",
+    "recurrences": [
+      {
+        "date": "2026-06-02",
+        "session": "T-076",
+        "symptom": "LOOP_WEIGHT not read from session_tokens.md before footer emit \u2014 displayed hardcoded 0 instead of file value 45"
+      },
+      {
+        "date": "2026-06-02",
+        "session": "T-083",
+        "symptom": "Loop_W shows stale 0 in footer \u2014 AI used cached boot value instead of reading file. 3rd occurrence. Doctor flow failed to match CFP-006 \u2192 created duplicate CFP-031."
+      },
+      {
+        "date": "2026-06-04",
+        "session": "T-085",
+        "symptom": "LOOP_WEIGHT not reset before /compact \u2014 hook reads stale high value (84) next session \u2192 false [compact-required]. Fixed: UserPromptSubmit hook now resets lw=0 when p3=done+st=0"
+      },
+      {
+        "date": "2026-06-04",
+        "symptom": "LOOP_WEIGHT reset fired every turn (not one-shot): p3=done persisted in compact_state.md \u2192 hook reset lw>5 on every turn with st=0. Fix: write p3=used after first reset."
+      }
+    ],
+    "count": 4,
+    "approved_proposal": "",
+    "last_seen": "2026-06-04",
+    "window_count": 4,
+    "stale": false
+  },
+  "CFP-007": {
+    "status": "active",
+    "description": "Using Local Date/Time APIs Without Gregorian Safety \u2192 Buddhist Year Corruption",
+    "fixes": [],
+    "topic": "data-safety",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-008": {
+    "status": "active",
+    "description": "MECE Plan Staleness on Resume \u2192 Edits Target Wrong Lines",
+    "fixes": [],
+    "topic": "mece-lifecycle",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-009": {
+    "status": "active",
+    "description": "Parallel Sub-agent Token Accounting Gap \u2192 Missed Threshold Triggers",
+    "fixes": [],
+    "topic": "token-tracking",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-010": {
+    "status": "active",
+    "description": "Skipping Loop Architecture Phases 1 & 2 (Info Gather & MECE Plan)",
+    "fixes": [],
+    "topic": "phase-gate-skip",
+    "recurrences": [
+      {
+        "date": "2026-06-07",
+        "context": "T-152: announced Phase 1 but ran no gather tools, no files written"
+      }
+    ],
+    "count": 1,
+    "approved_proposal": "",
+    "last_seen": "2026-06-07",
+    "window_count": 1,
+    "stale": false
+  },
+  "CFP-011": {
+    "status": "active",
+    "description": "Creating Implementation Plan Artifact Before MECE Plan Approval (Recurrence of CFP-005/CFP-010)",
+    "fixes": [],
+    "topic": "phase-gate-skip",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-012": {
+    "status": "active",
+    "description": "Skipping MECE Plan for Bug Fixes and Follow-up Tasks",
+    "fixes": [],
+    "topic": "phase-gate-skip",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-013": {
+    "status": "active",
+    "description": "Omitting Harness Trace Tokens During Implementation \u2192 Silent Execution",
+    "fixes": [],
+    "topic": "token-tracking",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-014": {
+    "status": "active",
+    "description": "Closing Session with Incomplete/Unchecked MECE Plan or Compilation Errors",
+    "fixes": [],
+    "topic": "mece-lifecycle",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-015": {
+    "status": "active",
+    "description": "MECE Plan Written to Chat/Artifact Instead of .sessions/mece_plan.md (Recurrence of CFP-005/CFP-010/CFP-011)",
+    "fixes": [],
+    "topic": "phase-gate-skip",
+    "recurrences": [
+      {
+        "date": "2026-06-02",
+        "session": "T-075 planning",
+        "symptom": "Presented MECE plan in response text without writing gather_complete.md + mece_plan.md first",
+        "it_work": null
+      },
+      {
+        "date": "2026-06-05",
+        "note": "Boot gate skipped after /compact restore \u2014 responded without B1-B3, no [Boot] trace emitted"
+      },
+      {
+        "date": "2026-06-09",
+        "session": "KMS-3role-permission",
+        "symptom": "Wrote MECE plan to chat instead of .sessions/mece_plan.md; gather_complete.md also not written; Phase 2 file-write gate skipped",
+        "fixed_by": "Backfilled gather_complete.md + mece_plan.md this turn"
+      }
+    ],
+    "count": 3,
+    "approved_proposal": "",
+    "last_seen": "2026-06-05",
+    "window_count": 2,
+    "stale": false
+  },
+  "CFP-016": {
+    "status": "active",
+    "description": "Skipping Per-Turn Routing (C1-C3) Checks and Working Before Boot in Subsequent Turns",
+    "fixes": [],
+    "topic": "boot-routing",
+    "recurrences": [
+      {
+        "date": "2026-06-05",
+        "note": "B1 not run after /compact \u2014 LOOP_WEIGHT not reset (stayed 74\u219282) \u2014 user had to call harness_doctor"
+      }
+    ],
+    "count": 1,
+    "approved_proposal": "",
+    "last_seen": "2026-06-05",
+    "window_count": 1,
+    "stale": false
+  },
+  "CFP-017": {
+    "status": "active",
+    "description": "Skipping Boot Sequence, Per-Turn Routing, and Info Gather/MECE Plan Loop on Task Resumption/Topic Switch",
+    "fixes": [],
+    "topic": "boot-routing",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-018": {
+    "status": "active",
+    "description": "Missing Resume Staleness Gate Check on Task Resumption",
+    "fixes": [],
+    "topic": "mece-lifecycle",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-019": {
+    "status": "active",
+    "description": "Incorrect MECE Plan Format or Placement",
+    "fixes": [],
+    "topic": "phase-gate-skip",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-021": {
+    "description": "mece_plan.md sections not marked [X] during REACT loop \u2014 L5 DECIDE missing file-write step",
+    "recurrence_count": 1,
+    "deferred_count": 0,
+    "fixes": [
+      {
+        "fix_id": "CFP-021-FIX-001",
+        "date": "2026-05-29",
+        "applied_by": "harness_doctor T-032",
+        "change": "Added 'mark mece_plan.md [ ] \u2192 [X]' to AGENTS.md L5 DECIDE + CLAUDE.md Phase 3 close step 0",
+        "files": [
+          "AGENTS.md",
+          "CLAUDE.md"
+        ],
+        "detection_signal": "grep '^\\- \\[ \\]' .sessions/mece_plan.md after task done \u2192 should return nothing"
+      }
+    ],
+    "recurrence_note": "Recurred immediately during T-032 execution: harness_doctor edited AGENTS.md+CLAUDE.md without writing mece_plan.md first. Root cause: harness_doctor/SKILL.md Step 3 (Execute) has no explicit gate requiring mece_plan.md write before editing.",
+    "topic": "mece-lifecycle",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-022": {
+    "status": "fixed",
+    "description": "CHAT_TOTAL Boot Init Gap \u2014 Reset to 0 Instead of system_fixed (7,300)",
+    "fixes": [
+      {
+        "date": "2026-05-29",
+        "task": "T-036",
+        "change": "AGENTS.md B1 cmd CHAT_TOTAL:0\u21927300 \u00b7 AGENTS.md B1 note updated \u00b7 CLAUDE.md B1 note updated",
+        "files": [
+          "AGENTS.md",
+          "CLAUDE.md"
+        ]
+      }
+    ],
+    "topic": "token-tracking",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-023": {
+    "status": "active",
+    "description": "harness_editor Step 5 Docs Close Skipped \u2014 flow_updated Not Enforced",
+    "fixes": [],
+    "topic": "harness-file-edit",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-024": {
+    "id": "CFP-024",
+    "title": "M5 Skip \u2014 mece_plan.md Not Written Before [\u2713 MECE] Emitted",
+    "status": "fixed",
+    "fix_location": "CLAUDE.md R16 \u2014 MANDATORY tool call inline",
+    "recurrence_count": 0,
+    "fixes": [
+      "T-061 harness_doctor \u00a75 \u2014 R16 inline CFP write requirement added"
+    ],
+    "topic": "phase-gate-skip",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-025": {
+    "id": "CFP-025",
+    "title": "mece_plan Clear = Stripped Content Instead of Blank Template Reset",
+    "status": "fixed",
+    "fix_location": "docs/session_templates/mece_plan_schema.md \u00a7PATH A \u00b7 CLAUDE.md step 4 \u00b7 AGENTS.md Completion Gate",
+    "recurrence_count": 1,
+    "fixes": [],
+    "topic": "mece-lifecycle",
+    "recurrences": [],
+    "count": 0,
+    "approved_proposal": "NEVER ad-hoc rule + exact bash command enforced (T-084.2-3)",
+    "last_seen": null,
+    "window_count": 0,
+    "stale": true
+  },
+  "CFP-027": {
+    "recurrences": [
+      {
+        "date": "2026-06-02",
+        "session": "T-078",
+        "symptom": "Phase 1+2 run inline (grep+analysis) then plan presented in chat without writing gather_complete.md or mece_plan.md \u2014 straight to asking user confirm"
+      }
+    ],
+    "count": 1,
+    "approved_proposal": "BC-M5-Write-Before-Present added to AGENTS.md line ~103",
+    "status": "resolved",
+    "last_seen": "2026-06-02",
+    "window_count": 1,
+    "stale": false
+  },
+  "CFP-028": {
+    "status": "resolved-pending",
+    "description": "Footer Omitted or Missing Loop_W Field",
+    "fixes": [
+      {
+        "applied_date": "2026-06-12",
+        "by_model": "claude-opus-4-8",
+        "description": "T-177: PostToolUse hook extracted to scripts/posttool_track.py \u2014 estimates tool-I/O chars (json input+response) and accumulates SESSION_TOTAL+CHAT_TOTAL atomically per tool call (previously LOOP_WEIGHT only). CLAUDE.md R1 L29/L31 reworded: removed the NEVER-estimated + agent-persist-every-turn contradiction -> hook-estimated lower bound = source of truth, agent reads only. settings.json PostToolUse now calls the script. 3 standalone tests pass (normal/empty/malformed fail-safe). Verified live: SESSION 0->201, CHAT 14335->14636 across tool calls.",
+        "status": "applied",
+        "note": "estimate is a LOWER BOUND (hook cannot see model output tokens) \u2014 labelled approximate in footer"
+      },
+      {
+        "applied_date": "2026-06-12",
+        "by_model": "claude-opus-4-8",
+        "description": "T-178: posttool_track.py made provider-aware \u2014 reuses token_estimator.PROVIDER_MULTS + _load_provider_formula (reads detected.md token_formula); session_delta = chars \u00d7 provider tool-mult (anthropic 0.3 / openai 0.27 / google / generic). Dropped ad-hoc CHAT \u00d71.5 (chat_delta = session_delta). Import wrapped try/except \u2192 generic 0.35 fallback, fail-safe preserved. Tested temp: anthropic +138 / openai +124 / file-absent + malformed \u2192 no crash, unchanged."
+      }
+    ],
+    "topic": "token-tracking",
+    "recurrences": [
+      {
+        "date": "2026-06-02",
+        "session": "T-082",
+        "symptom": "Footer showed Loop_W missing or 0 on turn 2+ \u2014 stale boot value"
+      },
+      "2026-06-04 T-087: SESSION_TOTAL stayed 0 for 9 turns \u2014 R1 step 4-5 (write to session_tokens.md) never executed per turn",
+      {
+        "date": "2026-06-04",
+        "session": "T-088",
+        "note": "SESSION_TOTAL not updated after turn 4 Edit tool calls \u2014 stayed at 4000 despite additional tool use"
+      },
+      {
+        "date": "2026-06-12",
+        "note": "T-176 session: SESSION_TOTAL stayed 0 all turns; CHAT_TOTAL frozen at 14335 (boot value). Hook only READS session_tokens.md; nothing writes per-turn token counts back. LOOP_WEIGHT updates (PostToolUse) but SESSION/CHAT have no writer."
+      }
+    ],
+    "count": 4,
+    "approved_proposal": "",
+    "last_seen": "2026-06-04",
+    "window_count": 3,
+    "stale": false
+  },
+  "CFP-031": {
+    "status": "active",
+    "description": "Loop_W Shows Stale Value (0) \u2014 File Not Read Before Footer",
+    "fixes": [],
+    "topic": "token-tracking",
+    "recurrences": [
+      {
+        "date": "2026-06-02",
+        "session": "T-083",
+        "symptom": "Loop_W: 0 shown in footer despite file having value 25 \u2014 created as new CFP instead of logging to CFP-006"
+      }
+    ],
+    "count": 1,
+    "approved_proposal": "",
+    "last_seen": "2026-06-02",
+    "window_count": 1,
+    "stale": false
+  },
+  "CFP-032": {
+    "symptom": "Multi-section work (S2-S6) executed in single response \u2014 37 tool calls, R2 \u22645/turn violated, LOOP_WEIGHT spiked to 84",
+    "topic": "behavior-contract",
+    "status": "open",
+    "count": 2,
+    "approved_proposal": "",
+    "recurrences": [
+      {
+        "date": "2026-06-04",
+        "session": "T-085",
+        "note": "S2-S6 all in one response, no user checkpoint between sections"
+      },
+      {
+        "date": "2026-06-04",
+        "session": "T-088",
+        "note": "M1.5 compact_checkpoint rule skipped during Phase 2 plan \u2014 user had to flag missing checkpoint after 4-section plan presented without it"
+      }
+    ],
+    "last_seen": "2026-06-04",
+    "window_count": 2,
+    "stale": false
+  },
+  "CFP-033": {
+    "symptom": "L4.5 PURGE step skipped \u2014 Read/Bash tool results kept in context after verdict emitted; no [dropped] or [result-offloaded] signals",
+    "topic": "token-tracking",
+    "status": "fixing",
+    "count": 3,
+    "approved_proposal": "",
+    "recurrences": [
+      {
+        "date": "2026-06-04",
+        "session": "T-085",
+        "note": "Multiple Read results retained; CHAT_TOTAL grew unchecked"
+      },
+      {
+        "date": "2026-06-04",
+        "session": "T-088",
+        "note": "harness_doctor inline run \u2014 Read/grep results retained after verdicts; [dropped] not emitted"
+      },
+      {
+        "date": "2026-06-04",
+        "task": "T-090/T-091",
+        "symptom": "L4.5 PURGE \u2014 [dropped]/[kept:N] signals absent entire T-090 session"
+      }
+    ],
+    "last_seen": "2026-06-04",
+    "window_count": 3,
+    "stale": false
+  },
+  "CFP-034": {
+    "symptom": "[pre-read] emission skipped on ~40% of Read calls \u2014 Index-First BC (R5) partially enforced only",
+    "topic": "behavior-contract",
+    "status": "fixing",
+    "count": 3,
+    "approved_proposal": "",
+    "recurrences": [
+      {
+        "date": "2026-06-04",
+        "session": "T-085",
+        "note": "~60% compliance; skipped when anchor line known from grep context"
+      },
+      {
+        "date": "2026-06-04",
+        "session": "T-088",
+        "note": "harness_doctor inline \u2014 [pre-read] skipped on known-line reads during fix execution"
+      },
+      {
+        "date": "2026-06-04",
+        "task": "T-090/T-091",
+        "symptom": "[pre-read]/[post-read] not emitted before/after any Read call in T-090"
+      }
+    ],
+    "last_seen": "2026-06-04",
+    "window_count": 3,
+    "stale": false
+  },
+  "CFP-035": {
+    "symptom": "R6/Bash Filter (safe_run.py) applied only to symbol_indexer; diagnostic bash calls (grep, find, python3) not filtered",
+    "topic": "behavior-contract",
+    "status": "open",
+    "count": 1,
+    "approved_proposal": "",
+    "recurrences": [
+      {
+        "date": "2026-06-04",
+        "session": "T-085",
+        "note": "Only S6 used safe_run.py; R6 filter missed on all diagnostic commands"
+      }
+    ],
+    "last_seen": "2026-06-04",
+    "window_count": 1,
+    "stale": false
+  },
+  "CFP-036": {
+    "status": "active",
+    "description": "Workflow Step Skip \u2014 Fix Applied Before Mandatory Log/Audit Step",
+    "fixes": [],
+    "topic": "workflow-step-skip",
+    "recurrences": [
+      "2026-06-04 T-086: fixed repo_researcher/SKILL.md file_manager ref without optimization_logs.md entry first",
+      "2026-06-10 T-170: spawned 2-tier probe (Haiku+Sonnet-high) instead of agreed 3-tier \u2014 middle Sonnet-medium tier skipped; user flagged"
+    ],
+    "count": 2,
+    "approved_proposal": "",
+    "failed_approaches": [],
+    "last_seen": "2026-06-10",
+    "window_count": 2,
+    "stale": false
+  },
+  "CFP-037": {
+    "status": "fix-applied",
+    "description": "Premature Close \u2014 Phase 3 Close Sequence Without User Confirm",
+    "topic": "premature-close",
+    "count": 7,
+    "recurrences": [
+      {
+        "date": "2026-06-14",
+        "task": "T-191",
+        "symptom": "session_manager manual-close run from memory \u2014 handoff without 5-field contract + reflections.md skipped + no [handoff-valid]",
+        "gap": "CFP-037 fix gated only the harness_editor close path; manual close (session_manager \u00a73) lacks a read-checklist-from-skill + handoff-contract gate"
+      },
+      "2026-06-04 T-087: wrote compact_state.md + PATH A + active_thread:done after all [X] without user /compact request or threshold trigger",
+      {
+        "date": "2026-06-04",
+        "task": "T-090",
+        "symptom": "PATH A close sequence (clear mece_plan + active_thread phase:done) executed without close-gate check or user confirm"
+      },
+      {
+        "date": "2026-06-04",
+        "task": "T-090/T-091",
+        "symptom": "PATH A close executed (clear mece_plan + active_thread phase:done) without close-gate check or user confirm"
+      },
+      {
+        "date": "2026-06-04",
+        "task": "T-095",
+        "symptom": "Close Checklist not read from schema \u2014 reported done without running Reviewer/mece-audit/session-health/kcc steps",
+        "missed_steps": [
+          "Spawn Reviewer",
+          "[mece-audit]",
+          "[session-health]",
+          "knowledge_conflict_checker",
+          "Implement/ check"
+        ]
+      },
+      {
+        "date": "2026-06-05",
+        "note": "Close Checklist skipped entirely \u2014 session_manager \u00a73 executed without [exec-complete] emit, PATH A, or harness_doctor gate check"
+      },
+      "2026-06-05 T-127+T-128: emitted [harness-edit-done] + declared done before Phase 3 Close Checklist verified \u2014 R8/session_handoff/PATH A still unchecked"
+    ],
+    "fix_location": "session_manager/SKILL.md \u00a73 Step -1 Entry Gate + BC-handoff field alignment (was: harness_editor BC-docs-close only)",
+    "approved_proposal": "Add [E] Close Checklist gate to harness_editor BC-docs-close (executor-side) \u2014 blocks [harness-edit-done] if mece_plan Close Checklist has remaining [ ] items",
+    "fixes": [
+      {
+        "date": "2026-06-05",
+        "task": "T-121+T-122",
+        "approach": "structural gate in \u00a73 before Step 0 + Hard Rule blocking [clean] at count>=5",
+        "files": [
+          ".agents/skills/knowledge/session_manager/SKILL.md",
+          ".agents/skills/harness/harness_doctor/SKILL.md"
+        ],
+        "verified_by": "grep 'Close Checklist' .agents/skills/knowledge/session_manager/SKILL.md | wc -l \u2192 \u22651"
+      },
+      {
+        "date": "2026-06-05",
+        "task": "T-129",
+        "approach": "Add [E] item to harness_editor BC-docs-close Contract \u2014 Phase 3 Close Checklist must be all [X] before [harness-edit-done]; executor-side gate (not caller-side)",
+        "files": [
+          ".agents/skills/harness/harness_editor/SKILL.md"
+        ],
+        "verified_by": "grep -c '\\[E\\]' .agents/skills/harness/harness_editor/SKILL.md \u2192 \u22651"
+      },
+      {
+        "date": "2026-06-15",
+        "task": "T-191 doctor",
+        "change": "session_manager/SKILL.md \u00a73: added Step -1 Entry Gate (Read SKILL_detail \u00a7Manual Close + use session_close.py, never hand-write; emit [close-checklist-read] + per-item table). Fixed handoff field contradiction (table said 6 incl root_cause vs BC-handoff 5) \u2192 aligned to 5.",
+        "root": "prior CFP-037 fix gated only the harness_editor close path; manual close via session_manager \u00a73 was uncovered \u2192 agent closed from memory + hand-wrote files"
+      }
+    ],
+    "last_seen": "2026-06-05",
+    "window_count": 6,
+    "stale": false
+  },
+  "CFP-039": {
+    "description": "Close Checklist Run Without Output Display \u2014 no per-item result table shown to user",
+    "topic": "session-close",
+    "status": "open",
+    "approved_proposal": "",
+    "count": 2,
+    "recurrences": [
+      {
+        "session": "T-097+T-098",
+        "date": "2026-06-04",
+        "note": "ran checklist silently, no table shown"
+      },
+      {
+        "date": "2026-06-07",
+        "context": "T-152 backlog close \u2014 ran [harness-edit-done] but forgot session_manager \u00a73 run"
+      }
+    ],
+    "recurred_after_fix": [],
+    "last_seen": "2026-06-07",
+    "window_count": 2,
+    "stale": false
+  },
+  "CFP-044": {
+    "description": "Skill Invoked From Memory/External Source \u2014 Local SKILL.md Never Loaded \u2192 Wrong Skill Applied",
+    "topic": "boot-routing",
+    "status": "resolved",
+    "approved_proposal": "T-263 structural forcing function: .active_skill today-set marker (posttool_track.py) + manifest owns_paths + skill_gate.py PreToolUse hard block (ownership + review close-gate) + review_intent.py UserPromptSubmit arm. Skill invocation no longer opt-in.",
+    "count": 3,
+    "recurrences": [
+      {
+        "date": "2026-06-23",
+        "note": "T-254 plan verified by bare-eye read, no skill"
+      },
+      {
+        "date": "2026-06-24",
+        "note": "T-261 plan-check by hand, mis-named scrutinize for skeptical_reviewer"
+      },
+      {
+        "date": "2026-06-24",
+        "note": "T-262 post-build audit by hand-run bash, no scrutinize Outsider Pass"
+      }
+    ],
+    "recurred_after_fix": [],
+    "resolved_by": "T-263",
+    "resolved_date": "2026-06-24",
+    "last_seen": "2026-06-24",
+    "window_count": 3,
+    "stale": false,
+    "artifacts": [
+      "scripts/skill_gate.py",
+      "scripts/review_intent.py",
+      "scripts/posttool_track.py",
+      ".claude/settings.json"
+    ]
+  }
+}
