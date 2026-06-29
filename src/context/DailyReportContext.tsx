@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
 import { db, storage } from "../lib/firebase";
-import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc, updateDoc, getDocs } from "firebase/firestore";
 import { useWorkOrders } from "./WorkOrderContext";
 import { useAuth } from "./AuthContext";
 import { useNotifications } from "./NotificationContext";
@@ -138,6 +138,24 @@ interface DailyReportContextType {
   inProgressTasks: TaskListItem[];
   pendingInspectionTasks: TaskListItem[];
   pendingDeliveryWorkOrders: PendingDeliveryItem[];
+  preHandoverWorkOrders: { wo: any; assignedCategories: any[] }[];
+  updatePhCategoryProgress: (woId: string, catId: string, progress: number) => Promise<void>;
+
+  // PreHandover Detail Pane
+  selectedPhCatInfo: { wo: any; cat: any } | null;
+  setSelectedPhCatInfo: React.Dispatch<React.SetStateAction<{ wo: any; cat: any } | null>>;
+  phDailyHistory: any[];
+  submitPhDailyReport: (noteType?: string) => Promise<void>;
+  savePhDraft: () => Promise<void>;
+  phDraftedDates: Set<string>;
+  getPhDateStatus: (dateStr: string) => "disabled" | "reported" | "unlocked" | "locked";
+  isPhReportDatePast3Days: boolean;
+  phRetroactiveSubmitDone: boolean;
+  setPhRetroactiveSubmitDone: React.Dispatch<React.SetStateAction<boolean>>;
+  submitPhRetroactiveRequest: () => Promise<void>;
+  isPhEditingExisting: boolean;
+  setIsPhEditingExisting: React.Dispatch<React.SetStateAction<boolean>>;
+  isPhExistingReport: boolean;
   
   // central hooks functions
   addTaskUpdate: any;
@@ -773,14 +791,31 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     inProgressTasks,
     pendingInspectionTasks,
     pendingDeliveryWorkOrders,
+    preHandoverWorkOrders,
   } = useMemo(() => {
     const _newTasks: TaskListItem[] = [];
     const _inProgressTasks: TaskListItem[] = [];
     const _pendingInspectionTasks: TaskListItem[] = [];
     const _pendingDeliveryWOs: PendingDeliveryItem[] = [];
+    const _preHandoverWOs: { wo: any; assignedCategories: any[] }[] = [];
     workOrders.forEach((wo) => {
       if (["Draft", "Cancelled", "Completed", "Verified"].includes(wo.status))
         return;
+
+      if (wo.type === 'PreHandover') {
+        const isAdminOrManager = user?.role === 'Admin' || user?.role === 'Manager';
+        const assignedCats = isAdminOrManager
+          ? wo.categories
+          : wo.categories.filter((cat: any) =>
+              cat.assignedForemanId === foremanId ||
+              cat.assignedForemanId === user?.id ||
+              cat.assignedForemanId === user?.employeeId
+            );
+        if (assignedCats.length > 0) {
+          _preHandoverWOs.push({ wo, assignedCategories: assignedCats });
+        }
+        return;
+      }
       const isWoOwner =
         wo.woOwnerId === user?.id ||
         (user?.employeeId && wo.woOwnerId === user.employeeId) ||
@@ -912,6 +947,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       inProgressTasks: _inProgressTasks,
       pendingInspectionTasks: _pendingInspectionTasks,
       pendingDeliveryWorkOrders: _pendingDeliveryWOs,
+      preHandoverWorkOrders: _preHandoverWOs,
     };
   }, [
     workOrders,
@@ -1087,6 +1123,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         user?.role !== "Manager");
 
     setSelectedTaskInfo({ task: { ...task, isReadOnly, isHelper }, wo, categoryId });
+    setSelectedPhCatInfo(null);
     setRetroactiveSubmitDone(false);
     setProgress(currentP < minP ? minP : currentP);
     setNote("");
@@ -1379,7 +1416,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const openTimePicker = (id: string, shift: string, type: "start" | "end") => {
-    if (!isEditingExisting) return;
+    if (selectedPhCatInfo) {
+      if (!isPhEditingExisting) return;
+    } else {
+      if (!isEditingExisting) return;
+    }
     const record = labor.find((l) => l.id === id);
     if (!record) return;
     let rangeStr = "";
@@ -1550,12 +1591,13 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedTaskInfo) return;
+    const targetWoId = selectedTaskInfo?.wo.id || selectedPhCatInfo?.wo.id;
+    if (!file || !targetWoId) return;
     setIsUploading(true);
     try {
       const fileExt = file.name.split(".").pop();
       const fileName = `progress_${tab}_slot${slotIndex}_${Date.now()}.${fileExt}`;
-      const storagePath = `work_orders/${selectedTaskInfo.wo.id}/progress/${fileName}`;
+      const storagePath = `work_orders/${targetWoId}/progress/${fileName}`;
       const storageRef = ref(storage, storagePath);
       const compressedFile = await compressImage(file, 1280, 0.7);
       const snapshot = await uploadBytes(storageRef, compressedFile, {
@@ -2355,6 +2397,256 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
 
+  const updatePhCategoryProgress = async (woId: string, catId: string, progress: number): Promise<void> => {
+    await updateDoc(doc(db, 'workOrders', woId, 'categories', catId), {
+      dailyProgress: progress,
+      lastProgressUpdate: new Date().toISOString(),
+    });
+  };
+
+  // ─── PreHandover Detail Pane state ───
+  const [selectedPhCatInfo, setSelectedPhCatInfo] = useState<{ wo: any; cat: any } | null>(null);
+  const [phDailyHistory, setPhDailyHistory] = useState<any[]>([]);
+  const [phDraftedDates, setPhDraftedDates] = useState<Set<string>>(new Set());
+  const [isPhEditingExisting, setIsPhEditingExisting] = useState(false);
+
+  // Reset form + load history when category changes
+  useEffect(() => {
+    if (!selectedPhCatInfo) return;
+    setSelectedTaskInfo(null);
+    setProgress(selectedPhCatInfo.cat.dailyProgress || 0);
+    setNote('');
+    setLabor([]);
+    setSitePhotos([]);
+    setLaborRegularPhotos([]);
+    setLaborOtMorningPhotos([]);
+    setLaborOtNoonPhotos([]);
+    setLaborOtEveningPhotos([]);
+    setReportDate(new Date().toISOString().split('T')[0]);
+    const { wo, cat } = selectedPhCatInfo;
+    getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports')).then(snap => {
+      const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+      setPhDailyHistory(hist);
+    });
+  }, [selectedPhCatInfo?.wo.id, selectedPhCatInfo?.cat.id]);
+
+  // Load existing report for selected date (PreHandover)
+  useEffect(() => {
+    if (!selectedPhCatInfo) return;
+    setPhRetroactiveSubmitDone(false);
+    setIsPhEditingExisting(false);
+    const { wo, cat } = selectedPhCatInfo;
+    getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports', reportDate)).then(snap => {
+      if (snap.exists()) {
+        // Existing submitted report — load data, keep editing locked (false)
+        const d = snap.data();
+        setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
+        setNote(d.note || '');
+        setLabor(d.labor || []);
+        setSitePhotos(d.sitePhotos || []);
+        setLaborRegularPhotos(d.laborPhotos?.regular || []);
+        setLaborOtMorningPhotos(d.laborPhotos?.otMorning || []);
+        setLaborOtNoonPhotos(d.laborPhotos?.otNoon || []);
+        setLaborOtEveningPhotos(d.laborPhotos?.otEvening || []);
+        setIsPhEditingExisting(false);
+      } else {
+        // No main report — check for draft
+        getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReportsDraft', reportDate)).then(draftSnap => {
+          if (draftSnap.exists()) {
+            const d = draftSnap.data();
+            setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
+            setNote(d.note || '');
+            setLabor(d.labor || []);
+            setSitePhotos(d.sitePhotos || []);
+            setLaborRegularPhotos(d.laborPhotos?.regular || []);
+            setLaborOtMorningPhotos(d.laborPhotos?.otMorning || []);
+            setLaborOtNoonPhotos(d.laborPhotos?.otNoon || []);
+            setLaborOtEveningPhotos(d.laborPhotos?.otEvening || []);
+            setPhDraftedDates(prev => new Set([...prev, reportDate]));
+            setIsPhEditingExisting(true); // draft = new report in progress
+          } else {
+            setProgress(selectedPhCatInfo.cat.dailyProgress || 0);
+            setNote('');
+            setLabor([]);
+            setSitePhotos([]);
+            setLaborRegularPhotos([]);
+            setLaborOtMorningPhotos([]);
+            setLaborOtNoonPhotos([]);
+            setLaborOtEveningPhotos([]);
+            setPhDraftedDates(prev => { const n = new Set(prev); n.delete(reportDate); return n; });
+            setIsPhEditingExisting(true); // brand new — fully editable
+          }
+        });
+      }
+    });
+  }, [reportDate, selectedPhCatInfo?.wo.id, selectedPhCatInfo?.cat.id]);
+
+  const [phRetroactiveSubmitDone, setPhRetroactiveSubmitDone] = useState(false);
+
+  const getPhDateStatus = (dateStr: string): "disabled" | "reported" | "unlocked" | "locked" => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (dateStr > todayStr) return 'disabled';
+    if (selectedPhCatInfo) {
+      const scheduled = selectedPhCatInfo.wo.scheduledDate;
+      if (scheduled && dateStr < scheduled) return 'disabled';
+    }
+    if (phDailyHistory.some((h: any) => h.date === dateStr)) return 'reported';
+    const diffDays = Math.ceil((new Date(todayStr).getTime() - new Date(dateStr).getTime()) / 86400000);
+    if (diffDays <= 3) return 'unlocked';
+    const cat = selectedPhCatInfo?.cat;
+    if (cat?.phUnlockedDates?.[dateStr]?.unlockedUntil > new Date().toISOString()) return 'unlocked';
+    return 'locked';
+  };
+
+  const isPhReportDatePast3Days = useMemo(() => {
+    if (!selectedPhCatInfo || !reportDate) return false;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const diffDays = Math.ceil((new Date(todayStr).getTime() - new Date(reportDate).getTime()) / 86400000);
+    if (diffDays <= 3) return false;
+    const cat = selectedPhCatInfo.cat;
+    return !(cat?.phUnlockedDates?.[reportDate]?.unlockedUntil > new Date().toISOString());
+  }, [selectedPhCatInfo, reportDate]);
+
+  const isPhExistingReport = useMemo(() => {
+    return phDailyHistory.some((h: any) => h.id === reportDate || h.date === reportDate);
+  }, [phDailyHistory, reportDate]);
+
+  const submitPhRetroactiveRequest = async (): Promise<void> => {
+    if (!selectedPhCatInfo) return;
+    const { wo, cat } = selectedPhCatInfo;
+    await setDoc(
+      doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phRetroactiveRequests', reportDate),
+      {
+        requestDate: reportDate,
+        requestedBy: user?.name || 'ไม่ระบุ',
+        requestedById: user?.id || user?.employeeId,
+        requestedAt: new Date().toISOString(),
+        status: 'pending',
+        woId: wo.id,
+        catId: cat.id,
+        catName: cat.name,
+      }
+    );
+    setPhRetroactiveSubmitDone(true);
+  };
+
+  const submitPhDailyReport = async (noteType?: string): Promise<void> => {
+    if (!selectedPhCatInfo || isSubmitting) return;
+    const existingHistReport = phDailyHistory.find((h: any) => h.id === reportDate || h.date === reportDate);
+    if (existingHistReport && !isPhEditingExisting) {
+      alert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const { wo, cat } = selectedPhCatInfo;
+      const foremanEmpId = user?.employeeId || user?.id || '';
+      const laborPayload = labor
+        .filter(l => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
+        .map(l => ({
+          membership: l.membership || 'Internal',
+          workerId: l.staffId || l.contractorId || (l as any).id || '',
+          workerName: l.staffName || l.affiliation || '',
+          staffId: l.staffId || '',
+          staffName: l.staffName || '',
+          contractorId: l.contractorId || '',
+          employeeId: l.employeeId || '',
+          shiftTimes: {
+            day: l.shifts?.normal ? l.shiftTimes?.day || '08:00 - 17:00' : null,
+            otMorning: l.shifts?.otMorning ? l.shiftTimes?.otMorning || '06:00 - 08:00' : null,
+            otNoon: l.shifts?.otNoon ? '12:00 - 13:00' : null,
+            otEvening: l.shifts?.otEvening ? l.shiftTimes?.otEvening || '18:00 - 21:00' : null,
+          },
+          shifts: {
+            normal: l.shifts?.normal || false,
+            otMorning: l.shifts?.otMorning || false,
+            otNoon: l.shifts?.otNoon || false,
+            otEvening: l.shifts?.otEvening || false,
+          },
+          expectedShifts: {
+            normal: l.shifts?.normal || false,
+            otMorning: l.shifts?.otMorning || false,
+            otNoon: l.shifts?.otNoon || false,
+            otEvening: l.shifts?.otEvening || false,
+          },
+          expectedHours: {
+            normal: l.shifts?.normal ? calculateWorkingHours(l.shiftTimes?.day || '08:00 - 17:00') : 0,
+            otMorning: l.shifts?.otMorning ? 2 : 0,
+            otNoon: l.shifts?.otNoon ? 1 : 0,
+            otEvening: l.shifts?.otEvening ? 3 : 0,
+          },
+          amount: l.amount || 1,
+          recordedBy: l.recordedBy || foremanEmpId,
+        }));
+      const payload = {
+        date: reportDate,
+        progress,
+        note,
+        noteType: noteType || 'Normal',
+        labor: laborPayload,
+        sitePhotos: sitePhotos.filter(Boolean),
+        laborPhotos: {
+          regular: laborRegularPhotos.filter(Boolean),
+          otMorning: laborOtMorningPhotos.filter(Boolean),
+          otNoon: laborOtNoonPhotos.filter(Boolean),
+          otEvening: laborOtEveningPhotos.filter(Boolean),
+        },
+        submittedBy: user?.name || 'ไม่ระบุ',
+        submittedBy_id: foremanEmpId,
+        submittedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports', reportDate), payload);
+      await updateDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id), {
+        dailyProgress: progress,
+        lastProgressUpdate: new Date().toISOString(),
+      });
+      // Delete draft if exists
+      try {
+        await deleteDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReportsDraft', reportDate));
+        setPhDraftedDates(prev => { const n = new Set(prev); n.delete(reportDate); return n; });
+      } catch (_) {}
+      const snap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports'));
+      const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+      setPhDailyHistory(hist);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const savePhDraft = async (): Promise<void> => {
+    if (!selectedPhCatInfo || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const { wo, cat } = selectedPhCatInfo;
+      const draftPayload = {
+        progress,
+        note,
+        labor,
+        reportDate,
+        isDraft: true,
+        sitePhotos: sitePhotos.filter(Boolean),
+        laborPhotos: {
+          regular: laborRegularPhotos.filter(Boolean),
+          otMorning: laborOtMorningPhotos.filter(Boolean),
+          otNoon: laborOtNoonPhotos.filter(Boolean),
+          otEvening: laborOtEveningPhotos.filter(Boolean),
+        },
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.employeeId || user?.id || '',
+      };
+      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReportsDraft', reportDate), draftPayload);
+      setPhDraftedDates(prev => new Set([...prev, reportDate]));
+      alert('บันทึกแบบร่างเรียบร้อยแล้ว');
+    } catch (err) {
+      console.error('savePhDraft failed:', err);
+      alert('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const availableStaff = dailyContractors
     .filter((c) => (c.department || "").toLowerCase().endsWith("wh"))
     .filter((c) => !labor.some((l) => l.staffId === c.id));
@@ -2456,7 +2748,23 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         inProgressTasks,
         pendingInspectionTasks,
         pendingDeliveryWorkOrders,
-        
+        preHandoverWorkOrders,
+        updatePhCategoryProgress,
+        selectedPhCatInfo,
+        setSelectedPhCatInfo,
+        phDailyHistory,
+        submitPhDailyReport,
+        savePhDraft,
+        phDraftedDates,
+        getPhDateStatus,
+        isPhReportDatePast3Days,
+        phRetroactiveSubmitDone,
+        setPhRetroactiveSubmitDone,
+        submitPhRetroactiveRequest,
+        isPhEditingExisting,
+        setIsPhEditingExisting,
+        isPhExistingReport,
+
         addTaskUpdate,
         updateTask,
         updateWorkOrderStatus,

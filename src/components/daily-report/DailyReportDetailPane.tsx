@@ -410,10 +410,11 @@ export const DailyReportDetailPane: React.FC = () => {
           background: "#fff",
           borderRadius: "24px",
           border: "1px solid #e2e8f0",
-          overflow: "visible",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
           position: "relative",
+          height: "100%",
         }}
       >
         {!selectedTaskInfo ? (
@@ -508,6 +509,7 @@ export const DailyReportDetailPane: React.FC = () => {
                 padding: "1rem 1.5rem",
                 borderBottom: "1px solid #f1f5f9",
                 background: "#f8fafc",
+                flexShrink: 0,
               }}
             >
               {" "}
