@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loader2 } from 'lucide-react';
+import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loader2, FileText, Paperclip } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -129,6 +129,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         id: string;
         category: string;
         items: DefectItem[];
+        defectCount?: number; // PreHandover only
     }
 
     // State: Groups of defects
@@ -139,6 +140,11 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
         }
     ]);
+
+    // PreHandover: PDF documents + WO-level SLA
+    const [phDocuments, setPhDocuments] = useState<{ name: string; url: string; size: number }[]>([]);
+    const [phSla, setPhSla] = useState('14-30d');
+    const [isUploadingDoc, setIsUploadingDoc] = useState(false);
 
     // Update type when prop changes or modal opens
     useEffect(() => {
@@ -181,29 +187,41 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
             if (isDifferentWO || wasEmptyNowFilled) {
                 groupsLoadedRef.current = { id: woid, filled: cats.length > 0 };
-                // Map Categories → Groups with photo fallback chain
-                setGroups(cats.map(cat => ({
-                    id: cat.id,
-                    category: cat.name,
-                    items: (cat.tasks || []).map(task => ({
-                        ...task,
-                        id: task.id,
-                        position: task.position || '',
-                        detail: task.name,
-                        amount: task.amount || 1,
-                        unit: task.unit || 'จุด',
-                        images: Array.from(new Set((
-                            task.images && task.images.length > 0
-                                ? task.images
-                                : [
-                                    task.beforePhotoUrl,
-                                    task.latestPhotoUrl,
-                                    task.afterPhotoUrl,
-                                    ...(task.attachments?.map(a => a.url) || [])
-                                ]
-                        ).filter(url => url && typeof url === 'string') as string[]))
-                    }))
-                })));
+                if (editWorkOrder.type === 'PreHandover') {
+                    // PreHandover: load category + defectCount only
+                    setPhDocuments((editWorkOrder as any).documents || []);
+                    setPhSla((editWorkOrder as any).phEstimatedSla || '14-30d');
+                    setGroups(cats.map(cat => ({
+                        id: cat.id,
+                        category: cat.name,
+                        items: [],
+                        defectCount: (cat as any).defectCount || 0
+                    })));
+                } else {
+                    // AfterSale: Map Categories → Groups with photo fallback chain
+                    setGroups(cats.map(cat => ({
+                        id: cat.id,
+                        category: cat.name,
+                        items: (cat.tasks || []).map(task => ({
+                            ...task,
+                            id: task.id,
+                            position: task.position || '',
+                            detail: task.name,
+                            amount: task.amount || 1,
+                            unit: task.unit || 'จุด',
+                            images: Array.from(new Set((
+                                task.images && task.images.length > 0
+                                    ? task.images
+                                    : [
+                                        task.beforePhotoUrl,
+                                        task.latestPhotoUrl,
+                                        task.afterPhotoUrl,
+                                        ...(task.attachments?.map(a => a.url) || [])
+                                    ]
+                            ).filter(url => url && typeof url === 'string') as string[]))
+                        }))
+                    })));
+                }
             }
             // else: same WO already loaded with data → don't overwrite user's in-progress edits
         } else if (justOpened) {
@@ -218,21 +236,29 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 location: locationName,
                 id: `WO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`
             }));
-            setGroups([{
-                id: crypto.randomUUID(),
-                category: CATEGORIES_LIST[0],
-                items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
-            }]);
+            setPhDocuments([]);
+            setPhSla('14-30d');
+            if (initialWorkType === 'PreHandover') {
+                setGroups([{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [], defectCount: 0 }]);
+            } else {
+                setGroups([{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }] }]);
+            }
         }
     }, [isOpen, initialWorkType, user?.name, editWorkOrder]);
 
     // Handlers
     const addGroup = () => {
+        const isPreHandover = formState.type === 'PreHandover';
         setGroups([...groups, {
             id: crypto.randomUUID(),
             category: CATEGORIES_LIST[0],
-            items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
+            items: isPreHandover ? [] : [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }],
+            defectCount: isPreHandover ? 0 : undefined
         }]);
+    };
+
+    const updateGroupDefectCount = (groupId: string, count: number) => {
+        setGroups(groups.map(g => g.id === groupId ? { ...g, defectCount: count } : g));
     };
 
     const removeGroup = (groupId: string) => {
@@ -333,6 +359,34 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     const triggerUpload = (groupId: string, itemId: string) => {
         setUploadTarget({ groupId, itemId });
         document.getElementById('hidden-file-input')?.click();
+    };
+
+    // PDF document upload (PreHandover)
+    const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        setIsUploadingDoc(true);
+        try {
+            for (const file of Array.from(files)) {
+                const fileName = `doc_${Date.now()}_${file.name}`;
+                const storagePath = `work_orders/${formState.id}/documents/${fileName}`;
+                const storageRef = ref(storage, storagePath);
+                const metadata = { cacheControl: 'public, max-age=31536000', contentType: file.type || 'application/pdf' };
+                const snapshot = await uploadBytes(storageRef, file, metadata);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                setPhDocuments(prev => [...prev, { name: file.name, url: downloadURL, size: file.size }]);
+            }
+        } catch (error) {
+            console.error('PDF upload failed:', error);
+            alert('อัปโหลดเอกสารไม่สำเร็จ');
+        } finally {
+            setIsUploadingDoc(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const removeDocument = (idx: number) => {
+        setPhDocuments(prev => prev.filter((_, i) => i !== idx));
     };
 
     const removeImage = (groupId: string, itemId: string, imgIndex: number) => {
@@ -438,42 +492,54 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         };
 
         // Convert Groups to Categories
-        const categories: Category[] = groups.map(group => ({
-            id: group.id.startsWith('CAT-') ? group.id : `CAT-${Math.floor(Math.random() * 10000)}`,
-            name: group.category,
-            tasks: group.items.map(item => {
-                const { id: itemId, detail, position, amount, unit, images, ...rest } = item;
-                const isItemReadOnly = 
-                    item.evaluationStatus === 'Approved' || 
-                    item.evaluationStatus === 'Assigned' || 
-                    item.status === 'completed' || 
-                    item.status === 'in-progress' || 
-                    item.status === 'for-checking';
+        let categories: Category[];
+        if (formState.type === 'PreHandover') {
+            // PreHandover: category + defectCount only, no individual tasks
+            categories = groups.map(group => ({
+                id: group.id.startsWith('CAT-') ? group.id : `CAT-${Math.floor(Math.random() * 10000)}`,
+                name: group.category,
+                defectCount: group.defectCount || 0,
+                tasks: []
+            }));
+            (newWorkOrder as any).documents = phDocuments;
+            (newWorkOrder as any).phEstimatedSla = phSla;
+        } else {
+            categories = groups.map(group => ({
+                id: group.id.startsWith('CAT-') ? group.id : `CAT-${Math.floor(Math.random() * 10000)}`,
+                name: group.category,
+                tasks: group.items.map(item => {
+                    const { id: itemId, detail, position, amount, unit, images, ...rest } = item;
+                    const isItemReadOnly =
+                        item.evaluationStatus === 'Approved' ||
+                        item.evaluationStatus === 'Assigned' ||
+                        item.status === 'completed' ||
+                        item.status === 'in-progress' ||
+                        item.status === 'for-checking';
 
-                // ✅ Reset status and rootCause for fresh evaluation ONLY if submitting and NOT read-only
-                const finalStatus = isItemReadOnly ? (item.status || 'Pending') : (isDraft ? (item.status || 'Pending') : 'Pending');
-                const finalRootCause = isItemReadOnly ? (item.rootCause || '') : (isDraft ? (item.rootCause || '') : '');
+                    const finalStatus = isItemReadOnly ? (item.status || 'Pending') : (isDraft ? (item.status || 'Pending') : 'Pending');
+                    const finalRootCause = isItemReadOnly ? (item.rootCause || '') : (isDraft ? (item.rootCause || '') : '');
 
-                return {
-                    ...rest,
-                    id: itemId.startsWith('TASK-') || itemId.startsWith('MT-') ? itemId : `TASK-${new Date().getTime()}-${Math.floor(Math.random() * 1000)}`,
-                    name: detail || 'No Detail',
-                    status: finalStatus,
-                    system: 'AfterSale',
-                    rootCause: finalRootCause,
-                    position: position,
-                    amount: amount,
-                    unit: unit,
-                    estimatedSla: (item as any).estimatedSla,
-                    images: Array.from(new Set(images)),
-                    beforePhotoUrl: images.length > 0 ? images[0] : (item.beforePhotoUrl || null),
-                    latestPhotoUrl: images.length > 0 ? images[0] : (item.latestPhotoUrl || null),
-                    dailyProgress: item.dailyProgress || 0,
-                    description: detail,
-                    history: item.history || []
-                } as any;
-            })
-        })).filter(c => c.tasks.length > 0);
+                    return {
+                        ...rest,
+                        id: itemId.startsWith('TASK-') || itemId.startsWith('MT-') ? itemId : `TASK-${new Date().getTime()}-${Math.floor(Math.random() * 1000)}`,
+                        name: detail || 'No Detail',
+                        status: finalStatus,
+                        system: 'AfterSale',
+                        rootCause: finalRootCause,
+                        position: position,
+                        amount: amount,
+                        unit: unit,
+                        estimatedSla: (item as any).estimatedSla,
+                        images: Array.from(new Set(images)),
+                        beforePhotoUrl: images.length > 0 ? images[0] : (item.beforePhotoUrl || null),
+                        latestPhotoUrl: images.length > 0 ? images[0] : (item.latestPhotoUrl || null),
+                        dailyProgress: item.dailyProgress || 0,
+                        description: detail,
+                        history: item.history || []
+                    } as any;
+                })
+            })).filter(c => c.tasks.length > 0);
+        }
 
         newWorkOrder.categories = categories;
 
@@ -628,39 +694,67 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                 </div>
                             </div>
 
-                            <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div style={{ width: '4px', height: '16px', background: '#f59e0b', borderRadius: '4px' }}></div> รายการงาน ({groups.reduce((acc, g) => acc + g.items.length, 0)} รายการ)
-                            </h3>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                {groups.map(group => (
-                                    <div key={group.id} style={{ border: '1px solid #f1f5f9', borderRadius: '12px', overflow: 'hidden' }}>
-                                        <div style={{ background: '#f1f5f9', padding: '10px 20px', fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>
-                                            {group.category}
-                                        </div>
-                                        <div style={{ padding: '0 20px' }}>
-                                            {group.items.map((item, idx) => (
-                                                <div key={item.id} style={{ padding: '16px 0', borderBottom: idx === group.items.length - 1 ? 'none' : '1px dashed #e2e8f0', display: 'flex', gap: '20px' }}>
-                                                    <div style={{ flex: 1 }}>
-                                                        <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}>{item.detail || 'ไม่ได้ระบุรายละเอียด'}</div>
-                                                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>ตำแหน่ง: {item.position || '-'} | จำนวน: {item.amount} {item.unit}</div>
-                                                    </div>
-                                                    {item.images.length > 0 && (
-                                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                                            {item.images.slice(0, 3).map((img, i) => (
-                                                                <img key={i} src={img} style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover' }} />
-                                                            ))}
-                                                            {item.images.length > 3 && (
-                                                                <div style={{ width: '48px', height: '48px', borderRadius: '6px', background: '#f1f5f9', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>+{item.images.length - 3}</div>
-                                                            )}
+                            {isAfterSale ? (
+                                <>
+                                <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ width: '4px', height: '16px', background: '#f59e0b', borderRadius: '4px' }}></div> รายการงาน ({groups.reduce((acc, g) => acc + g.items.length, 0)} รายการ)
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    {groups.map(group => (
+                                        <div key={group.id} style={{ border: '1px solid #f1f5f9', borderRadius: '12px', overflow: 'hidden' }}>
+                                            <div style={{ background: '#f1f5f9', padding: '10px 20px', fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>
+                                                {group.category}
+                                            </div>
+                                            <div style={{ padding: '0 20px' }}>
+                                                {group.items.map((item, idx) => (
+                                                    <div key={item.id} style={{ padding: '16px 0', borderBottom: idx === group.items.length - 1 ? 'none' : '1px dashed #e2e8f0', display: 'flex', gap: '20px' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}>{item.detail || 'ไม่ได้ระบุรายละเอียด'}</div>
+                                                            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>ตำแหน่ง: {item.position || '-'} | จำนวน: {item.amount} {item.unit}</div>
                                                         </div>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                        {item.images.length > 0 && (
+                                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                                {item.images.slice(0, 3).map((img, i) => (
+                                                                    <img key={i} src={img} style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover' }} />
+                                                                ))}
+                                                                {item.images.length > 3 && (
+                                                                    <div style={{ width: '48px', height: '48px', borderRadius: '6px', background: '#f1f5f9', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>+{item.images.length - 3}</div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
+                                    ))}
+                                </div>
+                                </>
+                            ) : (
+                                <>
+                                <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ width: '4px', height: '16px', background: '#10b981', borderRadius: '4px' }}></div>
+                                    หมวดงาน ({groups.length} หมวด · รวม {groups.reduce((s, g) => s + (g.defectCount || 0), 0)} จุด) · SLA: {phSla}
+                                </h3>
+                                {phDocuments.length > 0 && (
+                                    <div style={{ marginBottom: '16px', background: '#f0fdf4', borderRadius: '10px', padding: '12px 16px', border: '1px solid #bbf7d0' }}>
+                                        <div style={{ fontSize: '0.8rem', color: '#065f46', fontWeight: 600, marginBottom: '8px' }}>เอกสารแนบ ({phDocuments.length} ไฟล์)</div>
+                                        {phDocuments.map((doc, i) => (
+                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#047857' }}>
+                                                <FileText size={14} /> {doc.name}
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+                                )}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {groups.map(group => (
+                                        <div key={group.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f9fafb', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
+                                            <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{group.category}</span>
+                                            <span style={{ background: '#dcfce7', color: '#166534', borderRadius: '20px', padding: '4px 12px', fontSize: '0.85rem', fontWeight: 700 }}>{group.defectCount || 0} จุด</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                </>
+                            )}
                         </div>
 
                         <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
@@ -877,6 +971,57 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             />
                                         </div>
                                     </div>
+
+                                    {/* PreHandover: Document attachment + SLA */}
+                                    {!isAfterSale && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                            {/* PDF Documents */}
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>
+                                                    เอกสารแนบ (Documents)
+                                                </label>
+                                                <div style={{ background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '48px' }}>
+                                                    {phDocuments.map((doc, idx) => (
+                                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', borderRadius: '8px', padding: '8px 12px', border: '1px solid #bbf7d0' }}>
+                                                            <FileText size={16} color="#059669" style={{ flexShrink: 0 }} />
+                                                            <span style={{ flex: 1, fontSize: '0.85rem', color: '#065f46', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</span>
+                                                            <span style={{ fontSize: '0.75rem', color: '#94a3b8', flexShrink: 0 }}>{(doc.size / 1024).toFixed(0)} KB</span>
+                                                            <button onClick={() => removeDocument(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', display: 'flex', alignItems: 'center' }}>
+                                                                <X size={14} strokeWidth={3} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => document.getElementById('hidden-pdf-input')?.click()}
+                                                        disabled={isUploadingDoc}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: isUploadingDoc ? '#f1f5f9' : '#f0f9ff', border: '1px dashed #0284c7', borderRadius: '8px', color: '#0284c7', cursor: isUploadingDoc ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                                                    >
+                                                        {isUploadingDoc ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+                                                        {isUploadingDoc ? 'กำลังอัปโหลด...' : 'แนบไฟล์ PDF'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {/* SLA */}
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>SLA คาดการณ์</label>
+                                                <div style={{ position: 'relative' }}>
+                                                    <select
+                                                        value={phSla}
+                                                        onChange={(e) => setPhSla(e.target.value)}
+                                                        style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '1rem', outline: 'none', appearance: 'none' }}
+                                                    >
+                                                        <option value="7-14d">7-14 วัน</option>
+                                                        <option value="14-30d">14-30 วัน</option>
+                                                        <option value="30-60d">30-60 วัน</option>
+                                                        <option value="60d+">มากกว่า 60 วัน</option>
+                                                    </select>
+                                                    <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
+                                                        <ChevronDown size={18} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
 
@@ -884,9 +1029,60 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             <section style={{ marginBottom: '40px' }}>
                                 <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <div style={{ width: '4px', height: '20px', background: '#f59e0b', borderRadius: '4px' }} />
-                                    รายการแจ้งซ่อม (Defect List)
+                                    {isAfterSale ? 'รายการแจ้งซ่อม (Defect List)' : 'หมวดงานที่พบ (Work Categories)'}
                                 </h3>
 
+                                {/* PreHandover: simplified category + count only */}
+                                {!isAfterSale && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        {groups.map((group) => (
+                                            <div key={group.id} style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '16px 20px', display: 'flex', gap: '16px', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>หมวดงาน (Category)</label>
+                                                    <div style={{ position: 'relative' }}>
+                                                        <select
+                                                            value={group.category}
+                                                            onChange={(e) => updateGroupCategory(group.id, e.target.value)}
+                                                            style={{ width: '100%', padding: '10px 14px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', color: '#111827', fontSize: '0.95rem', outline: 'none', appearance: 'none' }}
+                                                        >
+                                                            {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
+                                                        <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={16} /></div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ minWidth: '140px' }}>
+                                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จำนวนจุดที่พบ</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={group.defectCount || 0}
+                                                        onChange={(e) => updateGroupDefectCount(group.id, parseInt(e.target.value) || 0)}
+                                                        style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', fontSize: '1rem', fontWeight: 700, outline: 'none', textAlign: 'center' }}
+                                                        onFocus={(e) => e.target.style.borderColor = '#10b981'}
+                                                        onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                    />
+                                                </div>
+                                                {groups.length > 1 && (
+                                                    <button onClick={() => removeGroup(group.id)} style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', cursor: 'pointer', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 500, flexShrink: 0 }}>
+                                                        <Trash2 size={14} /> ลบ
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                        <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e5e7eb' }}>
+                                            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>รวม {groups.reduce((s, g) => s + (g.defectCount || 0), 0)} จุด / {groups.length} หมวด</span>
+                                        </div>
+                                        <button
+                                            onClick={addGroup}
+                                            style={{ width: '100%', padding: '14px', background: '#f0fdf4', border: '1px dashed #10b981', borderRadius: '12px', color: '#059669', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                                        >
+                                            <Plus size={18} /> เพิ่มหมวดงาน (Add Category)
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* AfterSale: original full defect list */}
+                                {isAfterSale && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                     {groups.map((group) => (
                                         <div key={group.id} style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
@@ -1199,16 +1395,25 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                         <Plus size={20} /> เพิ่มหมวดงานใหม่ (New Category)
                                     </button>
                                 </div>
+                                )} {/* end isAfterSale */}
                             </section>
                         </div>
 
-                        {/* Hidden File Input */}
+                        {/* Hidden File Inputs */}
                         <input
                             id="hidden-file-input"
                             type="file"
                             accept="image/*"
                             style={{ display: 'none' }}
                             onChange={handleImageUpload}
+                        />
+                        <input
+                            id="hidden-pdf-input"
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            multiple
+                            style={{ display: 'none' }}
+                            onChange={handlePdfUpload}
                         />
 
                         {/* Footer */}

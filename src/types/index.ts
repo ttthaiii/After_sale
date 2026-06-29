@@ -228,6 +228,8 @@ export interface Category {
     id: string;
     name: string;
     tasks: MasterTask[]; // Removed optional
+    defectCount?: number; // PreHandover: total defect points for this category
+    catName?: string;
 }
 
 export type WorkOrderType = 'AfterSale' | 'PreHandover';
@@ -295,6 +297,9 @@ export interface WorkOrder {
         handoverCare: number;
         submittedAt: string;
     };
+    // PreHandover specific
+    documents?: { name: string; url: string; size: number; uploadedAt?: string }[];
+    phEstimatedSla?: string;
 }
 
 export interface ActivityLog {
