@@ -958,11 +958,11 @@ const SLAMonitor = () => {
             {viewMode === 'preHandover' && (
                 <div style={{ display: 'flex', gap: '24px', overflowX: 'auto', paddingBottom: '16px' }}>
                     {[
-                        { id: 'unassigned',       label: 'รอมอบหมาย',             color: '#ef4444', test: (cat: any, wo: any) => !cat.assignedForemanId && !wo.isArchived },
-                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่เริ่ม', color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived },
-                        { id: 'in-progress',      label: 'กำลังตรวจสอบ',           color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && (cat.dailyProgress || 0) < 100 && !wo.isArchived },
-                        { id: 'done-pending-qr',  label: 'ตรวจเสร็จ / รอปิดงาน',  color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && !wo.isArchived },
-                        { id: 'completed',        label: 'เสร็จสิ้น',              color: '#059669', test: (_cat: any, wo: any) => !!wo.isArchived },
+                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'Rejected' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived },
+                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true) },
+                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && (cat.dailyProgress || 0) < 100 && !wo.isArchived && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true) },
+                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && !wo.isArchived && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true) },
+                        { id: 'completed',        label: 'สำเร็จ',                 color: '#059669', test: (_cat: any, wo: any) => !!wo.isArchived },
                     ].map((col) => {
                         const items = phWorkOrders.flatMap((wo: any) =>
                             (wo.categories || [])

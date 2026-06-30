@@ -991,10 +991,16 @@ export const WorkOrderGroupList: React.FC = () => {
                       const daysLeft = Math.ceil((phDeadlineMs - Date.now()) / 86400000);
                       const daysLabel = daysLeft > 0 ? `อีก ${daysLeft} วัน` : daysLeft === 0 ? 'วันนี้!' : `เกิน ${Math.abs(daysLeft)} วัน`;
                       const allDone = assignedCategories.every((cat: any) => (cat.dailyProgress || 0) >= 100);
+                      const hasReassigned = assignedCategories.some((cat: any) => cat.customerStatus === 'reassigned');
+                      const maxRevNum = assignedCategories.reduce((max: number, cat: any) => {
+                        const rev = cat.currentRevision || 'rev00';
+                        const n = parseInt(rev.replace('rev', '')) || 0;
+                        return Math.max(max, n);
+                      }, 0);
                       return (
                         <div key={wo.id} style={{
                           background: '#fff',
-                          border: wo.status === 'Rejected' ? '2px solid #fca5a5' : '2px solid #99f6e4',
+                          border: wo.status === 'Rejected' ? '2px solid #fca5a5' : hasReassigned ? '2px solid #fbbf24' : '2px solid #99f6e4',
                           borderRadius: '20px',
                           boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
                           overflow: 'hidden',
@@ -1016,24 +1022,32 @@ export const WorkOrderGroupList: React.FC = () => {
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a' }}>
-                                {wo.id}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a' }}>
+                                  {wo.id}
+                                </span>
+                                {maxRevNum > 0 && (
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 900, color: '#ef4444', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fca5a5', whiteSpace: 'nowrap' }}>
+                                    REV. {maxRevNum}
+                                  </span>
+                                )}
+                              </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{
                                   fontSize: '0.62rem', fontWeight: 900,
-                                  color: wo.status === 'Completed' ? '#059669' : wo.status === 'Rejected' ? '#dc2626' : allDone ? '#059669' : '#0891b2',
-                                  background: wo.status === 'Completed' ? '#d1fae5' : wo.status === 'Rejected' ? '#fee2e2' : allDone ? '#d1fae5' : '#cffafe',
+                                  color: wo.status === 'Completed' ? '#059669' : wo.status === 'Rejected' ? '#dc2626' : hasReassigned ? '#d97706' : allDone ? '#059669' : '#0891b2',
+                                  background: wo.status === 'Completed' ? '#d1fae5' : wo.status === 'Rejected' ? '#fee2e2' : hasReassigned ? '#fef3c7' : allDone ? '#d1fae5' : '#cffafe',
                                   padding: '2px 6px', borderRadius: '4px',
                                   display: 'inline-flex', alignItems: 'center', gap: '2px',
                                 }}>
-                                  {wo.status === 'Completed' ? '✓ เสร็จสมบูรณ์' : wo.status === 'Rejected' ? '⚠️ รอแก้ไข' : allDone ? '✓ ครบ 100%' : `${assignedCategories.length} หมวด`}
+                                  {wo.status === 'Completed' ? '✓ เสร็จสมบูรณ์' : wo.status === 'Rejected' ? '⚠️ รอแก้ไข' : hasReassigned ? '🔄 ได้รับมอบหมายใหม่' : allDone ? '✓ ครบ 100%' : `${assignedCategories.length} หมวด`}
                                 </span>
                                 {(() => {
                                   const isPhWoOwner = assignedCategories.some(
                                     (cat: any) => cat.assignedForemanId === user?.employeeId || cat.assignedForemanId === user?.id
                                   );
-                                  const canShowQr = wo.status === 'pending_delivery' || !!wo.deliveryQrToken;
+                                  const revisionInProgress = maxRevNum > 0 && !allDone;
+                                  const canShowQr = (wo.status === 'pending_delivery' || !!wo.deliveryQrToken) && !revisionInProgress;
                                   if (!allDone && !canShowQr) return null;
                                   return (
                                     <button
@@ -1100,6 +1114,8 @@ export const WorkOrderGroupList: React.FC = () => {
                                 const isSelected = selectedPhCatInfo?.cat.id === cat.id && selectedPhCatInfo?.wo.id === wo.id;
                                 const progress = cat.dailyProgress || 0;
                                 const progressColor = progress >= 100 ? '#10b981' : progress > 0 ? '#3b82f6' : '#e2e8f0';
+                                const catRevNum = parseInt((cat.currentRevision || 'rev00').replace('rev', '')) || 0;
+                                const isReassigned = cat.customerStatus === 'reassigned';
                                 return (
                                   <div
                                     key={cat.id}
@@ -1109,22 +1125,39 @@ export const WorkOrderGroupList: React.FC = () => {
                                         setModalAlert({ isOpen: true, title: 'รอแอดมินมอบหมายรอบใหม่', message: 'ใบงานนี้ถูกลูกค้าปฏิเสธ — รอแอดมินอนุมัติรอบการแก้ไขก่อนจึงจะเริ่มงานได้', type: 'warning' });
                                         return;
                                       }
+                                      if (isReassigned && progress === 0) {
+                                        setModalAlert({ isOpen: true, title: `ได้รับมอบหมายงานใหม่ — REV. ${catRevNum}`, message: `หมวดงาน "${cat.name}" ถูกส่งกลับให้แก้ไขโดยแอดมิน (ครั้งที่ ${catRevNum}) — กรุณาเริ่มบันทึกความคืบหน้าใหม่`, type: 'warning' });
+                                      }
                                       selectPhCatInfo({ wo, cat }); setSelectedTaskInfo(null);
                                     }}
                                     style={{
-                                      borderRadius: '12px', background: isSelected ? '#f0fdfa' : '#fff',
-                                      border: `1px solid ${isSelected ? '#0d9488' : '#e2e8f0'}`,
+                                      borderRadius: '12px', background: isSelected ? '#f0fdfa' : isReassigned ? '#fffbeb' : '#fff',
+                                      border: `1px solid ${isSelected ? '#0d9488' : isReassigned ? '#fbbf24' : '#e2e8f0'}`,
                                       padding: '10px 12px', cursor: 'pointer',
                                       boxShadow: isSelected ? '0 0 0 2px #99f6e4' : 'none',
                                       transition: 'all 0.15s',
                                     }}
                                   >
+                                    {isReassigned && (
+                                      <div style={{ marginBottom: '6px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', padding: '4px 8px', fontSize: '0.68rem', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        🔄 ได้รับมอบหมายกลับมาแก้ไข — กรุณาเริ่มบันทึกรายงาน
+                                      </div>
+                                    )}
+                                    {cat.customerStatus === 'rejected' && cat.customerRejectReason && (
+                                      <div style={{ marginBottom: '6px', background: '#fff1f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '4px 8px', fontSize: '0.68rem', fontWeight: 700, color: '#be123c', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        ✕ ลูกค้าปฏิเสธ: {cat.customerRejectReason}
+                                      </div>
+                                    )}
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                           {cat.name}
                                         </div>
-                                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{cat.defectCount || 0} จุด</div>
+                                        {catRevNum > 0 && (
+                                          <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#ef4444', background: '#fee2e2', padding: '1px 5px', borderRadius: '4px', border: '1px solid #fca5a5', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                            REV. {catRevNum}
+                                          </span>
+                                        )}
                                       </div>
                                       <span style={{ fontSize: '0.85rem', fontWeight: 800, color: progress === 0 ? '#94a3b8' : progressColor, marginLeft: '8px' }}>
                                         {progress}%

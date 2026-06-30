@@ -1304,7 +1304,8 @@ const Dashboard = () => {
         const totalAssignments = filteredWOs.length;
 
         const pendingAdminEval = allAccessibleWOs.filter((wo: any) =>
-            ['Pending', 'Evaluating'].includes(wo.status)
+            ['Pending', 'Evaluating'].includes(wo.status) ||
+            (wo.status === 'Rejected' && wo.pendingAdminReassign === true)
         ).length;
 
         let closed = 0;
@@ -2566,7 +2567,8 @@ const Dashboard = () => {
                                     allAccessibleWOs.filter((wo: any) =>
                                         !isWorkOrderCompleted(wo) &&
                                         !urgentWOIds.has(String(wo.id)) &&
-                                        ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)
+                                        ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status) &&
+                                        !(wo.status === 'Rejected' && wo.pendingAdminReassign === true)
                                     )
                                 );
                                 const selectAndScroll = (cat: string) => {
@@ -2787,7 +2789,7 @@ const Dashboard = () => {
                                                 )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
                                             } else if (selectedOpCategory === 'inProgress') {
                                                 const _urgentWOIds = new Set((stats.urgentTasks || []).map((wo: any) => String(wo.id)));
-                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !_urgentWOIds.has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status));
+                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !_urgentWOIds.has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status) && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true));
                                                 const progFilter = (p: number) => {
                                                     if (!donutFilter) return p < 100;
                                                     if (donutFilter === 'notStarted') return p === 0;
@@ -2820,11 +2822,14 @@ const Dashboard = () => {
                                                     </>
                                                 );
                                             } else if (selectedOpCategory === 'pendingAdmin') {
-                                                const pendingWOs = allAccessibleWOs.filter((wo: any) => ['Pending', 'Evaluating'].includes(wo.status));
+                                                const pendingWOs = allAccessibleWOs.filter((wo: any) =>
+                                                    ['Pending', 'Evaluating'].includes(wo.status) ||
+                                                    (wo.status === 'Rejected' && wo.pendingAdminReassign === true)
+                                                );
                                                 if (pendingWOs.length === 0) return <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีใบงานรอแอดมินในขณะนี้ 🎉</div>;
                                                 return pendingWOs.map((wo: any, idx: number) => {
-                                                    const statusLabel = wo.status === 'Pending' ? 'รอประเมิน' : 'กำลังประเมิน';
-                                                    const statusColor = wo.status === 'Pending' ? '#6366f1' : '#8b5cf6';
+                                                    const statusLabel = wo.status === 'Pending' ? 'รอประเมิน' : wo.status === 'Rejected' ? 'ถูกปฏิเสธ' : 'กำลังประเมิน';
+                                                    const statusColor = wo.status === 'Pending' ? '#6366f1' : wo.status === 'Rejected' ? '#dc2626' : '#8b5cf6';
                                                     const taskCount = (wo.categories || []).reduce((s: number, c: any) => s + (c.tasks || []).length, 0);
                                                     return (
                                                         <div key={`pa-${idx}`} onClick={() => navigate(`/work-orders?highlight=${wo.id}`)}
@@ -2887,7 +2892,7 @@ const Dashboard = () => {
                                             const donutWOs =
                                                 selectedOpCategory === 'urgent' ? (stats.urgentTasks || []) :
                                                 selectedOpCategory === 'evaluating' ? allAccessibleWOs.filter(isForCustomerEvalLocal) :
-                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !new Set((stats.urgentTasks || []).map((u: any) => String(u.id))).has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
+                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !new Set((stats.urgentTasks || []).map((u: any) => String(u.id))).has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status) && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true)) :
                                                 selectedOpCategory === 'pendingAdmin' ? [] :
                                                 allAccessibleWOs;
                                             return <ProgressDonutChart allWOs={donutWOs} currentUser={user} />;

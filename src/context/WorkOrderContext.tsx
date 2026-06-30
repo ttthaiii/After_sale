@@ -65,7 +65,7 @@ interface WorkOrderContextType {
         catApprovals: Record<string, { status: 'approved' | 'rejected'; reason?: string }>,
         survey?: { workQuality: number; siteCleanliness: number; foremanProfessionalism: number; specAccuracy: number; handoverCare: number }
     ) => Promise<void>;
-    reviewRejectedPhWO: (woId: string, newScheduledDate?: string) => Promise<void>;
+    reviewRejectedPhWO: (woId: string, newScheduledDate?: string, slaCategory?: string, foremanId?: string) => Promise<void>;
     logCustomerQrView: (woId: string) => Promise<void>;
     markWorkOrderAsOpenedByAdmin: (id: string) => Promise<void>;
     requestSupport: (workOrderId: string, categoryId: string, taskId: string) => Promise<void>;
@@ -2165,7 +2165,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await updateDoc(woRef, woUpdates);
     };
 
-    const reviewRejectedPhWO = async (woId: string, newScheduledDate?: string) => {
+    const reviewRejectedPhWO = async (woId: string, newScheduledDate?: string, slaCategory?: string, foremanId?: string) => {
         const now = new Date().toISOString();
         const updates: any = {
             status: 'In Progress',
@@ -2175,15 +2175,24 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             lastUpdate: now,
         };
         if (newScheduledDate) updates.scheduledDate = newScheduledDate;
+        if (slaCategory) updates.phActualSla = slaCategory;
+        updates.deliveryQrToken = null;
+        updates.deliveryQrGeneratedAt = null;
         await updateDoc(doc(db, 'workOrders', woId), updates);
 
         const catsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories'));
         for (const catDoc of catsSnap.docs) {
             const catData = catDoc.data();
-            if (catData.customerStatus === 'rejected' && catData.assignedForemanId) {
+            if (catData.customerStatus !== 'rejected') continue;
+            const catUpdates: any = { customerStatus: 'reassigned', reassignedAt: now, dailyProgress: 0 };
+            const notifyTarget = foremanId || catData.assignedForemanId;
+            if (foremanId) catUpdates.assignedForemanId = foremanId;
+            if (slaCategory) catUpdates.slaCategory = slaCategory;
+            await updateDoc(catDoc.ref, catUpdates);
+            if (notifyTarget) {
                 try {
                     await addDoc(collection(db, 'notifications'), {
-                        recipientId: catData.assignedForemanId, senderId: 'admin', senderName: 'ผู้ดูแลระบบ',
+                        recipientId: notifyTarget, senderId: 'admin', senderName: 'ผู้ดูแลระบบ',
                         title: 'งานตรวจรับก่อนโอน — รอดำเนินการแก้ไข',
                         message: `หมวดงาน "${catData.name || catDoc.id}" (ใบงาน ${woId}) ได้รับอนุมัติให้แก้ไขใหม่${newScheduledDate ? ` กำหนดการ: ${newScheduledDate}` : ''}`,
                         type: 'warning', targetPath: `/daily-report?id=${woId}`, isRead: false, createdAt: serverTimestamp()
