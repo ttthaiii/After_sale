@@ -10,6 +10,7 @@ import { DailyReportProvider, useDailyReport } from "../context/DailyReportConte
 import { formatDate } from "../utils/date";
 import { WorkOrderGroupList } from "../components/daily-report/WorkOrderGroupList";
 import { DailyReportDetailPane } from "../components/daily-report/DailyReportDetailPane";
+import { PreHandoverDetailPane } from "../components/daily-report/PreHandoverDetailPane";
 import { DailyReportSummaryModal } from "../components/daily-report/DailyReportSummaryModal";
 import { BatchAddModal } from "../components/daily-report/BatchAddModal";
 import { AnalogTimePicker } from "../components/AnalogTimePicker";
@@ -20,6 +21,7 @@ const TaskReviewModalAny = TaskReviewModal as any;
 
 const DailyReportContent: React.FC = () => {
   const {
+    selectedPhCatInfo,
     isSidebarOpen,
     timePickerTarget,
     setTimePickerTarget,
@@ -69,7 +71,7 @@ const DailyReportContent: React.FC = () => {
       {isSidebarOpen && <WorkOrderGroupList />}
 
       {/* Main Details Form Pane */}
-      <DailyReportDetailPane />
+      {selectedPhCatInfo ? <PreHandoverDetailPane /> : <DailyReportDetailPane />}
 
       {/* Analog Time Picker Modal Overlay */}
       {timePickerTarget && (

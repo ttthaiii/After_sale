@@ -335,7 +335,60 @@ const WorkOrderCard = ({
 
                     {/* Categories & Tasks */}
                     <div style={{ padding: '1.5rem', background: '#fcfcfd' }}>
-                        {wo.categories.map(cat => {
+                        {wo.type === 'PreHandover' ? (
+                            /* PreHandover: Documents + Category Summary (no individual tasks) */
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                {/* Documents */}
+                                {((wo as any).documents?.length || 0) > 0 && (
+                                    <div>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <FileText size={14} color="#3b82f6" /> เอกสารแนบ ({(wo as any).documents.length} ไฟล์)
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {(wo as any).documents.map((doc: any, i: number) => (
+                                                <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer"
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}
+                                                >
+                                                    <FileText size={14} style={{ flexShrink: 0 }} />
+                                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</span>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* SLA badge */}
+                                {(wo as any).phEstimatedSla && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                        <Clock size={14} color="#6366f1" />
+                                        <span style={{ color: '#475569' }}>กำหนดแล้วเสร็จ:</span>
+                                        <span style={{ fontWeight: 700, color: '#4f46e5' }}>{(wo as any).phEstimatedSla}</span>
+                                    </div>
+                                )}
+                                {/* Category summary table */}
+                                <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>หมวดงาน</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textAlign: 'center' }}>จุดที่พบ</span>
+                                    </div>
+                                    {wo.categories.map((cat, i) => (
+                                        <div key={cat.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', padding: '10px 16px', borderBottom: i === wo.categories.length - 1 ? 'none' : '1px solid #f8fafc', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>{cat.name}</span>
+                                            <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '0.9rem', color: (cat as any).defectCount > 0 ? '#92400e' : '#94a3b8' }}>
+                                                {(cat as any).defectCount ?? 0}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {wo.categories.length > 0 && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', padding: '8px 16px', background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>รวม {wo.categories.length} หมวด</span>
+                                            <span style={{ textAlign: 'center', fontWeight: 800, color: '#1e293b' }}>
+                                                {wo.categories.reduce((s, c) => s + ((c as any).defectCount || 0), 0)} จุด
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : wo.categories.map(cat => {
                             const isExpanded = expandedCats[cat.id];
                             return (
                                 <div key={cat.id} style={{ marginBottom: '1.25rem' }}>

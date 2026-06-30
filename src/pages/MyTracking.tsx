@@ -43,11 +43,13 @@ const MyTracking = () => {
         }
     };
 
-    // New Filter Logic
+    const matchesUser = (id: string) => id === user?.id || (user?.employeeId && id === user.employeeId);
+
+    // AfterSale (WOA) filter
     const filteredOrders = workOrders
         .filter(wo => {
+            if ((wo as any).type === 'PreHandover') return false; // handled separately
             const allTasks = wo.categories.flatMap(c => c.tasks);
-            const matchesUser = (id: string) => id === user?.id || (user?.employeeId && id === user.employeeId);
 
             const isReporter = matchesUser(wo.reporterId || '');
             const isContributor = allTasks.some(t => t.responsibleStaffIds?.some(id => matchesUser(id)));
@@ -60,14 +62,26 @@ const MyTracking = () => {
             const isInHistory = isCompleted || isArchived;
 
             if (activeTab === 'History') {
-                // History: Show if I reported it OR if I contributed to it, AND it's finished or archived
                 return isInHistory && (isReporter || isContributor);
             } else {
-                // Active Tab: Only Evaluating and Rejected reported by me, OR my active assigned tasks
-                // Note: Rejected jobs stay here until archived by the foreman.
                 const isMyActiveRequest = isReporter && !isInHistory && (wo.status === 'Evaluating' || wo.status === 'Rejected');
                 return isMyActiveRequest;
             }
+        })
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // PreHandover (WOP) filter — categories assigned to me
+    const filteredPhOrders = workOrders
+        .filter(wo => {
+            if ((wo as any).type !== 'PreHandover') return false;
+            const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
+            if (!matchesProject) return false;
+            const myCategories = wo.categories.filter((c: any) => c.assignedForemanId && matchesUser(c.assignedForemanId));
+            if (myCategories.length === 0) return false;
+            const allMyDone = myCategories.every((c: any) => (c.dailyProgress || 0) >= 100);
+            const isArchived = wo.isArchived === true;
+            if (activeTab === 'History') return allMyDone || isArchived;
+            return !allMyDone && !isArchived;
         })
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -547,6 +561,79 @@ const MyTracking = () => {
                     })
                 )}
             </div>
+
+            {/* ─── PreHandover (WOP) Section ─── */}
+            {filteredPhOrders.length > 0 && (
+                <div style={{ marginTop: '2rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}>
+                        <div style={{ width: '4px', height: '24px', background: 'linear-gradient(135deg, #0d9488, #059669)', borderRadius: '2px' }} />
+                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>
+                            งานตรวจรับก่อนโอน (PreHandover)
+                        </h3>
+                        <span style={{ background: '#f0fdfa', color: '#0d9488', border: '1px solid #99f6e4', borderRadius: '20px', padding: '2px 10px', fontSize: '0.75rem', fontWeight: 800 }}>
+                            {filteredPhOrders.length} งาน
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {filteredPhOrders.map(wo => {
+                            const project = projects.find(p => p.id === wo.projectId);
+                            const myCategories = wo.categories.filter((c: any) => c.assignedForemanId && matchesUser(c.assignedForemanId));
+                            const overallProgress = myCategories.length > 0
+                                ? Math.round(myCategories.reduce((sum: number, c: any) => sum + (c.dailyProgress || 0), 0) / myCategories.length)
+                                : 0;
+                            return (
+                                <div key={wo.id} style={{
+                                    background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0',
+                                    padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, background: '#f0fdfa', color: '#0d9488', border: '1px solid #99f6e4', padding: '2px 8px', borderRadius: '8px' }}>
+                                                    ก่อนโอน
+                                                </span>
+                                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>{wo.id}</span>
+                                            </div>
+                                            <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>
+                                                {project?.name || wo.projectId}
+                                            </div>
+                                            {wo.locationName && (
+                                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>{wo.locationName}</div>
+                                            )}
+                                        </div>
+                                        <div style={{ textAlign: 'right' }}>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: overallProgress >= 100 ? '#059669' : '#0d9488' }}>
+                                                {overallProgress}%
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>ความคืบหน้ารวม</div>
+                                        </div>
+                                    </div>
+                                    {/* Category rows */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {myCategories.map((cat: any) => {
+                                            const prog = cat.dailyProgress || 0;
+                                            return (
+                                                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <div style={{ flex: 1, fontSize: '0.82rem', fontWeight: 700, color: '#334155', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {cat.name}
+                                                    </div>
+                                                    <div style={{ width: '120px', height: '6px', background: '#e2e8f0', borderRadius: '4px', flexShrink: 0, overflow: 'hidden' }}>
+                                                        <div style={{ width: `${prog}%`, height: '100%', background: prog >= 100 ? '#10b981' : '#0d9488', borderRadius: '4px', transition: 'width 0.3s' }} />
+                                                    </div>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: prog >= 100 ? '#059669' : '#0d9488', minWidth: '36px', textAlign: 'right' }}>
+                                                        {prog}%
+                                                    </span>
+                                                    {prog >= 100 && <CheckCircle2 size={14} color="#10b981" />}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {selectedOrder && (
                 <ForemanReportModal

@@ -145,6 +145,10 @@ interface DailyReportContextType {
   // PreHandover Detail Pane
   selectedPhCatInfo: { wo: any; cat: any } | null;
   setSelectedPhCatInfo: React.Dispatch<React.SetStateAction<{ wo: any; cat: any } | null>>;
+  selectPhCatInfo: (info: { wo: any; cat: any } | null) => void;
+  hasPhUnsavedChanges: boolean;
+  showPhSummaryModal: boolean;
+  setShowPhSummaryModal: React.Dispatch<React.SetStateAction<boolean>>;
   phDailyHistory: any[];
   phProgressBounds: { min: number; max: number; isToday: boolean };
   submitPhDailyReport: (noteType?: string) => Promise<void>;
@@ -186,6 +190,7 @@ interface DailyReportContextType {
   
   // Inner Helper Logic States (Cleaned to correct signatures & formats)
   toggleShift: (laborId: string, shiftKey: keyof ShiftConfig) => void;
+  togglePhShift: (laborId: string, shiftKey: keyof ShiftConfig) => void;
   getDateStatus: (dateStr: string, task: WorkTask, wo: WorkOrder) => "disabled" | "reported" | "unlocked" | "locked";
   isProgressNotePhotosEditable: boolean;
   hasHistoryForSelectedDate: boolean;
@@ -1089,7 +1094,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     // 2. If clicking a DIFFERENT task and there are unsaved changes, ask for confirmation
-    if (hasUnsavedChanges) {
+    if (hasUnsavedChanges || hasPhUnsavedChanges) {
       const confirmLeave = window.confirm(
         "คุณมีข้อมูลรายงานความคืบหน้าที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนงาน ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนงานหรือไม่?"
       );
@@ -1413,6 +1418,33 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           shiftTimes: newShiftTimes,
           leave: leaveObj,
         };
+      }),
+    );
+  };
+
+  // WOP variant: uses isPhEditable guard (not isEditingExisting) — allows toggling on new reports
+  const togglePhShift = (id: string, shiftKey: keyof ShiftConfig) => {
+    const isPhEditable = !isPhExistingReport || isPhEditingExisting;
+    if (!isPhEditable) return;
+    setLabor((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        const currentShifts = l.shifts || { normal: false, otMorning: false, otNoon: false, otEvening: false };
+        const isActive = !currentShifts[shiftKey];
+        let newShiftTimes = { ...(l.shiftTimes || {}) };
+        if (isActive && l.membership === 'Internal') {
+          if (shiftKey === 'otMorning' && !newShiftTimes.otMorning) newShiftTimes.otMorning = '06:00 - 08:00';
+          if (shiftKey === 'otNoon'    && !newShiftTimes.otNoon)    newShiftTimes.otNoon    = '12:00 - 13:00';
+          if (shiftKey === 'otEvening' && !newShiftTimes.otEvening) newShiftTimes.otEvening = '18:00 - 21:00';
+        }
+        let updatedShifts = { ...currentShifts, [shiftKey]: isActive };
+        if (shiftKey === 'normal' && !isActive) {
+          // Uncheck normal → also uncheck all OT
+          updatedShifts.otMorning = false;
+          updatedShifts.otNoon    = false;
+          updatedShifts.otEvening = false;
+        }
+        return { ...l, shifts: updatedShifts, shiftTimes: newShiftTimes };
       }),
     );
   };
@@ -2411,6 +2443,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [phDailyHistory, setPhDailyHistory] = useState<any[]>([]);
   const [phDraftedDates, setPhDraftedDates] = useState<Set<string>>(new Set());
   const [isPhEditingExisting, setIsPhEditingExisting] = useState(false);
+  const [showPhSummaryModal, setShowPhSummaryModal] = useState(false);
 
   // Reset form + load history when category changes
   useEffect(() => {
@@ -2427,27 +2460,37 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setReportDate(todayTH());
     const { wo, cat } = selectedPhCatInfo;
     const phRev = cat.currentRevision || 'rev00';
-    getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports')).then(async snap => {
+    const phTaskId = cat.id;
+    const phSubtaskId = cat.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
+    // Primary: new WOA-matching path tasks/{id}/subtasks/{id}/revisions/{rev}/dailyReports
+    getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReports')).then(async snap => {
       if (snap.size > 0) {
         const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
           .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
         setPhDailyHistory(hist);
       } else {
-        // Fallback 1: intermediate path phRevisions/rev00/phDailyReports (before collection rename)
-        const phRev2 = cat.currentRevision || 'rev00';
-        const midSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phRevisions', phRev2, 'phDailyReports'));
-        if (midSnap.size > 0) {
-          const hist = midSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-            .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
-          setPhDailyHistory(hist);
-        } else if (!cat.currentRevision) {
-          // Fallback 2: original flat path phDailyReports (before revision layer)
-          const flatSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports'));
-          const hist = flatSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        // Fallback 1: old revisions/{rev}/dailyReports (before task layer)
+        const oldSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports'));
+        if (oldSnap.size > 0) {
+          const hist = oldSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
           setPhDailyHistory(hist);
         } else {
-          setPhDailyHistory([]);
+          // Fallback 2: intermediate phRevisions/rev00/phDailyReports (before collection rename)
+          const midSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phRevisions', phRev, 'phDailyReports'));
+          if (midSnap.size > 0) {
+            const hist = midSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+              .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+            setPhDailyHistory(hist);
+          } else if (!cat.currentRevision) {
+            // Fallback 3: original flat path phDailyReports
+            const flatSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports'));
+            const hist = flatSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+              .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+            setPhDailyHistory(hist);
+          } else {
+            setPhDailyHistory([]);
+          }
         }
       }
     });
@@ -2460,14 +2503,17 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsPhEditingExisting(false);
     const { wo, cat } = selectedPhCatInfo;
     const phRev = cat.currentRevision || 'rev00';
-    getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports', reportDate)).then(async snap => {
+    const phTaskId = cat.id;
+    const phSubtaskId = cat.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
+    // Primary: new WOA-matching path
+    getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReports', reportDate)).then(async snap => {
       // Collect all candidate docs from every legacy path, pick the richest one
-      const phRev2 = cat.currentRevision || 'rev00';
-      const [midSnap2, flatSnap2] = await Promise.all([
-        snap.exists() ? Promise.resolve(null) : getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phRevisions', phRev2, 'phDailyReports', reportDate)),
+      const [oldSnap, midSnap2, flatSnap2] = await Promise.all([
+        snap.exists() ? Promise.resolve(null) : getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports', reportDate)),
+        snap.exists() ? Promise.resolve(null) : getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phRevisions', phRev, 'phDailyReports', reportDate)),
         snap.exists() ? Promise.resolve(null) : getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phDailyReports', reportDate)),
       ]);
-      const candidates = [snap, midSnap2, flatSnap2].filter(s => s?.exists());
+      const candidates = [snap, oldSnap, midSnap2, flatSnap2].filter(s => s?.exists());
       // Prefer doc with labor data, then highest progress
       const resolvedSnap = candidates.sort((a, b) => {
         const aData = a!.data() as any;
@@ -2483,25 +2529,26 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
         setNote(d.note || '');
         setLabor(d.labor || []);
-        setSitePhotos(d.sitePhotos || []);
-        setLaborRegularPhotos(d.laborPhotos?.regular || []);
-        setLaborOtMorningPhotos(d.laborPhotos?.otMorning || []);
-        setLaborOtNoonPhotos(d.laborPhotos?.otNoon || []);
-        setLaborOtEveningPhotos(d.laborPhotos?.otEvening || []);
+        // Support both new format (photos.site/laborByShift) and legacy (sitePhotos/laborPhotos)
+        setSitePhotos(d.photos?.site || d.sitePhotos || []);
+        setLaborRegularPhotos(d.photos?.laborByShift?.regular || d.laborPhotos?.regular || []);
+        setLaborOtMorningPhotos(d.photos?.laborByShift?.otMorning || d.laborPhotos?.otMorning || []);
+        setLaborOtNoonPhotos(d.photos?.laborByShift?.otNoon || d.laborPhotos?.otNoon || []);
+        setLaborOtEveningPhotos(d.photos?.laborByShift?.otEvening || d.laborPhotos?.otEvening || []);
         setIsPhEditingExisting(false);
       } else {
         // No main report — check for draft
-        getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReportsDraft', reportDate)).then(draftSnap => {
+        getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReportsDraft', reportDate)).then(draftSnap => {
           if (draftSnap.exists()) {
             const d = draftSnap.data();
             setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
             setNote(d.note || '');
             setLabor(d.labor || []);
-            setSitePhotos(d.sitePhotos || []);
-            setLaborRegularPhotos(d.laborPhotos?.regular || []);
-            setLaborOtMorningPhotos(d.laborPhotos?.otMorning || []);
-            setLaborOtNoonPhotos(d.laborPhotos?.otNoon || []);
-            setLaborOtEveningPhotos(d.laborPhotos?.otEvening || []);
+            setSitePhotos(d.photos?.site || d.sitePhotos || []);
+            setLaborRegularPhotos(d.photos?.laborByShift?.regular || d.laborPhotos?.regular || []);
+            setLaborOtMorningPhotos(d.photos?.laborByShift?.otMorning || d.laborPhotos?.otMorning || []);
+            setLaborOtNoonPhotos(d.photos?.laborByShift?.otNoon || d.laborPhotos?.otNoon || []);
+            setLaborOtEveningPhotos(d.photos?.laborByShift?.otEvening || d.laborPhotos?.otEvening || []);
             setPhDraftedDates(prev => new Set([...prev, reportDate]));
             setIsPhEditingExisting(true); // draft = new report in progress
           } else {
@@ -2567,14 +2614,49 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     });
     const isToday = targetDate === todayTH();
-    // For today: min is at least the current category dailyProgress
-    if (isToday) {
+    // For today on a NEW report: min is at least the current category dailyProgress
+    // Skip this floor when editing existing (the existing report IS today's progress)
+    if (isToday && !isPhEditingExisting) {
       const catProgress = selectedPhCatInfo.cat.dailyProgress || 0;
       if (catProgress > min) min = catProgress;
     }
     const effectiveMax = isToday ? 100 : Math.min(max, 99);
     return { min, max: effectiveMax, isToday };
   }, [selectedPhCatInfo, phDailyHistory, reportDate]);
+
+  // WOP unsaved changes — after isPhExistingReport + isPhEditingExisting to avoid TDZ
+  const hasPhUnsavedChanges = useMemo(() => {
+    if (!selectedPhCatInfo) return false;
+    const isPhEditable = !isPhExistingReport || isPhEditingExisting;
+    if (!isPhEditable) return false;
+    const laborChanged    = labor.length > 0;
+    const noteChanged     = note.trim() !== '';
+    const photosChanged   = sitePhotos.length > 0 || laborRegularPhotos.length > 0 ||
+      laborOtMorningPhotos.length > 0 || laborOtNoonPhotos.length > 0 || laborOtEveningPhotos.length > 0;
+    const progressChanged = progress !== (selectedPhCatInfo.cat.dailyProgress || 0);
+    return laborChanged || noteChanged || photosChanged || progressChanged;
+  }, [
+    selectedPhCatInfo, isPhExistingReport, isPhEditingExisting,
+    labor, note, progress, sitePhotos,
+    laborRegularPhotos, laborOtMorningPhotos, laborOtNoonPhotos, laborOtEveningPhotos,
+  ]);
+
+  // WOP beforeunload
+  useEffect(() => {
+    if (!hasPhUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "คุณมีข้อมูลรายงานความคืบหน้าที่ยังไม่ได้บันทึกค้างอยู่ หากออกจากหน้านี้ ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasPhUnsavedChanges]);
+
+  // WOP Sidebar intercept — set window global when WOP form is dirty
+  useEffect(() => {
+    if (hasPhUnsavedChanges) (window as any).hasUnsavedChanges = true;
+  }, [hasPhUnsavedChanges]);
 
   const submitPhRetroactiveRequest = async (): Promise<void> => {
     if (!selectedPhCatInfo) return;
@@ -2654,37 +2736,72 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           amount: l.amount || 1,
           recordedBy: l.recordedBy || foremanEmpId,
         }));
+      const phTaskId = cat.id;
+      const phSubtaskId = cat.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
       const payload = {
+        id: reportDate,
         date: reportDate,
         progress,
         note,
-        noteType: noteType || 'Normal',
+        type: noteType || 'Normal',
         labor: laborPayload,
-        sitePhotos: sitePhotos.filter(Boolean),
-        laborPhotos: {
-          regular: laborRegularPhotos.filter(Boolean),
-          otMorning: laborOtMorningPhotos.filter(Boolean),
-          otNoon: laborOtNoonPhotos.filter(Boolean),
-          otEvening: laborOtEveningPhotos.filter(Boolean),
+        photos: {
+          site: sitePhotos.filter(Boolean),
+          laborByShift: {
+            regular: laborRegularPhotos.filter(Boolean),
+            otMorning: laborOtMorningPhotos.filter(Boolean),
+            otNoon: laborOtNoonPhotos.filter(Boolean),
+            otEvening: laborOtEveningPhotos.filter(Boolean),
+          },
         },
-        submittedBy: user?.name || 'ไม่ระบุ',
-        submittedBy_id: foremanEmpId,
-        submittedAt: new Date().toISOString(),
+        createdBy: foremanEmpId,
+        createdAt: new Date().toISOString(),
+        updatedBy: foremanEmpId,
+        updatedAt: new Date().toISOString(),
+        revisionId: phRev,
+        revisionName: phRev === 'rev00' ? 'Initial Revision' : `Revision ${phRev}`,
+        status: 'submitted',
       };
-      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports', reportDate), payload);
-      await updateDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id), {
-        dailyProgress: progress,
-        lastProgressUpdate: new Date().toISOString(),
-      });
+      const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId);
+      const subtaskRef = doc(taskRef, 'subtasks', phSubtaskId);
+      const progressUpdate = { dailyProgress: progress, lastProgressUpdate: new Date().toISOString() };
+      await setDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReports', reportDate), payload);
+      await Promise.all([
+        updateDoc(subtaskRef, progressUpdate),
+        updateDoc(taskRef, progressUpdate),
+      ]);
       // Delete draft if exists
       try {
-        await deleteDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReportsDraft', reportDate));
+        await deleteDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReportsDraft', reportDate));
         setPhDraftedDates(prev => { const n = new Set(prev); n.delete(reportDate); return n; });
       } catch (_) {}
-      const snap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReports'));
+      const snap = await getDocs(collection(subtaskRef, 'revisions', phRev, 'dailyReports'));
       const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
       setPhDailyHistory(hist);
+      // ── Post-submit success (mirrors WOA flow) ──
+      setShowPhSummaryModal(false);
+      alert('บันทึกรายงานเรียบร้อยแล้ว');
+      if (!isPhEditingExisting) {
+        // New report: full reset + close pane (same as WOA setSelectedTaskInfo(null))
+        setSelectedPhCatInfo(null);
+        setProgress(0);
+        setNote('');
+        setLabor([]);
+        setSitePhotos([]);
+        setLaborRegularPhotos([]);
+        setLaborOtMorningPhotos([]);
+        setLaborOtNoonPhotos([]);
+        setLaborOtEveningPhotos([]);
+        setReportDate(todayTH());
+      } else {
+        // Editing: just exit edit mode
+        setIsPhEditingExisting(false);
+      }
+    } catch (err) {
+      setShowPhSummaryModal(false);
+      alert('บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      console.error('submitPhDailyReport failed:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -2696,23 +2813,27 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const { wo, cat } = selectedPhCatInfo;
       const phRev = cat.currentRevision || 'rev00';
+      const phTaskId = cat.id;
+      const phSubtaskId = cat.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
       const draftPayload = {
         progress,
         note,
         labor,
         reportDate,
         isDraft: true,
-        sitePhotos: sitePhotos.filter(Boolean),
-        laborPhotos: {
-          regular: laborRegularPhotos.filter(Boolean),
-          otMorning: laborOtMorningPhotos.filter(Boolean),
-          otNoon: laborOtNoonPhotos.filter(Boolean),
-          otEvening: laborOtEveningPhotos.filter(Boolean),
+        photos: {
+          site: sitePhotos.filter(Boolean),
+          laborByShift: {
+            regular: laborRegularPhotos.filter(Boolean),
+            otMorning: laborOtMorningPhotos.filter(Boolean),
+            otNoon: laborOtNoonPhotos.filter(Boolean),
+            otEvening: laborOtEveningPhotos.filter(Boolean),
+          },
         },
         updatedAt: new Date().toISOString(),
         updatedBy: user?.employeeId || user?.id || '',
       };
-      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'revisions', phRev, 'dailyReportsDraft', reportDate), draftPayload);
+      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReportsDraft', reportDate), draftPayload);
       setPhDraftedDates(prev => new Set([...prev, reportDate]));
       alert('บันทึกแบบร่างเรียบร้อยแล้ว');
     } catch (err) {
@@ -2828,6 +2949,18 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         updatePhCategoryProgress,
         selectedPhCatInfo,
         setSelectedPhCatInfo,
+        selectPhCatInfo: (info: { wo: any; cat: any } | null) => {
+          if (hasPhUnsavedChanges && info?.cat?.id !== selectedPhCatInfo?.cat?.id) {
+            const ok = window.confirm(
+              'คุณมีข้อมูลรายงานที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนหมวดงาน ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนหมวดงานหรือไม่?'
+            );
+            if (!ok) return;
+          }
+          setSelectedPhCatInfo(info);
+        },
+        hasPhUnsavedChanges,
+        showPhSummaryModal,
+        setShowPhSummaryModal,
         phDailyHistory,
         phProgressBounds,
         submitPhDailyReport,
@@ -2866,6 +2999,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         handleDateChange,
         
         toggleShift,
+        togglePhShift,
         getDateStatus,
         isProgressNotePhotosEditable,
         hasHistoryForSelectedDate,

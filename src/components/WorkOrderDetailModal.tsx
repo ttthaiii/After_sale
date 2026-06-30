@@ -1,4 +1,4 @@
-import { FileText, User, Phone, Clock, Star, Sparkles } from 'lucide-react';
+import { FileText, User, Phone, Clock, Star, Sparkles, Users } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import WorkOrderCard from './WorkOrderCard';
 import { useWorkOrders } from '../context/WorkOrderContext';
@@ -11,6 +11,7 @@ interface WorkOrderDetailModalProps {
     wo: WorkOrder;
     onTaskClick: (task: MasterTask, categoryId: string, workOrderId: string, categoryName?: string) => void;
     taskDecisions?: Record<string, 'Approved' | 'Assigned' | 'Rejected'>;
+    onPreHandoverAssign?: () => void;
 }
 
 const WorkOrderDetailModal = ({
@@ -18,7 +19,8 @@ const WorkOrderDetailModal = ({
     onClose,
     wo,
     onTaskClick,
-    taskDecisions
+    taskDecisions,
+    onPreHandoverAssign
 }: WorkOrderDetailModalProps) => {
     const { staff } = useWorkOrders();
 
@@ -312,6 +314,28 @@ const WorkOrderDetailModal = ({
                         );
                     })()}
                 </div>
+
+                {/* Footer: PreHandover assign button */}
+                {wo.type === 'PreHandover' && wo.status === 'Evaluating' && onPreHandoverAssign && (
+                    <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                            onClick={onPreHandoverAssign}
+                            style={{
+                                padding: '12px 28px', borderRadius: '12px', fontWeight: 800, fontSize: '0.95rem',
+                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                color: '#ffffff', border: 'none', cursor: 'pointer',
+                                boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(16,185,129,0.4)'; }}
+                            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(16,185,129,0.3)'; }}
+                        >
+                            <Users size={16} />
+                            อนุมัติ &amp; มอบหมายงาน
+                        </button>
+                    </div>
+                )}
             </div>
         </div >
     );

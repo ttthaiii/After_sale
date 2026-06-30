@@ -39,16 +39,26 @@ const History = () => {
     const baseHistoryWorkOrders = useMemo(() => {
         return workOrders.filter(wo => {
             const isOfficiallyFinished = wo.status === 'Completed' || wo.status === 'Verified' || wo.status === 'Rejected' || wo.status === 'Cancelled' || wo.isArchived;
+            // PreHandover WOs: show if any category has been worked on (dailyProgress > 0) or WO finished
+            if ((wo as any).type === 'PreHandover') {
+                const hasProgress = wo.categories.some((c: any) => (c.dailyProgress || 0) > 0);
+                if (currentRole === 'Foreman') {
+                    const matchesUser = (id: string) => id === CURRENT_USER_ID || (user?.employeeId && id === user.employeeId);
+                    const isMyCategory = wo.categories.some((c: any) => c.assignedForemanId && matchesUser(c.assignedForemanId));
+                    return isMyCategory && (hasProgress || isOfficiallyFinished);
+                }
+                return hasProgress || isOfficiallyFinished;
+            }
             if (currentRole === 'Foreman') {
                 const matchesUser = (id: string) => id === CURRENT_USER_ID || (user?.employeeId && id === user.employeeId);
-                
+
                 const hasTaskAssigned = wo.categories.some(cat =>
-                    cat.tasks.some(task => 
+                    cat.tasks.some(task =>
                         task.responsibleStaffIds?.some(id => matchesUser(id))
                     )
                 );
                 const isReporter = matchesUser(wo.reporterId || '');
-                
+
                 return isOfficiallyFinished || hasTaskAssigned || isReporter;
             } else {
                 // Admin/Approver: show finished WOs + in-progress WOs that have at least one foreman assigned

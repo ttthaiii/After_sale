@@ -87,6 +87,7 @@ export const WorkOrderGroupList: React.FC = () => {
     pendingDeliveryWorkOrders: rawPendingDeliveryWorkOrders,
     preHandoverWorkOrders,
     setSelectedPhCatInfo,
+    selectPhCatInfo,
     selectedPhCatInfo,
     setSelectedTaskInfo,
     handleSelectTask,
@@ -942,7 +943,7 @@ export const WorkOrderGroupList: React.FC = () => {
             newTasks.length === 0 &&
             inProgressTasks.length === 0 &&
             pendingInspectionTasks.length === 0 &&
-            preHandoverWorkOrders.length === 0 ? (
+            (activeTab !== 'internal' || preHandoverWorkOrders.length === 0) ? (
                <div
                 style={{
                   textAlign: "center",
@@ -964,7 +965,7 @@ export const WorkOrderGroupList: React.FC = () => {
             ) : (
                <Fragment>
                 {/* ─── PreHandover Section ─── */}
-                {preHandoverWorkOrders.length > 0 && (
+                {activeTab === 'internal' && preHandoverWorkOrders.length > 0 && (
                   <div style={{ marginBottom: '1.5rem' }}>
                     <h3 style={{
                       fontSize: '0.8rem', fontWeight: 800, color: '#0d9488',
@@ -992,34 +993,42 @@ export const WorkOrderGroupList: React.FC = () => {
                       const allDone = assignedCategories.every((cat: any) => (cat.dailyProgress || 0) >= 100);
                       return (
                         <div key={wo.id} style={{
-                          borderRadius: '16px', border: '1px solid #99f6e4',
-                          background: '#f0fdfa', marginBottom: '12px', overflow: 'hidden',
+                          background: '#fff',
+                          border: wo.status === 'Rejected' ? '2px solid #fca5a5' : '2px solid #99f6e4',
+                          borderRadius: '20px',
+                          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                          overflow: 'hidden',
+                          marginBottom: '10px',
+                          transition: 'all 0.2s',
                         }}>
                           {/* WO header */}
                           <div
                             onClick={() => setCollapsedPhWos(prev => ({ ...prev, [wo.id]: !prev[wo.id] }))}
                             style={{
-                              padding: '10px 14px', display: 'flex', alignItems: 'center',
-                              justifyContent: 'space-between', cursor: 'pointer',
-                              background: allDone ? '#ccfbf1' : '#f0fdfa',
-                              borderBottom: woCollapsed ? 'none' : '1px solid #99f6e4',
+                              background: wo.status === 'Rejected'
+                                ? 'linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%)'
+                                : allDone
+                                  ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)'
+                                  : 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)',
+                              padding: '14px 16px',
+                              borderBottom: woCollapsed ? 'none' : (wo.status === 'Rejected' ? '1px solid #fca5a5' : '1px solid #99f6e4'),
+                              display: 'flex', flexDirection: 'column', gap: '6px', cursor: 'pointer',
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a' }}>
+                                {wo.id}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{
-                                  fontSize: '0.65rem', fontWeight: 800, color: '#0f766e',
-                                  background: '#ccfbf1', padding: '2px 6px', borderRadius: '4px',
-                                  textTransform: 'uppercase',
+                                  fontSize: '0.62rem', fontWeight: 900,
+                                  color: wo.status === 'Completed' ? '#059669' : wo.status === 'Rejected' ? '#dc2626' : allDone ? '#059669' : '#0891b2',
+                                  background: wo.status === 'Completed' ? '#d1fae5' : wo.status === 'Rejected' ? '#fee2e2' : allDone ? '#d1fae5' : '#cffafe',
+                                  padding: '2px 6px', borderRadius: '4px',
+                                  display: 'inline-flex', alignItems: 'center', gap: '2px',
                                 }}>
-                                  {wo.id}
+                                  {wo.status === 'Completed' ? '✓ เสร็จสมบูรณ์' : wo.status === 'Rejected' ? '⚠️ รอแก้ไข' : allDone ? '✓ ครบ 100%' : `${assignedCategories.length} หมวด`}
                                 </span>
-                                {allDone && (
-                                  <span style={{
-                                    fontSize: '0.62rem', fontWeight: 800, color: '#059669',
-                                    background: '#d1fae5', padding: '2px 6px', borderRadius: '4px',
-                                  }}>✓ ครบ 100%</span>
-                                )}
                                 {(() => {
                                   const isPhWoOwner = assignedCategories.some(
                                     (cat: any) => cat.assignedForemanId === user?.employeeId || cat.assignedForemanId === user?.id
@@ -1049,23 +1058,38 @@ export const WorkOrderGroupList: React.FC = () => {
                                         background: canShowQr ? 'linear-gradient(135deg, #0d9488 0%, #059669 100%)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
                                         border: 'none', padding: '3px 8px', borderRadius: '6px',
                                         cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)', transition: 'all 0.2s',
                                       }}
+                                      onMouseOver={(el) => (el.currentTarget.style.transform = 'scale(1.05)')}
+                                      onMouseOut={(el) => (el.currentTarget.style.transform = 'scale(1)')}
                                     >
-                                      📱 {canShowQr ? 'ดู QR ส่งมอบ' : 'สร้าง QR ส่งมอบ'}
+                                      <QrCode size={10} /> {canShowQr ? 'ดู QR ส่งมอบ' : 'สร้าง QR ส่งมอบ'}
                                     </button>
                                   );
                                 })()}
-                              </div>
-                              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#134e4a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {wo.locationName || project?.name || '—'}
-                              </div>
-                              <div style={{ fontSize: '0.7rem', color: daysLeft < 0 ? '#ef4444' : daysLeft <= 3 ? '#f59e0b' : '#5eead4', marginTop: '1px' }}>
-                                ครบ: {slaLabel} ({daysLabel}) · {assignedCategories.length} หมวด
+                                <div style={{ color: '#475569', flexShrink: 0 }}>
+                                  {woCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                                </div>
                               </div>
                             </div>
-                            <div style={{ color: '#0d9488', flexShrink: 0, marginLeft: '8px' }}>
-                              {woCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              📍 {wo.locationName || project?.name || '—'}
+                            </div>
+                            <div style={{ marginTop: '2px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#475569' }}>
+                                กำหนดครบ:
+                                <span style={{ marginLeft: '4px', fontWeight: 800, color: daysLeft < 0 ? '#dc2626' : daysLeft <= 3 ? '#d97706' : '#0f172a' }}>
+                                  {slaLabel}
+                                </span>
+                              </span>
+                              <span style={{
+                                fontSize: '0.7rem', fontWeight: 700, padding: '1px 8px', borderRadius: '20px',
+                                color: daysLeft < 0 ? '#dc2626' : daysLeft <= 3 ? '#d97706' : '#059669',
+                                background: daysLeft < 0 ? '#fee2e2' : daysLeft <= 3 ? '#fef3c7' : '#d1fae5',
+                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                              }}>
+                                {daysLeft < 0 ? '⏰' : daysLeft <= 3 ? '⚠️' : '✓'} {daysLabel}
+                              </span>
                             </div>
                           </div>
 
@@ -1085,7 +1109,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                         setModalAlert({ isOpen: true, title: 'รอแอดมินมอบหมายรอบใหม่', message: 'ใบงานนี้ถูกลูกค้าปฏิเสธ — รอแอดมินอนุมัติรอบการแก้ไขก่อนจึงจะเริ่มงานได้', type: 'warning' });
                                         return;
                                       }
-                                      setSelectedPhCatInfo({ wo, cat }); setSelectedTaskInfo(null);
+                                      selectPhCatInfo({ wo, cat }); setSelectedTaskInfo(null);
                                     }}
                                     style={{
                                       borderRadius: '12px', background: isSelected ? '#f0fdfa' : '#fff',

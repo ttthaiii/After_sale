@@ -926,6 +926,7 @@ const Dashboard = () => {
     const [selectedForemanId, setSelectedForemanId] = useState<string | null>(null);
     const [taskCatFilter, setTaskCatFilter] = useState<string>('');
     const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
+    const [taskWoTypeFilter, setTaskWoTypeFilter] = useState<string>('');
 
     const activeForemen = useMemo(() => {
         const foremanIdsWithWork = new Set<string>();
@@ -1169,8 +1170,10 @@ const Dashboard = () => {
                 return show;
             });
         }
+        if (taskWoTypeFilter === 'wop') base = base.filter((wo: any) => wo.workOrderCode === 'WOP' || (wo as any).type === 'PreHandover');
+        if (taskWoTypeFilter === 'woa') base = base.filter((wo: any) => wo.workOrderCode !== 'WOP' && (wo as any).type !== 'PreHandover');
         return base;
-    }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters]);
+    }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters, taskWoTypeFilter]);
 
     // ✅ Phase 1: Flat-map tasks for Task-Centric Dashboard
     const flatTasks = useMemo(() => {
@@ -2423,26 +2426,27 @@ const Dashboard = () => {
                         display: 'flex',
                         flexDirection: 'column',
                         background: '#ffffff',
-                        padding: '20px 24px',
+                        padding: '14px 18px',
                         borderRadius: '32px',
                         border: '1px solid #e2e8f0',
                         boxShadow: '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
-                        gap: '10px',
+                        gap: '4px',
                         justifyContent: 'center',
                         width: isAdminOrManager ? '280px' : '260px',
-                        height: '128px',
+                        height: 'auto',
                         transition: 'all 0.3s ease',
                         opacity: (isAdminOrManager && adminActiveTab === 'comparison') ? 0.4 : 1,
                         pointerEvents: (isAdminOrManager && adminActiveTab === 'comparison') ? 'none' : 'auto',
                     }}>
                         {/* Clear Data Button (Top) */}
                         <button
-                            disabled={!selectedForemanId && !selectedSCurveProject && !highlightedWOId && selectedWeek === 0}
+                            disabled={!selectedForemanId && !selectedSCurveProject && !highlightedWOId && selectedWeek === 0 && !taskWoTypeFilter}
                             onClick={() => {
                                 setSelectedForemanId(null);
                                 setSelectedSCurveProject('');
                                 setHighlightedWOId(null);
                                 setSelectedWeek(0);
+                                setTaskWoTypeFilter('');
                                 const d = new Date();
                                 const currentMonth = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
                                 setSelectedMonth(currentMonth);
@@ -2469,14 +2473,14 @@ const Dashboard = () => {
 
                         {isAdminOrManager && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '95px' }}>
-                                    <Users size={16} color="#4f46e5" />
-                                    <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b' }}>โฟร์แมน:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '80px' }}>
+                                    <Users size={14} color="#4f46e5" />
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>โฟร์แมน:</span>
                                 </div>
                                 <select
                                     value={selectedForemanId || ''}
                                     onChange={(e) => setSelectedForemanId(e.target.value || null)}
-                                    style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.85rem', fontWeight: 800, color: selectedForemanId ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1, width: '100%' }}
+                                    style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: selectedForemanId ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1, width: '100%' }}
                                 >
                                     <option value="">เลือกพนักงาน</option>
                                     {activeForemen.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -2485,20 +2489,35 @@ const Dashboard = () => {
                         )}
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '95px' }}>
-                                <Activity size={16} color="#4f46e5" />
-                                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b' }}>โครงการ:</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '80px' }}>
+                                <Activity size={14} color="#4f46e5" />
+                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>โครงการ:</span>
                             </div>
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                                 <select
                                     value={selectedSCurveProject || ''}
                                     onChange={(e) => setSelectedSCurveProject(e.target.value)}
-                                    style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.85rem', fontWeight: 800, color: selectedSCurveProject ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', width: '100%', textOverflow: 'ellipsis' }}
+                                    style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: selectedSCurveProject ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', width: '100%', textOverflow: 'ellipsis' }}
                                 >
                                     <option value="">ทั้งหมด</option>
                                     {availableProjectsThisMonth.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                             </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '80px' }}>
+                                <FileText size={14} color="#b45309" />
+                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>ประเภท:</span>
+                            </div>
+                            <select
+                                value={taskWoTypeFilter}
+                                onChange={(e) => setTaskWoTypeFilter(e.target.value)}
+                                style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: taskWoTypeFilter ? '#b45309' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1 }}
+                            >
+                                <option value="">ทั้งหมด</option>
+                                <option value="woa">หลังขาย (WOA)</option>
+                                <option value="wop">ก่อนโอน (WOP)</option>
+                            </select>
                         </div>
                     </div>
 
@@ -3490,6 +3509,11 @@ const Dashboard = () => {
                                                     <button onClick={() => setHighlightedWOId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
                                                 </div>
                                             )}
+                                            <select value={taskWoTypeFilter} onChange={e => setTaskWoTypeFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskWoTypeFilter ? '#fef3c7' : '#f8fafc', color: taskWoTypeFilter ? '#b45309' : '#64748b', cursor: 'pointer', outline: 'none' }}>
+                                                <option value="">ประเภท: ทั้งหมด</option>
+                                                <option value="woa">หลังขาย (WOA)</option>
+                                                <option value="wop">ก่อนโอน (WOP)</option>
+                                            </select>
                                             <select value={taskCatFilter} onChange={e => setTaskCatFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskCatFilter ? '#eff6ff' : '#f8fafc', color: taskCatFilter ? '#2563eb' : '#64748b', cursor: 'pointer', outline: 'none' }}>
                                                 <option value="">หมวดงาน: ทั้งหมด</option>
                                                 {taskCatOptions.map(c => <option key={c} value={c}>{c}</option>)}
@@ -3498,8 +3522,8 @@ const Dashboard = () => {
                                                 <option value="">สถานะ: ทั้งหมด</option>
                                                 {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
-                                            {(taskCatFilter || taskStatusFilter || highlightedWOId) && (
-                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setHighlightedWOId(null); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
+                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId) && (
+                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
                                             )}
                                         </div>
                                     </div>
@@ -3587,12 +3611,14 @@ const Dashboard = () => {
                                                         const wo = task.parentWO;
                                                         const isWoCompleted = task.woStatus === 'Completed' || task.woStatus === 'completed' || task.woStatus === 'Verified';
 
-                                                        // Task deadline
-                                                        const taskStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00') : null;
-                                                        const tSlaKey = task.slaCategory || '24h';
+                                                        // Task deadline — WOP: use wo.scheduledDate / wo.phActualSla when task fields absent
+                                                        const isWop = !!(task as any).isPreHandover;
+                                                        const rawStartStr = task.startDate || (isWop ? wo?.scheduledDate : null);
+                                                        const taskStartDate = rawStartStr ? new Date(rawStartStr.split('T')[0] + 'T08:00:00') : null;
+                                                        const tSlaKey = task.slaCategory || (isWop ? (wo?.phActualSla || '24h') : '24h');
                                                         const tSlaHrs = _slaHrs[tSlaKey] || 24;
-                                                        const tStartMs = task.startDate
-                                                            ? new Date(task.startDate.split('T')[0] + 'T08:00:00').getTime()
+                                                        const tStartMs = rawStartStr
+                                                            ? new Date(rawStartStr.split('T')[0] + 'T08:00:00').getTime()
                                                             : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
                                                         const tDeadlineMs = tStartMs + tSlaHrs * 3600000;
                                                         const tDeadlineDate = new Date(tDeadlineMs);

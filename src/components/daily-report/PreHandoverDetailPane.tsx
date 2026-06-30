@@ -6,6 +6,7 @@ import {
   Edit2, XCircle,
 } from 'lucide-react';
 import { useDailyReport } from '../../context/DailyReportContext';
+import { PreHandoverSummaryModal } from './PreHandoverSummaryModal';
 
 // ─── Inline Calendar Component ───────────────────────────────────────────────
 const MONTH_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -117,6 +118,7 @@ export const PreHandoverDetailPane: React.FC = () => {
   const {
     selectedPhCatInfo,
     setSelectedPhCatInfo,
+    selectPhCatInfo,
     reportDate,
     setReportDate,
     progress,
@@ -132,7 +134,7 @@ export const PreHandoverDetailPane: React.FC = () => {
     laborOtEveningPhotos,
     handleSlotPhotoUpload,
     handleRemoveSlotPhoto,
-    toggleShift,
+    togglePhShift,
     openTimePicker,
     phDailyHistory,
     submitPhDailyReport,
@@ -145,6 +147,9 @@ export const PreHandoverDetailPane: React.FC = () => {
     isPhEditingExisting,
     setIsPhEditingExisting,
     isPhExistingReport,
+    hasPhUnsavedChanges,
+    showPhSummaryModal,
+    setShowPhSummaryModal,
     phProgressBounds,
     isSubmitting,
     isUploading,
@@ -353,7 +358,7 @@ export const PreHandoverDetailPane: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => setSelectedPhCatInfo(null)}
+            onClick={() => selectPhCatInfo(null)}
             style={{
               background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px',
               color: '#fff', width: '32px', height: '32px', cursor: 'pointer',
@@ -432,7 +437,16 @@ export const PreHandoverDetailPane: React.FC = () => {
               }}>
                 <PhCalendar
                   reportDate={reportDate}
-                  onSelectDate={d => { setReportDate(d); setShowCalendarDropdown(false); }}
+                  onSelectDate={d => {
+                    if (d !== reportDate && hasPhUnsavedChanges) {
+                      const ok = window.confirm(
+                        'คุณมีข้อมูลรายงานที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนวันที่ ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนวันที่หรือไม่?'
+                      );
+                      if (!ok) return;
+                    }
+                    setReportDate(d);
+                    setShowCalendarDropdown(false);
+                  }}
                   getDateStatus={getPhDateStatus}
                 />
               </div>
@@ -486,26 +500,12 @@ export const PreHandoverDetailPane: React.FC = () => {
                 </button>
               )}
               {isPhExistingReport && isPhEditingExisting && (
-                <>
-                  <button
-                    onClick={async () => {
-                      if (window.confirm('คุณต้องการบันทึกการแก้ไขข้อมูลรายงานรายวันนี้ใช่หรือไม่?')) {
-                        await submitPhDailyReport(phReportType);
-                        setIsPhEditingExisting(false);
-                      }
-                    }}
-                    disabled={isSubmitting || isUploading}
-                    style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #10b981', background: '#f0fdf4', color: '#10b981', fontSize: '0.75rem', fontWeight: 800, cursor: isSubmitting || isUploading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
-                  >
-                    <CheckCircle2 size={14} /> บันทึกการแก้ไข
-                  </button>
-                  <button
-                    onClick={() => setIsPhEditingExisting(false)}
-                    style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #ef4444', background: '#fef2f2', color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
-                  >
-                    <XCircle size={14} /> ยกเลิก
-                  </button>
-                </>
+                <button
+                  onClick={() => setIsPhEditingExisting(false)}
+                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #ef4444', background: '#fef2f2', color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
+                >
+                  <XCircle size={14} /> ยกเลิก
+                </button>
               )}
               {isPhEditable && (
                 <>
@@ -594,7 +594,7 @@ export const PreHandoverDetailPane: React.FC = () => {
                             <td key={s.key} style={{ padding: '12px 10px', textAlign: 'center' }}>
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
                                 <div
-                                  onClick={() => toggleShift(l.id, s.key)}
+                                  onClick={() => togglePhShift(l.id, s.key)}
                                   style={{
                                     width: 18, height: 18, borderRadius: 4, cursor: 'pointer',
                                     border: `2px solid ${s.color}`,
@@ -1034,7 +1034,7 @@ export const PreHandoverDetailPane: React.FC = () => {
         display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0,
       }}>
         <button
-          onClick={() => setSelectedPhCatInfo(null)}
+          onClick={() => selectPhCatInfo(null)}
           style={{
             padding: '10px 20px', background: '#f1f5f9', color: '#475569',
             border: '1px solid #e2e8f0', borderRadius: '10px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
@@ -1059,7 +1059,7 @@ export const PreHandoverDetailPane: React.FC = () => {
             {(isSubmitting) && <Loader2 className="animate-spin" size={20} />}
             {phRetroactiveSubmitDone ? 'ส่งคำขอแล้ว' : 'ส่งขอรับรอง'}
           </button>
-        ) : (
+        ) : isPhEditable ? (
           <>
             <button
               onClick={savePhDraft}
@@ -1082,7 +1082,7 @@ export const PreHandoverDetailPane: React.FC = () => {
               บันทึกแบบร่าง
             </button>
             <button
-              onClick={() => submitPhDailyReport(phReportType)}
+              onClick={() => setShowPhSummaryModal(true)}
               disabled={isSubmitting || isUploading}
               style={{
                 padding: '12px 32px',
@@ -1096,12 +1096,14 @@ export const PreHandoverDetailPane: React.FC = () => {
                 display: 'flex', alignItems: 'center', gap: '8px',
               }}
             >
-              {(isSubmitting || isUploading) && <Loader2 className="animate-spin" size={20} />}
-              {isSubmitting ? 'กำลังส่ง...' : 'ยืนยันการส่งรายงาน'}
+              {isPhEditingExisting ? 'ยืนยันการแก้ไขรายงาน' : 'ยืนยันการส่งรายงาน'}
             </button>
           </>
-        )}
+        ) : null}
       </div>
+
+      {/* PreHandover Summary Modal */}
+      <PreHandoverSummaryModal />
 
       {/* Zoom overlay */}
       {zoomImage && (

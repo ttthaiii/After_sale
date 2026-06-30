@@ -344,6 +344,7 @@ const SLAMonitor = () => {
         const now = new Date();
         const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         let filteredWOs = workOrders.filter((wo) => {
+            if ((wo as any).type === 'PreHandover') return false;
             if (wo.status === 'Draft' || wo.isArchived) return false;
             if (wo.status === 'Completed' || wo.status === 'Verified') {
                 const completedDate = (wo as any).updatedAt || wo.createdAt || '';
@@ -358,7 +359,7 @@ const SLAMonitor = () => {
         if (currentRole === 'Admin') {
             filteredWOs = filteredWOs.filter((wo) => {
                 const idUpper = (wo.id || '').toUpperCase();
-                return idUpper.includes('WOA') || idUpper.includes('WOP');
+                return idUpper.includes('WOA');
             });
         }
 
@@ -979,43 +980,141 @@ const SLAMonitor = () => {
                                     {items.length === 0 ? (
                                         <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700, padding: '32px 0', border: '2px dashed #e2e8f0', borderRadius: '16px' }}>No Tasks</div>
                                     ) : items.map((item: any) => {
+                                        const phKey = `ph-${item._wo.id}-${item.id}`;
+                                        const isExpanded = expandedTaskIds.has(phKey);
                                         const foremanEntry = staff.find((s: any) => s.id === item.assignedForemanId || s.employeeId === item.assignedForemanId);
                                         const foremanName = foremanEntry?.name || 'ยังไม่มอบหมาย';
+                                        const foremanPhone = foremanEntry?.phone || '-';
+                                        const foremanRole = foremanEntry ? 'Foreman' : '-';
                                         const progress = item.dailyProgress || 0;
                                         const project = projects.find((p: any) => p.id === item._wo.projectId);
                                         const defectCount = item.defectCount || 0;
+                                        const allCatsInWO: any[] = item._wo.categories || [];
+                                        const totalDefectsInWO = allCatsInWO.reduce((sum: number, c: any) => sum + (c.defectCount || 0), 0);
+                                        const phSlaHoursMap: Record<string, number> = { Immediately: 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+                                        const phSlaHours = phSlaHoursMap[item._wo.phActualSla] || phSlaHoursMap[item._wo.phEstimatedSla] || 720;
+                                        const phStartMs = item._wo.startDate ? new Date(item._wo.startDate).getTime() : Date.now();
+                                        const phDeadlineMs = phStartMs + phSlaHours * 3600 * 1000;
+                                        const daysLeft = Math.ceil((phDeadlineMs - Date.now()) / 86400000);
+                                        const slaText = daysLeft < 0 ? `เกินกำหนด ${Math.abs(daysLeft)} วัน` : daysLeft === 0 ? 'ครบกำหนดวันนี้' : `เหลือ ${daysLeft} วัน`;
+                                        const slaIsCritical = daysLeft < 0;
                                         return (
-                                            <div key={`${item._wo.id}-${item.id}`} style={{ background: '#fff', borderRadius: '16px', padding: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+                                            <div
+                                                key={phKey}
+                                                style={{
+                                                    background: '#fff', borderRadius: '16px', padding: '16px',
+                                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                                                    cursor: 'pointer',
+                                                    border: isExpanded ? '2px solid #0d9488' : '1px solid #f1f5f9',
+                                                    transition: 'all 0.2s', textAlign: 'left',
+                                                }}
+                                                onClick={() => toggleTaskExpansion(phKey)}
+                                            >
+                                                {/* row 1: WO ID + defect badge + progress% — same layout as WOA */}
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#0d9488', background: '#f0fdfa', padding: '2px 8px', borderRadius: '8px', border: '1px solid #99f6e4' }}>{item._wo.id}</div>
-                                                    <div style={{ fontSize: '0.8rem', fontWeight: 900, color: progress >= 100 ? '#059669' : progress > 0 ? '#7c3aed' : '#94a3b8' }}>{progress}%</div>
-                                                </div>
-                                                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1e293b', marginBottom: '4px', lineHeight: 1.3 }}>{item.name || item.id}</div>
-                                                {project && (
-                                                    <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <Building2 size={12} /> {project.name}
-                                                    </div>
-                                                )}
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: defectCount > 0 ? '8px' : '12px' }}>
-                                                    <div style={{ background: item.assignedForemanId ? '#f0fdfa' : '#f8fafc', color: item.assignedForemanId ? '#0d9488' : '#94a3b8', padding: '3px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 800, border: `1px solid ${item.assignedForemanId ? '#99f6e4' : '#e2e8f0'}` }}>
-                                                        👷 {foremanName}
-                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '8px' }}>{item._wo.id}</div>
                                                     {defectCount > 0 && (
-                                                        <div style={{ background: '#fee2e2', color: '#dc2626', padding: '3px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 900 }}>
-                                                            ⚠ {defectCount} ข้อบกพร่อง
+                                                        <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#dc2626', background: '#fee2e2', padding: '2px 8px', borderRadius: '8px', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            ⚠️ {defectCount} จุด
                                                         </div>
                                                     )}
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: col.color, background: `${col.color}15`, padding: '2px 8px', borderRadius: '8px' }}>{progress}%</div>
                                                 </div>
-                                                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
-                                                    <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '6px', overflow: 'hidden', marginBottom: '8px' }}>
-                                                        <div style={{ width: `${progress}%`, height: '100%', background: progress >= 100 ? '#059669' : '#0d9488', borderRadius: '4px' }} />
-                                                    </div>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>
-                                                            {item.lastProgressUpdate ? `อัปเดต: ${formatDate(item.lastProgressUpdate)}` : 'ยังไม่มีรายงาน'}
+
+                                                {/* Category name */}
+                                                <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#1e293b', marginBottom: '6px', lineHeight: 1.3 }}>{item.name || item.catName || item.id}</div>
+
+                                                {/* Project + location */}
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Building2 size={12} /> {project?.name || '—'}{item._wo.locationName ? ` - ${item._wo.locationName}` : ''}
+                                                </div>
+
+                                                {/* Rejected by customer block */}
+                                                {item.customerStatus === 'rejected' && item.customerRejectReason && (
+                                                    <div style={{ background: '#fff1f2', border: '1px solid #ffe4e6', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', fontSize: '0.78rem', color: '#be123c', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <div style={{ fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ display: 'inline-block', width: 6, height: 6, background: '#e11d48', borderRadius: '50%' }} />
+                                                            ลูกค้าปฏิเสธ:
                                                         </div>
-                                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>คลิกเพื่อขยาย</div>
+                                                        <div style={{ fontWeight: 700, color: '#4c0519', paddingLeft: '10px' }}>{item.customerRejectReason}</div>
                                                     </div>
+                                                )}
+
+                                                {/* Categories in same WO — replaces "sister tasks" */}
+                                                {allCatsInWO.length > 1 && (
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#0d9488', background: '#f0fdfa0c', padding: '4px 10px', borderRadius: '8px', marginBottom: '12px', border: '1px solid #99f6e41c', width: 'fit-content' }}>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0f766e' }}><FileText size={11} /> หมวดงานในใบงาน ({allCatsInWO.length}):</span>
+                                                        {totalDefectsInWO > 0 && <span style={{ color: '#dc2626' }}>⚠️ รวม {totalDefectsInWO} จุด</span>}
+                                                    </div>
+                                                )}
+
+                                                {/* Expand panel — identical to WOA */}
+                                                {isExpanded && (
+                                                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.8rem', color: '#475569' }}>
+                                                        <div><span style={{ fontWeight: 800, color: '#94a3b8' }}>ผู้รับผิดชอบ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{foremanName} ({foremanRole})</span></div>
+                                                        <div><span style={{ fontWeight: 800, color: '#94a3b8' }}>เบอร์ติดต่อ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{foremanPhone}</span></div>
+                                                        <div><span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{item._wo.startDate ? formatDate(item._wo.startDate) : '-'}</span></div>
+
+                                                        {/* Categories table — equivalent of sister tasks table */}
+                                                        {allCatsInWO.length > 0 && (
+                                                            <div style={{ marginTop: '4px', background: 'rgba(248, 250, 252, 0.8)', backdropFilter: 'blur(8px)', borderRadius: '14px', border: '1px solid rgba(226, 232, 240, 0.8)', overflow: 'hidden' }}>
+                                                                <div style={{ padding: '8px 12px', background: 'linear-gradient(90deg, rgba(240, 253, 250, 0.8) 0%, rgba(204, 251, 241, 0.5) 100%)', borderBottom: '1px solid #e2e8f0', fontWeight: 900, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
+                                                                    <FileText size={13} style={{ color: '#0d9488' }} />
+                                                                    <span>หมวดงานในใบงานเดียวกัน ({allCatsInWO.length})</span>
+                                                                </div>
+                                                                <div style={{ overflowX: 'auto' }}>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', textAlign: 'left' }}>
+                                                                        <thead>
+                                                                            <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', background: 'rgba(248, 250, 252, 0.5)' }}>
+                                                                                <th style={{ padding: '6px 10px', fontWeight: 800 }}>หมวดงาน</th>
+                                                                                <th style={{ padding: '6px 10px', fontWeight: 800, textAlign: 'center' }}>คืบหน้า</th>
+                                                                                <th style={{ padding: '6px 10px', fontWeight: 800, textAlign: 'center' }}>ข้อบกพร่อง</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {allCatsInWO.map((c: any) => {
+                                                                                const isCurrent = c.id === item.id;
+                                                                                const catProgress = c.dailyProgress || 0;
+                                                                                const catDefects = c.defectCount || 0;
+                                                                                return (
+                                                                                    <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9', background: isCurrent ? 'rgba(13, 148, 136, 0.08)' : 'transparent', fontWeight: isCurrent ? 900 : 500 }}>
+                                                                                        <td style={{ padding: '8px 10px', color: isCurrent ? '#0d9488' : '#475569' }}>
+                                                                                            {c.name || c.catName || c.id}
+                                                                                            {isCurrent && <span style={{ color: '#0d9488', marginLeft: '4px', fontSize: '0.62rem', fontWeight: 900 }}>(หมวดนี้)</span>}
+                                                                                        </td>
+                                                                                        <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 900, color: '#1e293b' }}>{catProgress}%</td>
+                                                                                        <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 900, color: catDefects > 0 ? '#dc2626' : '#94a3b8' }}>
+                                                                                            {catDefects > 0 ? `⚠️ ${catDefects}` : '—'}
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {(currentRole === 'Admin' || currentRole === 'Manager') && (
+                                                            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                                                <button
+                                                                    onClick={() => handleInitiateAssign(item.id, item._wo.id)}
+                                                                    style={{ flex: 1, background: '#fff', color: '#0d9488', border: '1.5px solid #0d9488', padding: '6px 12px', borderRadius: '8px', fontWeight: 800, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                                                                >
+                                                                    <RotateCw size={12} />
+                                                                    {item.assignedForemanId ? 'เปลี่ยนโฟรแมน' : 'มอบหมาย'}
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Footer SLA — same as WOA */}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: slaIsCritical ? '#ef4444' : '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <AlertCircle size={12} /> {slaText}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>{isExpanded ? 'คลิกเพื่อยุบ' : 'คลิกเพื่อขยาย'}</div>
                                                 </div>
                                             </div>
                                         );

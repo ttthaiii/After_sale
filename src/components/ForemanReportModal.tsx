@@ -189,14 +189,21 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 groupsLoadedRef.current = { id: woid, filled: cats.length > 0 };
                 if (editWorkOrder.type === 'PreHandover') {
                     // PreHandover: load category + defectCount only
-                    setPhDocuments((editWorkOrder as any).documents || []);
+                    setPhDocuments(
+                        (cats[0] as any)?.tasks?.[0]?.documents ||
+                        (cats[0] as any)?.documents ||
+                        (editWorkOrder as any).documents || []
+                    );
                     setPhSla((editWorkOrder as any).phEstimatedSla || '14-30d');
-                    setGroups(cats.map(cat => ({
+                    const loadedGroups = cats.map(cat => ({
                         id: cat.id,
                         category: cat.name,
                         items: [],
                         defectCount: (cat as any).defectCount || 0
-                    })));
+                    }));
+                    setGroups(loadedGroups.length > 0
+                        ? loadedGroups
+                        : [{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [], defectCount: 0 }]);
                 } else {
                     // AfterSale: Map Categories → Groups with photo fallback chain
                     setGroups(cats.map(cat => ({
@@ -501,7 +508,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 defectCount: group.defectCount || 0,
                 tasks: []
             }));
-            (newWorkOrder as any).documents = phDocuments;
+            if (categories.length > 0) {
+                (categories[0] as any).documents = phDocuments;
+            }
             (newWorkOrder as any).phEstimatedSla = phSla;
         } else {
             categories = groups.map(group => ({
@@ -974,13 +983,13 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                     {/* PreHandover: Document attachment + SLA */}
                                     {!isAfterSale && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '24px', alignItems: 'flex-start' }}>
                                             {/* PDF Documents */}
                                             <div>
                                                 <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>
                                                     เอกสารแนบ (Documents)
                                                 </label>
-                                                <div style={{ background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '48px' }}>
+                                                <div style={{ background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     {phDocuments.map((doc, idx) => (
                                                         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', borderRadius: '8px', padding: '8px 12px', border: '1px solid #bbf7d0' }}>
                                                             <FileText size={16} color="#059669" style={{ flexShrink: 0 }} />
@@ -1008,15 +1017,15 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                     <select
                                                         value={phSla}
                                                         onChange={(e) => setPhSla(e.target.value)}
-                                                        style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '1rem', outline: 'none', appearance: 'none' }}
+                                                        style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '0.95rem', outline: 'none', appearance: 'none' }}
                                                     >
                                                         <option value="7-14d">7-14 วัน</option>
                                                         <option value="14-30d">14-30 วัน</option>
                                                         <option value="30-60d">30-60 วัน</option>
                                                         <option value="60d+">มากกว่า 60 วัน</option>
                                                     </select>
-                                                    <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
-                                                        <ChevronDown size={18} />
+                                                    <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
+                                                        <ChevronDown size={16} />
                                                     </div>
                                                 </div>
                                             </div>
@@ -1034,50 +1043,52 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                 {/* PreHandover: simplified category + count only */}
                                 {!isAfterSale && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        {groups.map((group) => (
-                                            <div key={group.id} style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '16px 20px', display: 'flex', gap: '16px', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                                                <div style={{ flex: 1 }}>
-                                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>หมวดงาน (Category)</label>
-                                                    <div style={{ position: 'relative' }}>
-                                                        <select
-                                                            value={group.category}
-                                                            onChange={(e) => updateGroupCategory(group.id, e.target.value)}
-                                                            style={{ width: '100%', padding: '10px 14px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', color: '#111827', fontSize: '0.95rem', outline: 'none', appearance: 'none' }}
-                                                        >
-                                                            {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
-                                                        </select>
-                                                        <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={16} /></div>
-                                                    </div>
+                                    <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                                        {/* Column headers */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: '12px', padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>หมวดงาน (Category)</span>
+                                            <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, textAlign: 'center' }}>จำนวนจุดที่พบ</span>
+                                            <span />
+                                        </div>
+                                        {/* Data rows — no labels, uniform height */}
+                                        {groups.map((group, idx) => (
+                                            <div key={group.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: '12px', padding: '10px 16px', alignItems: 'center', borderBottom: idx < groups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                                <div style={{ position: 'relative' }}>
+                                                    <select
+                                                        value={group.category}
+                                                        onChange={(e) => updateGroupCategory(group.id, e.target.value)}
+                                                        style={{ width: '100%', padding: '9px 32px 9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', color: '#111827', fontSize: '0.9rem', outline: 'none', appearance: 'none', height: '40px' }}
+                                                    >
+                                                        {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                    <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={14} /></div>
                                                 </div>
-                                                <div style={{ minWidth: '140px' }}>
-                                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จำนวนจุดที่พบ</label>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={group.defectCount || 0}
-                                                        onChange={(e) => updateGroupDefectCount(group.id, parseInt(e.target.value) || 0)}
-                                                        style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', fontSize: '1rem', fontWeight: 700, outline: 'none', textAlign: 'center' }}
-                                                        onFocus={(e) => e.target.style.borderColor = '#10b981'}
-                                                        onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                                                    />
-                                                </div>
-                                                {groups.length > 1 && (
-                                                    <button onClick={() => removeGroup(group.id)} style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', cursor: 'pointer', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 500, flexShrink: 0 }}>
-                                                        <Trash2 size={14} /> ลบ
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={group.defectCount || 0}
+                                                    onChange={(e) => updateGroupDefectCount(group.id, parseInt(e.target.value) || 0)}
+                                                    style={{ width: '100%', height: '40px', padding: '0 12px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', fontSize: '1rem', fontWeight: 700, outline: 'none', textAlign: 'center', boxSizing: 'border-box' }}
+                                                    onFocus={(e) => e.target.style.borderColor = '#10b981'}
+                                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                                />
+                                                {groups.length > 1 ? (
+                                                    <button onClick={() => removeGroup(group.id)} title="ลบหมวดงาน" style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', cursor: 'pointer', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                                                        <Trash2 size={16} strokeWidth={2} />
                                                     </button>
-                                                )}
+                                                ) : <div />}
                                             </div>
                                         ))}
-                                        <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e5e7eb' }}>
-                                            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>รวม {groups.reduce((s, g) => s + (g.defectCount || 0), 0)} จุด / {groups.length} หมวด</span>
+                                        {/* Footer: total + add button */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: '#f9fafb', borderTop: '1px solid #e5e7eb' }}>
+                                            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>รวม <strong style={{ color: '#059669' }}>{groups.reduce((s, g) => s + (g.defectCount || 0), 0)}</strong> จุด / {groups.length} หมวด</span>
+                                            <button
+                                                onClick={addGroup}
+                                                style={{ padding: '7px 14px', background: '#f0fdf4', border: '1px solid #10b981', borderRadius: '8px', color: '#059669', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                            >
+                                                <Plus size={15} /> เพิ่มหมวดงาน
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={addGroup}
-                                            style={{ width: '100%', padding: '14px', background: '#f0fdf4', border: '1px dashed #10b981', borderRadius: '12px', color: '#059669', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                                        >
-                                            <Plus size={18} /> เพิ่มหมวดงาน (Add Category)
-                                        </button>
                                     </div>
                                 )}
 
