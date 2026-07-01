@@ -17,7 +17,7 @@ export default defineConfig(async ({ command }) => {
       
       try {
         laborApp = admin.apps.find((app: any) => app.name === 'laborServer') || admin.initializeApp({
-          credential: admin.credential.cert(require('c:\\Users\\101485\\Downloads\\labor-management-system.json'))
+          credential: admin.credential.cert(require('./key/labor-management-system.json'))
         }, 'laborServer');
       } catch (e) {
         console.log("Vite Server Labor Admin init error:", e);
@@ -25,7 +25,7 @@ export default defineConfig(async ({ command }) => {
       
       try {
         afterSaleApp = admin.apps.find((app: any) => app.name === 'afterSaleServer') || admin.initializeApp({
-          credential: admin.credential.cert(require('c:\\Users\\101485\\Downloads\\after-sale-system.json'))
+          credential: admin.credential.cert(require('./key/after-sale-key.json'))
         }, 'afterSaleServer');
       } catch (e) {
         console.log("Vite Server After Sale Admin init error:", e);

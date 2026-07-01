@@ -165,7 +165,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', alignItems: 'flex-start' }}>
                                 {/* SLA */}
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <label style={{ display: 'flex', fontSize: '0.75rem', color: '#64748b', marginBottom: '6px', fontWeight: 600, alignItems: 'center', gap: '6px' }}>
                                         <Clock size={13} /> กำหนดแล้วเสร็จ (SLA)
                                     </label>
                                     <div style={{ padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#0f172a', fontWeight: 700 }}>
@@ -174,7 +174,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                                 </div>
                                 {/* Documents */}
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: '8px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <label style={{ display: 'flex', fontSize: '0.75rem', color: '#64748b', marginBottom: '8px', fontWeight: 600, alignItems: 'center', gap: '6px' }}>
                                         <FileText size={13} /> เอกสารแนบ (Documents)
                                     </label>
                                     {((wo as any).documents?.length || 0) === 0 ? (
