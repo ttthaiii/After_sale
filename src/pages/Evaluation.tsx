@@ -57,6 +57,8 @@ const Evaluation = () => {
     const [rejectedPhWOs, setRejectedPhWOs] = useState<any[]>([]);
     const [selectedRejectedPhWo, setSelectedRejectedPhWo] = useState<any | null>(null);
     const [phReassignDate, setPhReassignDate] = useState('');
+    const [phReassignSla, setPhReassignSla] = useState('14-30d');
+    const [phReassignForemanId, setPhReassignForemanId] = useState('');
     const [phReassignLoading, setPhReassignLoading] = useState(false);
     const [isPreHandoverAssignOpen, setIsPreHandoverAssignOpen] = useState(false);
 
@@ -158,11 +160,13 @@ const Evaluation = () => {
 
     const pendingWorkOrders = workOrders
         .filter(wo => {
-            const isPending = wo.status === 'Evaluating' ||
+            const isPending = (wo as any).type !== 'PreHandover' && (
+                wo.status === 'Evaluating' ||
                 (wo.status === 'Rejected' && (
                     wo.pendingAdminReassign === true ||
                     (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
-                ));
+                ))
+            );
             const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
@@ -290,9 +294,11 @@ const Evaluation = () => {
         if (!selectedRejectedPhWo) return;
         setPhReassignLoading(true);
         try {
-            await reviewRejectedPhWO(selectedRejectedPhWo.id, phReassignDate || undefined);
+            await reviewRejectedPhWO(selectedRejectedPhWo.id, phReassignDate || undefined, phReassignSla || undefined, phReassignForemanId || undefined);
             setSelectedRejectedPhWo(null);
             setPhReassignDate('');
+            setPhReassignSla('14-30d');
+            setPhReassignForemanId('');
         } catch (err) {
             alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
         } finally {
@@ -554,6 +560,9 @@ const Evaluation = () => {
                     onPreHandoverAssign={selectedWorkOrder.type === 'PreHandover' && selectedWorkOrder.status === 'Evaluating'
                         ? () => setIsPreHandoverAssignOpen(true)
                         : undefined}
+                    onPreHandoverReassign={selectedWorkOrder.type === 'PreHandover' && selectedWorkOrder.status === 'Rejected'
+                        ? () => { setIsDetailModalOpen(false); setSelectedRejectedPhWo(selectedWorkOrder); setPhReassignDate(''); }
+                        : undefined}
                 />
             )}
 
@@ -684,26 +693,6 @@ const Evaluation = () => {
                     ประเมินใบงาน ({pendingWorkOrders.length + rejectedPhWOs.length})
                 </button>
                 <button
-                    onClick={() => setActiveTab('helper')}
-                    style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        background: 'none',
-                        fontSize: '1rem',
-                        fontWeight: 800,
-                        color: activeTab === 'helper' ? '#4f46e5' : '#64748b',
-                        borderBottom: activeTab === 'helper' ? '3px solid #4f46e5' : '3px solid transparent',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                    }}
-                >
-                    <Users size={18} />
-                    จัดสรรงานช่วย ({pendingHelperTasks.length})
-                </button>
-                <button
                     onClick={() => setActiveTab('retroactive')}
                     style={{
                         padding: '10px 20px',
@@ -727,6 +716,26 @@ const Evaluation = () => {
                             {pendingRetroReqs.length + pendingPhRetroReqs.length}
                         </span>
                     )}
+                </button>
+                <button
+                    onClick={() => setActiveTab('helper')}
+                    style={{
+                        padding: '10px 20px',
+                        border: 'none',
+                        background: 'none',
+                        fontSize: '1rem',
+                        fontWeight: 800,
+                        color: activeTab === 'helper' ? '#4f46e5' : '#64748b',
+                        borderBottom: activeTab === 'helper' ? '3px solid #4f46e5' : '3px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    <Users size={18} />
+                    จัดสรรงานช่วย ({pendingHelperTasks.length})
                 </button>
             </div>
 
@@ -920,52 +929,21 @@ const Evaluation = () => {
                                     } : {}}
                                 />
                             ))}
-                            {rejectedPhWOs.length > 0 && (
-                                <>
-                                    <div style={{ gridColumn: '1 / -1', marginTop: pendingWorkOrders.length > 0 ? '8px' : 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                                            <div style={{ height: '2px', flex: 1, background: '#fee2e2', borderRadius: '2px' }} />
-                                            <span style={{ fontSize: '0.72rem', fontWeight: 900, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                🏗️ ตีกลับ — ก่อนโอน ({rejectedPhWOs.length})
-                                            </span>
-                                            <div style={{ height: '2px', flex: 1, background: '#fee2e2', borderRadius: '2px' }} />
-                                        </div>
-                                    </div>
-                                    {rejectedPhWOs.map((wo: any) => {
-                                        const rejectedCats = (wo.categories || []).filter((c: any) => c.customerStatus === 'rejected');
-                                        return (
-                                            <div
-                                                key={wo.id}
-                                                onClick={() => { setSelectedRejectedPhWo(wo); setPhReassignDate(''); }}
-                                                style={{ background: '#fff5f5', borderRadius: '20px', border: '2px solid #fca5a5', padding: '20px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(239,68,68,0.08)' }}
-                                            >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                                                    <div>
-                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
-                                                            <span style={{ fontSize: '0.65rem', fontWeight: 900, background: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fca5a5' }}>🏗️ ก่อนโอน</span>
-                                                            <span style={{ fontSize: '0.65rem', fontWeight: 900, background: '#fff1f2', color: '#e11d48', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fda4af' }}>⚠️ ถูกปฏิเสธ</span>
-                                                        </div>
-                                                        <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#64748b' }}>{wo.id}</div>
-                                                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{wo.locationName || wo.projectName || '—'}</div>
-                                                    </div>
-                                                    <button style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', padding: '6px 14px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer' }}>
-                                                        มอบหมายใหม่
-                                                    </button>
-                                                </div>
-                                                {rejectedCats.length > 0 && (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                        {rejectedCats.map((cat: any) => (
-                                                            <div key={cat.id} style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fee2e2', padding: '5px 10px', borderRadius: '8px', fontWeight: 700 }}>
-                                                                ✕ {cat.name} — {cat.customerRejectReason || 'ไม่ระบุเหตุผล'}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </>
-                            )}
+                            {rejectedPhWOs.map((wo: any) => (
+                                <WorkOrderCard
+                                    key={wo.id}
+                                    wo={wo}
+                                    variant="compact"
+                                    showStatusBadge={true}
+                                    onClick={() => handleCardClick(wo)}
+                                    style={highlightedId === wo.id ? {
+                                        border: '2px solid #3b82f6',
+                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)',
+                                        background: '#eff6ff',
+                                        transform: 'scale(1.02)'
+                                    } : {}}
+                                />
+                            ))}
                         </>
                     )
                 ) : (
@@ -1188,12 +1166,12 @@ const Evaluation = () => {
 
             {selectedRejectedPhWo && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-                    <div style={{ background: '#ffffff', borderRadius: '24px', padding: '2rem', width: '520px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div style={{ background: '#ffffff', borderRadius: '24px', padding: '2rem', width: '560px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                         {/* Header */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{ background: '#fee2e2', padding: '10px', borderRadius: '12px' }}><AlertCircle size={22} color="#dc2626" /></div>
                             <div style={{ flex: 1 }}>
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>มอบหมายรอบการแก้ไขใหม่ — ก่อนโอน</h3>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>มอบหมายรอบแก้ไขใหม่ — ก่อนโอน</h3>
                                 <p style={{ margin: 0, fontSize: '0.75rem', color: '#dc2626', fontWeight: 600 }}>{selectedRejectedPhWo.id}</p>
                             </div>
                             <button onClick={() => setSelectedRejectedPhWo(null)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', color: '#64748b', fontWeight: 800 }}>✕</button>
@@ -1210,9 +1188,35 @@ const Evaluation = () => {
                             ))}
                         </div>
 
-                        {/* New scheduled date */}
+                        {/* SLA Category */}
                         <div>
-                            <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>วันที่นัดดำเนินการใหม่ (ไม่บังคับ)</label>
+                            <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '8px' }}>ระดับความสำคัญ (SLA Category)</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                                {[
+                                    { key: '7-14d', label: '7-14 วัน' },
+                                    { key: '14-30d', label: '14-30 วัน' },
+                                    { key: '30-60d', label: '30-60 วัน' },
+                                    { key: '60d+', label: 'มากกว่า 60 วัน' },
+                                ].map(opt => (
+                                    <button
+                                        key={opt.key}
+                                        onClick={() => setPhReassignSla(opt.key)}
+                                        style={{
+                                            padding: '10px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                                            background: phReassignSla === opt.key ? '#1e1b4b' : '#f8fafc',
+                                            color: phReassignSla === opt.key ? '#ffffff' : '#475569',
+                                            border: phReassignSla === opt.key ? '2px solid #1e1b4b' : '2px solid #e2e8f0',
+                                        }}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Start Date */}
+                        <div>
+                            <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>วันเริ่มดำเนินการใหม่ (Start Date)</label>
                             <input
                                 type="date"
                                 value={phReassignDate}
@@ -1221,8 +1225,32 @@ const Evaluation = () => {
                             />
                         </div>
 
-                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '10px 14px', fontSize: '0.8rem', color: '#92400e' }}>
-                            การยืนยันจะ: ปลดล็อคใบงาน → โฟรแมนแก้ไขหมวดงานที่ถูกปฏิเสธ → กด progress ครบ 100% → สร้าง QR ส่งมอบใหม่
+                        {/* Staff selector */}
+                        <div>
+                            <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '8px' }}>เลือกเจ้าหน้าที่ (Internal Staff) — ไม่บังคับ</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '8px' }}>
+                                <div
+                                    onClick={() => setPhReassignForemanId('')}
+                                    style={{ padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, background: phReassignForemanId === '' ? '#eff6ff' : 'transparent', color: phReassignForemanId === '' ? '#1d4ed8' : '#64748b', border: phReassignForemanId === '' ? '1px solid #bfdbfe' : '1px solid transparent' }}
+                                >
+                                    — คงเจ้าหน้าที่เดิม —
+                                </div>
+                                {staff.filter((s: any) => s.role === 'Foreman').map((s: any) => (
+                                    <div
+                                        key={s.id}
+                                        onClick={() => setPhReassignForemanId(s.id)}
+                                        style={{ padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, background: phReassignForemanId === s.id ? '#eff6ff' : 'transparent', color: phReassignForemanId === s.id ? '#1d4ed8' : '#374151', border: phReassignForemanId === s.id ? '1px solid #bfdbfe' : '1px solid transparent', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 900, color: '#4338ca', flexShrink: 0 }}>
+                                            {(s.name || s.username || '?')[0]}
+                                        </div>
+                                        <div>
+                                            <div>{s.name || s.username}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 400 }}>{s.roleId}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
 
                         <div style={{ display: 'flex', gap: '10px' }}>
@@ -1230,9 +1258,9 @@ const Evaluation = () => {
                             <button
                                 onClick={handlePhReassignConfirm}
                                 disabled={phReassignLoading}
-                                style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: phReassignLoading ? '#fca5a5' : '#dc2626', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: phReassignLoading ? 'not-allowed' : 'pointer' }}
+                                style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: phReassignLoading ? '#6366f1' : '#4f46e5', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: phReassignLoading ? 'not-allowed' : 'pointer' }}
                             >
-                                {phReassignLoading ? 'กำลังมอบหมาย...' : '✓ ยืนยันมอบหมายรอบใหม่'}
+                                {phReassignLoading ? 'กำลังมอบหมาย...' : '✓ มอบหมายงาน'}
                             </button>
                         </div>
                     </div>

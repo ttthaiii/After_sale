@@ -12,6 +12,7 @@ interface WorkOrderDetailModalProps {
     onTaskClick: (task: MasterTask, categoryId: string, workOrderId: string, categoryName?: string) => void;
     taskDecisions?: Record<string, 'Approved' | 'Assigned' | 'Rejected'>;
     onPreHandoverAssign?: () => void;
+    onPreHandoverReassign?: () => void;
 }
 
 const WorkOrderDetailModal = ({
@@ -20,7 +21,8 @@ const WorkOrderDetailModal = ({
     wo,
     onTaskClick,
     taskDecisions,
-    onPreHandoverAssign
+    onPreHandoverAssign,
+    onPreHandoverReassign
 }: WorkOrderDetailModalProps) => {
     const { staff } = useWorkOrders();
 
@@ -333,6 +335,27 @@ const WorkOrderDetailModal = ({
                         >
                             <Users size={16} />
                             อนุมัติ &amp; มอบหมายงาน
+                        </button>
+                    </div>
+                )}
+                {/* Footer: PreHandover reassign button (after customer rejection) */}
+                {wo.type === 'PreHandover' && wo.status === 'Rejected' && onPreHandoverReassign && (
+                    <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', background: '#fff5f5', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                            onClick={onPreHandoverReassign}
+                            style={{
+                                padding: '12px 28px', borderRadius: '12px', fontWeight: 800, fontSize: '0.95rem',
+                                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                color: '#ffffff', border: 'none', cursor: 'pointer',
+                                boxShadow: '0 4px 12px rgba(220,38,38,0.3)',
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(220,38,38,0.4)'; }}
+                            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(220,38,38,0.3)'; }}
+                        >
+                            <Users size={16} />
+                            มอบหมายรอบใหม่
                         </button>
                     </div>
                 )}
