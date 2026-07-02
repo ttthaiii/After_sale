@@ -2010,6 +2010,25 @@ export const DailyReportDetailPane: React.FC = () => {
                                       ? "คนงานบริษัท (Internal)"
                                       : "ทีมงานผู้รับเหมา (Subco)"}
                                   </div>
+                                  {l.membership !== "Internal" && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+                                      <button
+                                        disabled={!isEditingExisting || !canEditWorker(l)}
+                                        onClick={() => setLabor((prev: any[]) => prev.map((item: any) =>
+                                          item.id === l.id ? { ...item, amount: Math.max(1, (item.amount || 1) - 1) } : item
+                                        ))}
+                                        style={{ width: "20px", height: "20px", border: "1px solid #e2e8f0", borderRadius: "4px", background: "#fff", cursor: (isEditingExisting && canEditWorker(l)) ? "pointer" : "not-allowed", color: "#64748b", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: (isEditingExisting && canEditWorker(l)) ? 1 : 0.5 }}
+                                      >-</button>
+                                      <span style={{ minWidth: "32px", textAlign: "center", fontSize: "0.82rem", fontWeight: 900, color: "#059669" }}>{l.amount || 1} คน</span>
+                                      <button
+                                        disabled={!isEditingExisting || !canEditWorker(l)}
+                                        onClick={() => setLabor((prev: any[]) => prev.map((item: any) =>
+                                          item.id === l.id ? { ...item, amount: (item.amount || 1) + 1 } : item
+                                        ))}
+                                        style={{ width: "20px", height: "20px", border: "1px solid #e2e8f0", borderRadius: "4px", background: "#fff", cursor: (isEditingExisting && canEditWorker(l)) ? "pointer" : "not-allowed", color: "#64748b", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: (isEditingExisting && canEditWorker(l)) ? 1 : 0.5 }}
+                                      >+</button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </td>{" "}
