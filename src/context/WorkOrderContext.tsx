@@ -598,6 +598,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 return result;
             });
             setLoading(false); // UI โชว์ทันที
+            console.log('[WOContext] snapshot:', toFetch.length, 'changed,', toRemove.length, 'removed — total in prev state pending');
 
             // Step 2: โหลด subcollections ใน background ทีละใบ อัพเดต state เมื่อพร้อม
             for (const change of toFetch) {
@@ -609,8 +610,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         result[idx] = { ...result[idx], categories };
                         return result;
                     });
+                }).catch(err => {
+                    console.error('[WOContext] fetchSubcollections failed for', change.doc.id, err);
                 });
             }
+        }, (err) => {
+            console.error('[WOContext] workOrders onSnapshot error:', err);
+            setLoading(false);
         });
 
         onSnapshot(collection(db, 'projects'), s => setProjects(s.docs.map(d => ({ ...d.data(), id: d.id }) as Project)));
