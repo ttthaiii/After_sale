@@ -685,9 +685,9 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const isWoaWop = wo.id.toUpperCase().includes('WOA') || wo.id.toUpperCase().includes('WOP');
         
         if (!isWoaWop) {
-            // Standard/Legacy write for non-WOA/WOP systems (unmodified)
+            // Standard/Legacy write for non-WOA/WOP systems
+            // Write categories/tasks BEFORE root doc so fetchSubcollections sees them when snapshot fires
             const { categories, ...rest } = wo;
-            await setDoc(doc(db, 'workOrders', wo.id), rest);
             if (categories && categories.length > 0) {
                 const batch = writeBatch(db);
                 for (const cat of categories) {
@@ -704,6 +704,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 }
                 await batch.commit();
             }
+            await setDoc(doc(db, 'workOrders', wo.id), rest);
             return;
         }
 
@@ -759,8 +760,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             workOrderCode,
             workOrderId: wo.id
         };
-        await setDoc(doc(db, 'workOrders', wo.id), rootDocData);
-        
+
+        // Write categories/tasks BEFORE root doc so fetchSubcollections sees them when snapshot fires
         if (formattedCategories && formattedCategories.length > 0) {
             const batch = writeBatch(db);
             for (const cat of formattedCategories) {
@@ -852,6 +853,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             }
             await batch.commit();
         }
+        await setDoc(doc(db, 'workOrders', wo.id), rootDocData);
     };
 
     const saveEvaluation = async (id: string, status: string, categories: any[]) => {
