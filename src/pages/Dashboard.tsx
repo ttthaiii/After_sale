@@ -944,6 +944,45 @@ const Dashboard = () => {
         });
     }, [staff, workOrders]);
 
+    const foremanGridStats = useMemo(() => {
+        if (!isAdminOrManager) return {};
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const startOfMonth = new Date(year, month - 1, 1).getTime();
+        const endOfMonth = new Date(year, month, 0, 23, 59, 59).getTime();
+        const slaHoursMap: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+        const nowMs = Date.now();
+        const effectiveNow = nowMs > endOfMonth ? endOfMonth : nowMs;
+        const result: Record<string, { total: number; closed: number; sla: number | null; projectName: string }> = {};
+        activeForemen.forEach((fm: any) => {
+            const fmId = fm.id;
+            const fmEmployeeId = fm.employeeId;
+            const matchFm = (id: string) => id === fmId || (fmEmployeeId && id === fmEmployeeId);
+            const fmWOs = workOrders.filter((wo: any) => {
+                const created = wo.createdAt ? new Date(wo.createdAt).getTime() : null;
+                if (!created) return false;
+                const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
+                const inMonth = (created >= startOfMonth && created <= endOfMonth) || (completed && completed >= startOfMonth && completed <= endOfMonth);
+                if (!inMonth) return false;
+                if (matchFm(wo.reporterId || '')) return true;
+                return (wo.categories || []).some((c: any) => (c.tasks || []).some((t: any) => (t.responsibleStaffIds || []).some(matchFm)));
+            });
+            const closed = fmWOs.filter((wo: any) => ['Completed', 'Verified', 'Closed'].includes(wo.status)).length;
+            const slaScores: number[] = [];
+            fmWOs.forEach((wo: any) => {
+                const slaHours = slaHoursMap[wo.slaType || wo.urgency || ''] || null;
+                if (!slaHours || !wo.createdAt) return;
+                const woStart = new Date(wo.createdAt).getTime();
+                const deadline = woStart + slaHours * 3600 * 1000;
+                const endTime = wo.completedAt ? new Date(wo.completedAt).getTime() : effectiveNow;
+                slaScores.push(endTime <= deadline ? 100 : 0);
+            });
+            const projectId = fmWOs[0]?.projectId;
+            const projectName = projectId ? (projects.find((p: any) => p.id === projectId)?.name || '—') : '—';
+            result[fmId] = { total: fmWOs.length, closed, sla: slaScores.length > 0 ? Math.round(slaScores.reduce((a, b) => a + b, 0) / slaScores.length) : null, projectName };
+        });
+        return result;
+    }, [activeForemen, workOrders, isAdminOrManager, selectedMonth, projects]);
+
     const [selectedViewWO, setSelectedViewWO] = useState<any>(null);
     const [selectedHistoryWO, setSelectedHistoryWO] = useState<any>(null);
     const [lastBarContext, setLastBarContext] = useState<any>(null);
@@ -3061,12 +3100,82 @@ const Dashboard = () => {
                                 </div>
                                 );
                             })() : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-                                    <StatCard title="งานทั้งหมดที่ดูแล" value={stats.totalInMonth} icon={<Activity size={24} />} color="#3b82f6" gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)" subtext={<span>ใหม่ <b>{stats.newThisMonth}</b> / ค้าง <b>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>} />
-                                    <StatCard title="งานที่ปิดจบสำเร็จ" value={stats.closed} icon={<CheckCircle2 size={24} />} color="#10b981" gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)" subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้" />
-                                    <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={stats.slaScore !== null && stats.slaScore !== undefined ? `${stats.slaScore}%` : 'N/A'} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore != null && stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : stats.slaScore != null ? 'ควรปรับปรุงความเร็ว' : 'ยังไม่มีงานที่วัดได้'} />
-                                    <StatCard title="ชั่วโมงการทำงานรวม" value={`${stats.totalHours.toLocaleString()} ชม.`} icon={<Activity size={24} />} color="#8b5cf6" gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)" subtext="ลงแรงงานจริงสะสมรายเดือน" />
-                                </div>
+                                <>
+                                    {/* Back button shown when Admin has selected a Foreman */}
+                                    {isAdminOrManager && selectedForemanId && (() => {
+                                        const fm = activeForemen.find((f: any) => f.id === selectedForemanId);
+                                        return (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem' }}>
+                                                <button
+                                                    onClick={() => setSelectedForemanId(null)}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '6px 14px', fontSize: '0.82rem', fontWeight: 700, color: '#4f46e5', cursor: 'pointer' }}
+                                                >
+                                                    ← ทีมโฟรแมนทั้งหมด
+                                                </button>
+                                                {fm && <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{fm.name}</span>}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Foreman Card Grid — shown when Admin has NOT selected a Foreman */}
+                                    {isAdminOrManager && !selectedForemanId ? (
+                                        <div style={{ marginBottom: '2.5rem' }}>
+                                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem', margin: '0 0 1rem 0' }}>
+                                                เลือกโฟรแมนเพื่อดูผลงาน
+                                            </p>
+                                            {activeForemen.length === 0 ? (
+                                                <div style={{ textAlign: 'center', padding: '3rem', background: '#f8fafc', borderRadius: '24px', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>
+                                                    ไม่มีข้อมูลโฟรแมนในเดือนนี้
+                                                </div>
+                                            ) : (
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                                                    {activeForemen.map((fm: any, idx: number) => {
+                                                        const fmStat = (foremanGridStats as any)[fm.id] || { total: 0, closed: 0, sla: null, projectName: '—' };
+                                                        const initials = (fm.name || '??').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+                                                        const avatarColors: [string, string][] = [
+                                                            ['#E6F1FB', '#185FA5'], ['#E1F5EE', '#0F6E56'], ['#EEEDFE', '#534AB7'],
+                                                            ['#FAECE7', '#993C1D'], ['#FAEEDA', '#854F0B'], ['#FBEAF0', '#993556'],
+                                                        ];
+                                                        const [bgColor, textColor] = avatarColors[idx % avatarColors.length];
+                                                        const slaGood = fmStat.sla !== null && fmStat.sla >= 80;
+                                                        return (
+                                                            <div
+                                                                key={fm.id}
+                                                                onClick={() => setSelectedForemanId(fm.id)}
+                                                                style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '1.25rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                                                onMouseOver={(e) => { e.currentTarget.style.borderColor = '#4f46e5'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px -4px rgba(79,70,229,0.15)'; }}
+                                                                onMouseOut={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+                                                            >
+                                                                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 800, color: textColor, marginBottom: '10px' }}>
+                                                                    {initials}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', marginBottom: '2px' }}>{fm.name}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, marginBottom: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmStat.projectName}</div>
+                                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px' }}>{fmStat.total} งาน</span>
+                                                                    {fmStat.sla !== null ? (
+                                                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', background: slaGood ? '#f0fdf4' : '#fef2f2', color: slaGood ? '#059669' : '#dc2626', borderRadius: '8px' }}>
+                                                                            SLA {fmStat.sla}%
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', background: '#f8fafc', color: '#94a3b8', borderRadius: '8px', border: '1px solid #e2e8f0' }}>SLA —</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                            <StatCard title="งานทั้งหมดที่ดูแล" value={stats.totalInMonth} icon={<Activity size={24} />} color="#3b82f6" gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)" subtext={<span>ใหม่ <b>{stats.newThisMonth}</b> / ค้าง <b>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>} />
+                                            <StatCard title="งานที่ปิดจบสำเร็จ" value={stats.closed} icon={<CheckCircle2 size={24} />} color="#10b981" gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)" subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้" />
+                                            <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={stats.slaScore !== null && stats.slaScore !== undefined ? `${stats.slaScore}%` : 'N/A'} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore != null && stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : stats.slaScore != null ? 'ควรปรับปรุงความเร็ว' : 'ยังไม่มีงานที่วัดได้'} />
+                                            <StatCard title="ชั่วโมงการทำงานรวม" value={`${stats.totalHours.toLocaleString()} ชม.`} icon={<Activity size={24} />} color="#8b5cf6" gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)" subtext="ลงแรงงานจริงสะสมรายเดือน" />
+                                        </div>
+                                    )}
+                                </>
                             )}
 
                             {/* Activity Calendar Section */}
