@@ -547,7 +547,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         history: item.history || []
                     } as any;
                 })
-            })).filter(c => c.tasks.length > 0);
+            }));
+            // For non-draft submissions only: remove categories with no items
+            if (!isDraft) categories = categories.filter(c => c.tasks.length > 0);
         }
 
         newWorkOrder.categories = categories;
