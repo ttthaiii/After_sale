@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -904,6 +905,7 @@ const Dashboard = () => {
     const { workOrders, projects, staff, loading } = useWorkOrders();
     const { user } = useAuth();
     const navigate = useNavigate();
+    const isMobile = useIsMobile();
     const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver' || (user?.role as any) === 'BackOffice';
     const isForeman = user?.role === 'Foreman';
 
@@ -959,6 +961,7 @@ const Dashboard = () => {
     const userHasManuallySelected = useRef(false);
     const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
     const [donutFilter, setDonutFilter] = useState<string | null>(null);
+    const [popupCard, setPopupCard] = useState<string | null>(null);
 
     const getProjectName = (id: string) => projects.find((p: any) => p.id === id)?.name || id;
 
@@ -2372,11 +2375,12 @@ const Dashboard = () => {
                 }
             `}</style>
             {/* Sticky Header */}
-            <div style={{ position: 'sticky', top: '-2rem', zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 1)', backdropFilter: 'blur(12px)', paddingTop: '1rem', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', margin: '-2rem -2rem 2.5rem -2rem', paddingLeft: '2rem', paddingRight: '2rem', transition: 'all 0.3s ease' }}>
+            <div style={{ position: 'sticky', top: isMobile ? 0 : '-2rem', zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 1)', backdropFilter: 'blur(12px)', paddingTop: isMobile ? '0.5rem' : '1rem', paddingBottom: isMobile ? '0.75rem' : '1rem', display: 'flex', flexDirection: isMobile ? 'column' : undefined, justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', borderBottom: '1px solid #e2e8f0', margin: isMobile ? '0 -1rem 1.5rem -1rem' : '-2rem -2rem 2.5rem -2rem', paddingLeft: isMobile ? '1rem' : '2rem', paddingRight: isMobile ? '1rem' : '2rem', gap: isMobile ? '10px' : undefined, transition: 'all 0.3s ease' }}>
+                {!isMobile && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
                     <div style={{ minWidth: '400px' }}>
                         <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.04em', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', padding: '12px', borderRadius: '20px', color: '#fff', boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.4)', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', padding: '12px', borderRadius: '20px', color: '#fff', boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.4)', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                 {viewMode === 'operations' ? <Activity size={32} /> : <BarChart3 size={32} />}
                             </div>
                             <span style={{ minWidth: '150px' }}>{isForeman
@@ -2392,19 +2396,20 @@ const Dashboard = () => {
                         </p>
                     </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                )}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexWrap: isMobile ? 'wrap' : undefined, width: isMobile ? '100%' : undefined }}>
                     {!isAdminOrManager && (
                     <div style={{
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        background: '#ffffff', 
-                        padding: '12px 16px', 
-                        borderRadius: '32px', 
-                        border: '1px solid #e2e8f0', 
-                        gap: '8px', 
-                        width: '200px', 
-                        height: '128px',
-                        justifyContent: 'center', 
+                        display: 'flex',
+                        flexDirection: 'row',
+                        background: '#ffffff',
+                        padding: isMobile ? '6px 8px' : '12px 16px',
+                        borderRadius: '32px',
+                        border: '1px solid #e2e8f0',
+                        gap: '8px',
+                        width: isMobile ? '100%' : '200px',
+                        height: isMobile ? 'auto' : '128px',
+                        justifyContent: 'center',
                         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
                     }}>
                             {[{ id: 'operations', label: 'ปฏิบัติการ' }, { id: 'insights', label: 'ผลงาน' }].map((mode) => (
@@ -2418,19 +2423,19 @@ const Dashboard = () => {
                             ))}
                         </div>
                     )}
-                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} style={{ height: '128px', padding: '24px' }} />
+                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} style={{ height: isMobile ? 'auto' : '128px', padding: isMobile ? '10px 14px' : '24px', flex: isMobile ? 1 : undefined }} />
                     <div style={{
                         display: 'flex',
                         flexDirection: 'column',
                         background: '#ffffff',
-                        padding: '20px 24px',
+                        padding: isMobile ? '10px 14px' : '20px 24px',
                         borderRadius: '32px',
                         border: '1px solid #e2e8f0',
                         boxShadow: '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
                         gap: '10px',
                         justifyContent: 'center',
-                        width: isAdminOrManager ? '280px' : '260px',
-                        height: '128px',
+                        width: isMobile ? '100%' : (isAdminOrManager ? '280px' : '260px'),
+                        height: isMobile ? 'auto' : '128px',
                         transition: 'all 0.3s ease',
                         opacity: (isAdminOrManager && adminActiveTab === 'comparison') ? 0.4 : 1,
                         pointerEvents: (isAdminOrManager && adminActiveTab === 'comparison') ? 'none' : 'auto',
@@ -2531,6 +2536,70 @@ const Dashboard = () => {
                     {/* Operations Mode (Foreman) */}
                     {viewMode === 'operations' && !isAdminOrManager ? (
                         <>
+                            {/* Mobile — compact progress donut card before stat cards */}
+                            {isMobile && (() => {
+                                const isMyT = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
+                                const isForCustEvalD = (wo: any) => {
+                                    if (['Completed', 'Verified'].includes(wo.status)) return false;
+                                    if (wo.status === 'pending_delivery') return true;
+                                    const ts = (wo.categories || []).flatMap((c: any) => c.tasks || []);
+                                    return ts.length > 0 && ts.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+                                };
+                                const urgentIdsD = new Set((stats.urgentTasks || []).map((u: any) => String(u.id)));
+                                const donutWOs =
+                                    selectedOpCategory === 'urgent'       ? (stats.urgentTasks || []) :
+                                    selectedOpCategory === 'evaluating'   ? allAccessibleWOs.filter(isForCustEvalD) :
+                                    selectedOpCategory === 'inProgress'   ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !urgentIdsD.has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
+                                    selectedOpCategory === 'pendingAdmin' ? [] :
+                                    allAccessibleWOs;
+                                const allMySubs = donutWOs.flatMap((wo: any) =>
+                                    (wo.categories || []).flatMap((cat: any) => {
+                                        const ts: any[] = cat.tasks || [];
+                                        const mine = ts.filter(isMyT);
+                                        return mine.length > 0 ? mine : (ts.some((t: any) => t.subtaskOperatorId) ? [] : ts);
+                                    })
+                                );
+                                const gp = (t: any) => t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0);
+                                const slices = [
+                                    { name: 'ยังไม่เริ่ม', value: allMySubs.filter((t: any) => gp(t) === 0 && !['Completed', 'Verified'].includes(t.status)).length, color: '#E24B4A', bg: '#fff1f2' },
+                                    { name: 'กำลังทำ',    value: allMySubs.filter((t: any) => { const p = gp(t); return p >= 1 && p <= 70; }).length,                  color: '#378ADD', bg: '#f0f9ff' },
+                                    { name: 'ใกล้เสร็จ',  value: allMySubs.filter((t: any) => { const p = gp(t); return p >= 71 && p < 100; }).length,                  color: '#1D9E75', bg: '#f0fdf4' },
+                                ];
+                                const total = slices.reduce((s, d) => s + d.value, 0);
+                                const chartData = total > 0 ? slices : [{ name: '', value: 1, color: '#e2e8f0', bg: '' }];
+                                return (
+                                    <div style={{ background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', padding: '1.25rem', marginBottom: '1rem' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>ภาพรวมความคืบหน้างานย่อย</div>
+                                        {/* Centered donut */}
+                                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+                                            <div style={{ position: 'relative', width: '160px', height: '160px' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie data={chartData} cx="50%" cy="50%" innerRadius={52} outerRadius={76} paddingAngle={total > 0 ? 3 : 0} dataKey="value" strokeWidth={0}>
+                                                            {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                                                        </Pie>
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+                                                    <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{total}</div>
+                                                    <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600, marginTop: '4px' }}>งานค้างอยู่</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Mini stat cards 3-col */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                                            {slices.map((d) => (
+                                                <div key={d.name} style={{ background: d.bg, borderRadius: '14px', padding: '10px 8px', textAlign: 'center', border: `1px solid ${d.color}22` }}>
+                                                    <div style={{ fontSize: '1.4rem', fontWeight: 900, color: d.color, lineHeight: 1 }}>{d.value}</div>
+                                                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', marginTop: '4px', lineHeight: 1.3 }}>{d.name}</div>
+                                                    <div style={{ fontSize: '0.58rem', color: d.color, fontWeight: 700, marginTop: '3px' }}>{total > 0 ? Math.round(d.value / total * 100) : 0}%</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* Stat Cards — all clickable, drill-down to list below */}
                             {(() => {
                                 const _isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
@@ -2554,7 +2623,11 @@ const Dashboard = () => {
                                     userHasManuallySelected.current = true;
                                     setSelectedOpCategory(cat);
                                     setDonutFilter(null);
-                                    setTimeout(() => opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                                    if (isMobile) {
+                                        setPopupCard(cat);
+                                    } else {
+                                        setTimeout(() => opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                                    }
                                 };
                                 const activeStyle = (cat: string, color: string, rgb: string) => ({
                                     cursor: 'pointer',
@@ -2564,7 +2637,7 @@ const Dashboard = () => {
                                     transform: selectedOpCategory === cat ? 'translateY(-6px)' : 'none',
                                 });
                                 return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(210px, 1fr))', gap: isMobile ? '10px' : '1.5rem', marginBottom: '2.5rem' }}>
                                         <StatCard
                                             title="เร่งด่วน SLA"
                                             value={urgentSubtaskCount}
@@ -2610,7 +2683,7 @@ const Dashboard = () => {
                             })()}
 
                             {/* Operations Grid - Row 1 */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
+                            <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
                                 <div ref={opListRef} id="urgent-section" style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)', display: 'flex', flexDirection: 'column', scrollMarginTop: '80px' }}>
                                     <SectionHeader
                                         title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานปกติ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'ภาพรวมใบงานทั้งหมด'}
@@ -2903,7 +2976,7 @@ const Dashboard = () => {
                                 const nextUpcoming = (stats.upcomingTasks || [])[0];
                                 const circ = 2 * Math.PI * 52;
                                 return (
-                                <div style={{ background: '#fff', borderRadius: '24px', border: '0.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', padding: '1.5rem 2rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: '180px 1fr', gap: '1.5rem', alignItems: 'center' }}>
+                                <div style={{ background: '#fff', borderRadius: '24px', border: '0.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', padding: '1.5rem 2rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '180px 1fr', gap: '1.5rem', alignItems: 'center' }}>
 
                                     {/* LEFT: gauge */}
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
@@ -2959,7 +3032,7 @@ const Dashboard = () => {
                                             const slaOnTime = _hcMet;
                                             const slaLate = _hcTot - _hcMet;
                                             return (
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4,1fr)', gap: '12px' }}>
                                             {/* WO dual-number card */}
                                             <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><FileText size={120} /></div>
@@ -3037,7 +3110,7 @@ const Dashboard = () => {
                                 </div>
                                 );
                             })() : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(240px, 1fr))', gap: isMobile ? '10px' : '1.5rem', marginBottom: '2.5rem' }}>
                                     <StatCard title="งานทั้งหมดที่ดูแล" value={stats.totalInMonth} icon={<Activity size={24} />} color="#3b82f6" gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)" subtext={<span>ใหม่ <b>{stats.newThisMonth}</b> / ค้าง <b>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>} />
                                     <StatCard title="งานที่ปิดจบสำเร็จ" value={stats.closed} icon={<CheckCircle2 size={24} />} color="#10b981" gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)" subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้" />
                                     <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={stats.slaScore !== null && stats.slaScore !== undefined ? `${stats.slaScore}%` : 'N/A'} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore != null && stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : stats.slaScore != null ? 'ควรปรับปรุงความเร็ว' : 'ยังไม่มีงานที่วัดได้'} />
@@ -3080,7 +3153,7 @@ const Dashboard = () => {
                                 </div>
                             )}
 
-                            {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', marginBottom: '2.5rem' }}>
+                            {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: isMobile ? '1.25rem' : '2rem', marginBottom: '2.5rem' }}>
                                 <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
                                     <SectionHeader
                                         title="สถิติการเปิด-ปิดรายการงาน (Task Statistics)"
@@ -3170,7 +3243,7 @@ const Dashboard = () => {
                             </div>}
 
                             {/* S-Curve Chart */}
-                            <div style={{ gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
+                            {!isMobile && <div style={{ gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                         <div style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', padding: '14px', borderRadius: '18px', color: '#fff' }}>
@@ -3306,10 +3379,10 @@ const Dashboard = () => {
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            </div>}
 
                             {/* Bottom Grid: SLA Cards + Category + (Project Track full-width) + Task Details */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                            {!isMobile && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                                 {/* Col 1: SLA Section — overview or drill-down */}
                                 <div id="analytics-detail-section" className={highlightedSection === 'analytics-detail-section' ? 'section-highlight' : ''} style={{ background: '#fff', padding: '1.75rem', borderRadius: '32px', border: '1px solid #e2e8f0', overflow: 'hidden', transition: 'all 0.5s' }}>
                                     <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -3915,7 +3988,7 @@ const Dashboard = () => {
                                         <CheckCircle2 size={18} /> พิมพ์รายงานสรุป
                                     </button>
                                 </div>
-                            </div>
+                            </div>}
                         </>
                     )}
                 </>
@@ -3949,7 +4022,7 @@ const Dashboard = () => {
                                     });
                                 });
                                 return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: isMobile ? '10px' : '1.5rem', marginBottom: '2.5rem' }}>
                                         <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', padding: '24px', borderRadius: '24px', border: '1px solid #bfdbfe', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.08)' }}>
                                             <div style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Users size={14} /> จำนวนคนงานรวม
@@ -4070,6 +4143,85 @@ const Dashboard = () => {
 
             {/* TaskHistoryModal */}
             <TaskHistoryModal isOpen={!!selectedTaskHistory} onClose={() => setSelectedTaskHistory(null)} task={selectedTaskHistory} />
+
+            {/* Mobile stat-card bottom-sheet popup */}
+            {isMobile && popupCard && (() => {
+                const catMeta: Record<string, { title: string; color: string; bg: string }> = {
+                    urgent:      { title: 'เร่งด่วน SLA',      color: '#ef4444', bg: '#fff1f2' },
+                    inProgress:  { title: 'ปกติ',               color: '#0ea5e9', bg: '#f0f9ff' },
+                    pendingAdmin:{ title: 'รอแอดมินประเมิน',   color: '#6366f1', bg: '#f5f3ff' },
+                    evaluating:  { title: 'รอลูกค้าประเมิน',   color: '#eab308', bg: '#fefce8' },
+                };
+                const meta = catMeta[popupCard] || { title: '', color: '#4f46e5', bg: '#f8fafc' };
+                const isForCustEval = (wo: any) => {
+                    if (['Completed', 'Verified'].includes(wo.status)) return false;
+                    if (wo.status === 'pending_delivery') return true;
+                    const ts = (wo.categories || []).flatMap((c: any) => c.tasks || []);
+                    return ts.length > 0 && ts.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+                };
+                const urgentIds = new Set((stats.urgentTasks || []).map((u: any) => String(u.id)));
+                const popupWOs: any[] =
+                    popupCard === 'urgent'       ? (stats.urgentTasks || []) :
+                    popupCard === 'inProgress'   ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !urgentIds.has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) :
+                    popupCard === 'pendingAdmin' ? allAccessibleWOs.filter((wo: any) => ['Pending', 'Evaluating'].includes(wo.status)) :
+                    popupCard === 'evaluating'   ? allAccessibleWOs.filter(isForCustEval) :
+                    [];
+                return (
+                    <>
+                        <div onClick={() => setPopupCard(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 998 }} />
+                        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '78%', background: '#fff', borderRadius: '24px 24px 0 0', zIndex: 999, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 -8px 32px rgba(0,0,0,0.15)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '10px', paddingBottom: '2px' }}>
+                                <div style={{ width: '40px', height: '4px', background: '#e2e8f0', borderRadius: '2px' }} />
+                            </div>
+                            <div style={{ padding: '0.75rem 1.25rem 0.875rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: meta.color }} />
+                                    <span style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b' }}>{meta.title}</span>
+                                    <span style={{ background: meta.bg, color: meta.color, padding: '2px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 800 }}>{popupWOs.length} ใบงาน</span>
+                                </div>
+                                <button onClick={() => setPopupCard(null)} style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', color: '#64748b', padding: '6px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div style={{ height: '1px', background: '#f1f5f9' }} />
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                                {popupWOs.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีใบงานในหมวดนี้ 🎉</div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {popupWOs.map((wo: any, idx: number) => {
+                                            const sla = popupCard === 'urgent' ? (wo.statusInfo || getSLATimeStatus(wo)) : null;
+                                            const slaLabel = sla ? (sla.level === 'critical' ? 'เลยกำหนด' : sla.level === 'warning' ? 'ใกล้กำหนด' : '') : '';
+                                            const taskCount = (wo.categories || []).reduce((s: number, c: any) => s + (c.tasks || []).length, 0);
+                                            const navTarget = popupCard === 'evaluating' || popupCard === 'pendingAdmin' ? `/work-orders?id=${wo.id}` : `/daily-report?id=${wo.id}`;
+                                            const btnLabel = popupCard === 'evaluating' ? '🔍 ติดตามสถานะ' : popupCard === 'pendingAdmin' ? '🔍 ดูใบงาน' : '📝 บันทึกรายงาน';
+                                            return (
+                                                <div key={idx} onClick={() => { setPopupCard(null); navigate(navTarget); }}
+                                                    style={{ background: meta.bg, borderRadius: '16px', border: `1px solid ${meta.color}33`, padding: '12px 14px', cursor: 'pointer' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: meta.color, fontFamily: 'monospace' }}>{wo.id}</span>
+                                                        {slaLabel && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#fff', background: sla?.level === 'critical' ? '#ef4444' : '#f59e0b', padding: '1px 8px', borderRadius: '20px' }}>{slaLabel}</span>}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>{wo.locationName || wo.building || '—'}</div>
+                                                    <div style={{ display: 'flex', gap: '10px', fontSize: '0.7rem', color: '#64748b', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                        <span>📋 {taskCount} งานย่อย</span>
+                                                        {wo.reportDate && <span>📅 {wo.reportDate}</span>}
+                                                        {wo.projectName && <span>🏗️ {wo.projectName}</span>}
+                                                    </div>
+                                                    <button onClick={(e) => { e.stopPropagation(); setPopupCard(null); navigate(navTarget); }}
+                                                        style={{ width: '100%', padding: '7px', background: 'rgba(0,0,0,0.04)', border: `1px solid ${meta.color}44`, borderRadius: '10px', color: meta.color, fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+                                                        {btnLabel}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                );
+            })()}
         </div>
     );
 };

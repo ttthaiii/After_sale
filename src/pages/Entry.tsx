@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { 
     Plus, 
     Wrench, 
@@ -12,7 +13,8 @@ import {
     CheckCircle2,
     XCircle,
     ClipboardCheck,
-    Info
+    Info,
+    ChevronRight
 } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -27,7 +29,9 @@ const Entry = () => {
     const location = useLocation();
     const navigate = useNavigate();
 
+    const isMobile = useIsMobile();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [draftPickerOpen, setDraftPickerOpen] = useState<'AfterSale' | 'PreHandover' | null>(null);
     const [selectedType, setSelectedType] = useState<WorkOrderType>('AfterSale');
     const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -197,12 +201,12 @@ const Entry = () => {
             style={{
                 background: '#ffffff',
                 border: '1px solid #e5e7eb',
-                borderRadius: '24px',
-                padding: '24px 32px',
+                borderRadius: isMobile ? '16px' : '24px',
+                padding: isMobile ? '14px 16px' : '24px 32px',
                 textAlign: 'left',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '24px',
+                gap: isMobile ? '12px' : '24px',
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 width: '100%',
@@ -223,20 +227,20 @@ const Entry = () => {
         >
             <div style={{
                 background: `linear-gradient(135deg, ${color}20 0%, ${color}10 100%)`,
-                width: '60px',
-                height: '60px',
-                borderRadius: '16px',
+                width: isMobile ? '40px' : '60px',
+                height: isMobile ? '40px' : '60px',
+                borderRadius: isMobile ? '11px' : '16px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: color,
                 flexShrink: 0
             }}>
-                <Icon size={28} />
+                <Icon size={isMobile ? 20 : 28} />
             </div>
-            <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#111827' }}>{title}</h3>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>{subtitle}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: isMobile ? '0.92rem' : '1.15rem', fontWeight: 700, color: '#111827' }}>{title}</h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: isMobile ? '0.75rem' : '0.85rem', color: '#6b7280', fontWeight: 500 }}>{subtitle}</p>
             </div>
             <div style={{ color: '#9ca3af' }}>
                 <Plus size={20} />
@@ -278,7 +282,8 @@ const Entry = () => {
                     padding: '16px 20px',
                     marginBottom: '12px',
                     display: 'flex',
-                    alignItems: 'flex-start', // Top-aligned
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'flex-start', // Top-aligned
                     gap: '16px',
                     transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                     boxShadow: highlightedId === wo.id ? '0 10px 15px -3px rgba(245, 158, 11, 0.2)' : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
@@ -423,17 +428,25 @@ const Entry = () => {
                     )}
                 </div>
 
-                {/* Actions Column - Vertical Arrangement */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'center', alignSelf: 'stretch' }}>
+                {/* Actions Column - Vertical on desktop, full-width row on mobile */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'row' : 'column',
+                    flexWrap: isMobile ? 'wrap' : 'nowrap',
+                    gap: '6px',
+                    justifyContent: isMobile ? 'stretch' : 'center',
+                    alignSelf: 'stretch',
+                    width: isMobile ? '100%' : 'auto'
+                }}>
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleEditDraftOrEvaluating(wo); }}
                         title={wo.status === 'Rejected' ? 'แก้ไขใหม่' : 'แก้ไข'}
-                        style={{ 
-                            padding: '6px 12px', 
-                            color: '#4f46e5', 
-                            background: '#eff6ff', 
-                            border: '1px solid #dbeafe', 
-                            borderRadius: '8px', 
+                        style={{
+                            padding: isMobile ? '10px 12px' : '6px 12px',
+                            color: '#4f46e5',
+                            background: '#eff6ff',
+                            border: '1px solid #dbeafe',
+                            borderRadius: '8px',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -442,7 +455,8 @@ const Entry = () => {
                             fontSize: '0.75rem',
                             fontWeight: 700,
                             transition: 'all 0.15s',
-                            minWidth: '94px'
+                            flex: isMobile ? 1 : 'none',
+                            minWidth: isMobile ? 0 : '94px'
                         }}
                         onMouseOver={(e) => { e.currentTarget.style.background = '#dbeafe'; }}
                         onMouseOut={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
@@ -454,12 +468,12 @@ const Entry = () => {
                     {isDraft && (
                         <button 
                             onClick={(e) => { e.stopPropagation(); if(window.confirm('ต้องการลบแบบร่างนี้?')) deleteWorkOrder(wo.id); }}
-                            style={{ 
-                                padding: '6px 12px', 
-                                color: '#ef4444', 
-                                background: '#fef2f2', 
-                                border: '1px solid #fee2e2', 
-                                borderRadius: '8px', 
+                            style={{
+                                padding: isMobile ? '10px 12px' : '6px 12px',
+                                color: '#ef4444',
+                                background: '#fef2f2',
+                                border: '1px solid #fee2e2',
+                                borderRadius: '8px',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -468,7 +482,8 @@ const Entry = () => {
                                 fontSize: '0.75rem',
                                 fontWeight: 700,
                                 transition: 'all 0.15s',
-                                minWidth: '94px'
+                                flex: isMobile ? 1 : 'none',
+                                minWidth: isMobile ? 0 : '94px'
                             }}
                             onMouseOver={(e) => { e.currentTarget.style.background = '#fee2e2'; }}
                             onMouseOut={(e) => { e.currentTarget.style.background = '#fef2f2'; }}
@@ -481,12 +496,12 @@ const Entry = () => {
                     {(wo.status === 'Rejected' || wo.status === 'Evaluating') && (
                         <button 
                             onClick={(e) => { e.stopPropagation(); if(window.confirm('ยืนยันการยกเลิกใบงานนี้?')) archiveWorkOrder(wo.id); }}
-                            style={{ 
-                                padding: '6px 12px', 
-                                color: '#ef4444', 
-                                background: '#fff1f2', 
-                                border: '1px solid #fee2e2', 
-                                borderRadius: '8px', 
+                            style={{
+                                padding: isMobile ? '10px 12px' : '6px 12px',
+                                color: '#ef4444',
+                                background: '#fff1f2',
+                                border: '1px solid #fee2e2',
+                                borderRadius: '8px',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -495,7 +510,8 @@ const Entry = () => {
                                 fontSize: '0.75rem',
                                 fontWeight: 700,
                                 transition: 'all 0.15s',
-                                minWidth: '94px'
+                                flex: isMobile ? 1 : 'none',
+                                minWidth: isMobile ? 0 : '94px'
                             }}
                             onMouseOver={(e) => { e.currentTarget.style.background = '#fee2e2'; }}
                             onMouseOut={(e) => { e.currentTarget.style.background = '#fff1f2'; }}
@@ -537,28 +553,35 @@ const Entry = () => {
     );
 
     return (
-        <div style={{ 
-            padding: '40px', 
-            maxWidth: '1600px', 
-            margin: '0 auto', 
-            fontFamily: "'Plus Jakarta Sans', 'Sarabun', sans-serif" 
+        <div style={{
+            padding: isMobile ? '1rem 1rem 90px' : '40px',
+            maxWidth: '1600px',
+            margin: '0 auto',
+            fontFamily: "'Plus Jakarta Sans', 'Sarabun', sans-serif"
         }}>
             {/* Header Area */}
-            <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{
+                marginBottom: isMobile ? '1.25rem' : '40px',
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : undefined,
+                justifyContent: isMobile ? undefined : 'space-between',
+                alignItems: isMobile ? 'stretch' : 'flex-end',
+                gap: isMobile ? '0.75rem' : undefined,
+            }}>
                 <div>
-                    <h1 style={{ margin: 0, fontSize: '2.25rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.025em' }}>
+                    <h1 style={{ margin: 0, fontSize: isMobile ? '1.35rem' : '2.25rem', fontWeight: 800, color: '#111827', letterSpacing: isMobile ? '-0.01em' : '-0.025em' }}>
                         ใบงานและติดตามผล
                     </h1>
-                    <p style={{ margin: '8px 0 0 0', fontSize: '1rem', color: '#6b7280', fontWeight: 500 }}>
+                    <p style={{ margin: isMobile ? '4px 0 0 0' : '8px 0 0 0', fontSize: isMobile ? '0.78rem' : '1rem', color: '#6b7280', fontWeight: 500 }}>
                         ศุนย์รวมการจัดการใบงานและติดตามสถานะประเมิน
                     </p>
                 </div>
-                
+
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', width: isMobile ? '100%' : undefined }}>
                         <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} size={18} />
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             placeholder="ค้นหาเลขที่หรือสถานที่..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -566,11 +589,12 @@ const Entry = () => {
                                 padding: '12px 16px 12px 40px',
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '12px',
-                                width: '320px',
+                                width: isMobile ? '100%' : '320px',
                                 outline: 'none',
                                 fontSize: '0.9rem',
                                 background: '#f9fafb',
-                                transition: 'all 0.2s'
+                                transition: 'all 0.2s',
+                                boxSizing: 'border-box',
                             }}
                         />
                     </div>
@@ -578,7 +602,7 @@ const Entry = () => {
             </div>
 
             {/* Top Action Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '48px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? '10px' : '24px', marginBottom: isMobile ? '1.25rem' : '48px' }}>
                 <ActionCard 
                     title="แจ้งซ่อมทั่วไป"
                     subtitle="งานซ่อมบำรุงและดูแลหลังการขาย (After Sale)"
@@ -595,49 +619,83 @@ const Entry = () => {
                 />
             </div>
 
+            {/* Mobile section label — drafts */}
+            {isMobile && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <div style={{ width: '3px', height: '14px', background: '#f59e0b', borderRadius: '2px' }} />
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#92400e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>แบบร่างที่บันทึกไว้</span>
+                </div>
+            )}
+
             {/* Dashboard Content: 4-Zone Grid */}
-            <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: '1fr 1fr', 
-                gap: '20px' // Reduced gap as requested
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: isMobile ? '10px' : '20px',
             }}>
-                
+
                 {/* 1. After Sale Drafts */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ 
-                            background: '#6366f115', color: '#6366f1',
-                            width: '32px', height: '32px', borderRadius: '10px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                            <Wrench size={18} />
+                <div style={{ background: isMobile ? '#fffbeb' : '#ffffff', borderRadius: isMobile ? '16px' : '24px', border: isMobile ? '1.5px solid #fde68a' : '1px solid #f3f4f6', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+                    <button
+                        onClick={() => { if (isMobile) setDraftPickerOpen('AfterSale'); }}
+                        style={{ width: '100%', background: 'none', border: 'none', cursor: isMobile ? 'pointer' : 'default', padding: isMobile ? '20px 12px 16px' : '24px 24px 0', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'center', gap: isMobile ? '8px' : '10px', textAlign: isMobile ? 'center' : 'left' }}
+                    >
+                        <div style={{ background: '#6366f115', color: '#6366f1', width: isMobile ? '44px' : '36px', height: isMobile ? '44px' : '36px', borderRadius: isMobile ? '14px' : '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Wrench size={isMobile ? 22 : 18} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#111827' }}>แบบร่างแจ้งซ่อมทั่วไป</h2>
-                    </div>
-                    <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
-                        {afterSaleDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
-                    </ScrollableZone>
+                        <div style={{ flex: isMobile ? undefined : 1 }}>
+                            <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 500 }}>แบบร่าง</div>
+                            <div style={{ fontSize: isMobile ? '0.82rem' : '0.95rem', fontWeight: 800, color: '#111827' }}>แจ้งซ่อมทั่วไป</div>
+                        </div>
+                        <span style={{ background: afterSaleDrafts.length > 0 ? '#6366f1' : '#e5e7eb', color: afterSaleDrafts.length > 0 ? '#fff' : '#9ca3af', borderRadius: isMobile ? '12px' : '20px', padding: isMobile ? '5px 14px' : '2px 10px', fontSize: isMobile ? '1rem' : '0.8rem', fontWeight: 800, flexShrink: 0, minWidth: isMobile ? '44px' : '28px', textAlign: 'center' }}>
+                            {afterSaleDrafts.length}
+                        </span>
+                    </button>
+                    {!isMobile && (
+                        <div style={{ padding: '16px 24px 24px' }}>
+                            <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
+                                {afterSaleDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
+                            </ScrollableZone>
+                        </div>
+                    )}
                 </div>
 
                 {/* 2. Pre-Handover Drafts */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ 
-                            background: '#10b98115', color: '#10b981',
-                            width: '32px', height: '32px', borderRadius: '10px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                            <ClipboardCheck size={18} />
+                <div style={{ background: isMobile ? '#fffbeb' : '#ffffff', borderRadius: isMobile ? '16px' : '24px', border: isMobile ? '1.5px solid #fde68a' : '1px solid #f3f4f6', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+                    <button
+                        onClick={() => { if (isMobile) setDraftPickerOpen('PreHandover'); }}
+                        style={{ width: '100%', background: 'none', border: 'none', cursor: isMobile ? 'pointer' : 'default', padding: isMobile ? '20px 12px 16px' : '24px 24px 0', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'center', gap: isMobile ? '8px' : '10px', textAlign: isMobile ? 'center' : 'left' }}
+                    >
+                        <div style={{ background: '#10b98115', color: '#10b981', width: isMobile ? '44px' : '36px', height: isMobile ? '44px' : '36px', borderRadius: isMobile ? '14px' : '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <ClipboardCheck size={isMobile ? 22 : 18} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#111827' }}>แบบร่างตรวจรับห้อง</h2>
-                    </div>
-                    <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
-                        {preHandoverDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
-                    </ScrollableZone>
+                        <div style={{ flex: isMobile ? undefined : 1 }}>
+                            <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 500 }}>แบบร่าง</div>
+                            <div style={{ fontSize: isMobile ? '0.82rem' : '0.95rem', fontWeight: 800, color: '#111827' }}>ตรวจรับห้อง</div>
+                        </div>
+                        <span style={{ background: preHandoverDrafts.length > 0 ? '#10b981' : '#e5e7eb', color: preHandoverDrafts.length > 0 ? '#fff' : '#9ca3af', borderRadius: isMobile ? '12px' : '20px', padding: isMobile ? '5px 14px' : '2px 10px', fontSize: isMobile ? '1rem' : '0.8rem', fontWeight: 800, flexShrink: 0, minWidth: isMobile ? '44px' : '28px', textAlign: 'center' }}>
+                            {preHandoverDrafts.length}
+                        </span>
+                    </button>
+                    {!isMobile && (
+                        <div style={{ padding: '16px 24px 24px' }}>
+                            <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
+                                {preHandoverDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
+                            </ScrollableZone>
+                        </div>
+                    )}
                 </div>
 
+                {/* Mobile section label — tracking */}
+                {isMobile && (
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', marginBottom: '-4px' }}>
+                        <div style={{ width: '3px', height: '14px', background: '#6366f1', borderRadius: '2px' }} />
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#3730a3', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ติดตามผล</span>
+                    </div>
+                )}
+
                 {/* 3. After Sale Tracking */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{ background: '#ffffff', borderRadius: isMobile ? '16px' : '24px', border: '1px solid #f3f4f6', padding: isMobile ? '16px' : '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', gridColumn: isMobile ? '1 / -1' : undefined }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                         <div style={{ 
                             background: '#6366f115', color: '#6366f1',
@@ -655,7 +713,7 @@ const Entry = () => {
                 </div>
 
                 {/* 4. Pre-Handover Tracking */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{ background: '#ffffff', borderRadius: isMobile ? '16px' : '24px', border: '1px solid #f3f4f6', padding: isMobile ? '16px' : '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', gridColumn: isMobile ? '1 / -1' : undefined }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                         <div style={{ 
                             background: '#10b98115', color: '#10b981',
@@ -674,9 +732,87 @@ const Entry = () => {
 
             </div>
 
+            {/* Draft Picker — centered modal */}
+            {isMobile && draftPickerOpen && (
+                <div
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+                    onClick={() => setDraftPickerOpen(null)}
+                >
+                    <div
+                        style={{ background: '#fff', borderRadius: '20px', width: '100%', maxHeight: '70vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                            <div style={{
+                                background: draftPickerOpen === 'AfterSale' ? '#6366f115' : '#10b98115',
+                                color: draftPickerOpen === 'AfterSale' ? '#6366f1' : '#10b981',
+                                width: '36px', height: '36px', borderRadius: '10px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                            }}>
+                                {draftPickerOpen === 'AfterSale' ? <Wrench size={18} /> : <ClipboardCheck size={18} />}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 500 }}>เลือกแบบร่าง</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#111827' }}>
+                                    {draftPickerOpen === 'AfterSale' ? 'แจ้งซ่อมทั่วไป' : 'ตรวจรับห้อง'}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setDraftPickerOpen(null)}
+                                style={{ background: '#f1f5f9', border: 'none', borderRadius: '99px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                            >
+                                <XCircle size={18} color="#64748b" />
+                            </button>
+                        </div>
+                        {/* List */}
+                        <div style={{ overflowY: 'auto', flex: 1, padding: '0 16px' }}>
+                            {(draftPickerOpen === 'AfterSale' ? afterSaleDrafts : preHandoverDrafts).length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af' }}>
+                                    <FileText size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                                    <p style={{ margin: 0, fontSize: '0.85rem' }}>ไม่มีแบบร่างในหมวดนี้</p>
+                                </div>
+                            ) : (
+                                (draftPickerOpen === 'AfterSale' ? afterSaleDrafts : preHandoverDrafts).map(wo => (
+                                    <button
+                                        key={wo.id}
+                                        onClick={() => { handleEditDraftOrEvaluating(wo); setDraftPickerOpen(null); }}
+                                        style={{
+                                            width: '100%', background: '#f8fafc', border: '1px solid #f1f5f9',
+                                            borderRadius: '14px', padding: '14px 16px', marginBottom: '10px',
+                                            display: 'flex', alignItems: 'center', gap: '12px',
+                                            textAlign: 'left', cursor: 'pointer', boxSizing: 'border-box'
+                                        }}
+                                    >
+                                        <div style={{
+                                            width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0,
+                                            background: draftPickerOpen === 'AfterSale' ? '#6366f115' : '#10b98115',
+                                            color: draftPickerOpen === 'AfterSale' ? '#6366f1' : '#10b981',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            <Package size={18} />
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600 }}>{wo.id}</div>
+                                            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {wo.locationName || '(ไม่ระบุสถานที่)'}
+                                            </div>
+                                            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                                                {formatDateTime(wo.submittedAt || wo.createdAt)}
+                                            </div>
+                                        </div>
+                                        <ChevronRight size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Modals */}
-            <ForemanReportModal 
-                isOpen={isCreateModalOpen} 
+            <ForemanReportModal
+                isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)} 
                 initialWorkType={selectedType}
             />

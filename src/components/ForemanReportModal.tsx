@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loader2, FileText, Paperclip } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -54,6 +55,8 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     const { addWorkOrder } = useWorkOrders();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
+    const isMobile = useIsMobile();
+    const [showConfirmClose, setShowConfirmClose] = useState(false);
     const [allProjects, setAllProjects] = useState<Project[]>([]);
 
     // ✅ Real-time Sync Projects from Firestore
@@ -95,9 +98,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
     const handleClose = () => {
         if (isFormDirty()) {
-            if (window.confirm('คุณมีข้อมูลที่กรอกค้างไว้อยู่ หากปิดหน้าต่างนี้ข้อมูลทั้งหมดจะสูญหาย\n\nต้องการทิ้งข้อมูลและปิดหน้าต่างใช่หรือไม่? (Unsaved changes will be lost)')) {
-                onClose();
-            }
+            setShowConfirmClose(true);
         } else {
             onClose();
         }
@@ -613,31 +614,71 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 background: 'rgba(0,0,0,0.5)', // Lighter overlay
                 display: 'flex', justifyContent: 'center', alignItems: 'center',
                 zIndex: 1000,
-                backdropFilter: 'blur(4px)',
-                padding: '20px',
+                backdropFilter: isMobile ? undefined : 'blur(4px)',
+                padding: isMobile ? '0' : '20px',
                 boxSizing: 'border-box'
             }}
         >
             <LoadingOverlay isVisible={isSubmitting} />
+            {showConfirmClose && (
+                <div style={{ position: 'absolute', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', borderRadius: 'inherit' }}>
+                    <div style={{ background: '#ffffff', borderRadius: '16px', padding: '28px 24px', maxWidth: '320px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                                </div>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>ยืนยันการปิด</h3>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280', lineHeight: 1.6 }}>
+                                คุณมีข้อมูลที่กรอกค้างอยู่ หากปิดหน้าต่างนี้ข้อมูลทั้งหมดจะหายไป
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={() => setShowConfirmClose(false)}
+                                style={{ flex: 1, padding: '10px', background: '#f3f4f6', border: 'none', borderRadius: '10px', color: '#374151', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={() => { setShowConfirmClose(false); onClose(); }}
+                                style={{ flex: 1, padding: '10px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                                ปิดและทิ้งข้อมูล
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    background: '#ffffff', // Clean White Background
-                    width: '100%',
-                    maxWidth: '1000px',
-                    maxHeight: '90vh',
-                    borderRadius: '16px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                    border: '1px solid #e5e7eb',
+                    background: '#ffffff',
+                    // Mobile: position:absolute inset:0 pins the modal to the overlay edges
+                    // so it's always exactly the viewport size regardless of flex/height quirks
+                    position: isMobile ? 'absolute' : undefined,
+                    top: isMobile ? 0 : undefined,
+                    left: isMobile ? 0 : undefined,
+                    right: isMobile ? 0 : undefined,
+                    bottom: isMobile ? 0 : undefined,
+                    // Desktop: normal flex-child sizing
+                    width: isMobile ? undefined : '100%',
+                    maxWidth: isMobile ? undefined : '1000px',
+                    maxHeight: isMobile ? undefined : '90vh',
+                    borderRadius: isMobile ? '0' : '16px',
+                    display: isMobile ? 'grid' : 'flex',
+                    gridTemplateRows: isMobile ? 'auto 1fr auto' : undefined,
+                    flexDirection: isMobile ? undefined : 'column',
+                    boxShadow: isMobile ? 'none' : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                    border: isMobile ? 'none' : '1px solid #e5e7eb',
                     overflow: 'hidden',
                     fontFamily: "'Inter', 'Sarabun', sans-serif",
-                    color: '#111827' // Zinc 900
+                    color: '#111827'
                 }}
             >
                 {step === 'success' ? (
-                    <div style={{ padding: '60px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
+                    <div style={{ padding: '60px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px', gridRow: isMobile ? '1 / -1' : undefined }}>
                         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#f0fdf4', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <ClipboardCheck size={48} />
                         </div>
@@ -664,12 +705,12 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             </div>
                         </div>
 
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '32px', background: '#ffffff' }}>
+                        <div style={{ flex: isMobile ? undefined : 1, minHeight: 0, overflowY: 'auto', padding: isMobile ? '16px' : '32px', background: '#ffffff' }}>
                             <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
                                 <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <div style={{ width: '4px', height: '16px', background: '#4f46e5', borderRadius: '4px' }}></div> รายละเอียดโครงการ
                                 </h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
                                     <div>
                                         <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '4px' }}>โครงการ</div>
                                         <div style={{ fontWeight: 700, color: '#0f172a' }}>{projects.find(p => p.id === formState.projectId)?.name || '-'}</div>
@@ -757,10 +798,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             )}
                         </div>
 
-                        <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+                        <div style={{ padding: isMobile ? `16px 16px calc(16px + env(safe-area-inset-bottom))` : '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end', gap: '12px' }}>
                             <button
                                 onClick={() => setStep('form')}
-                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, width: isMobile ? '100%' : 'auto' }}
                             >
                                 ย้อนกลับ (Edit)
                             </button>
@@ -778,7 +819,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px'
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    width: isMobile ? '100%' : 'auto'
                                 }}
                             >
                                 {isSubmitting && <Loader2 className="animate-spin" size={20} />}
@@ -842,8 +885,37 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             </button>
                         </div>
 
+                        {/* Mobile Step Progress Bar — always in "form" branch so steps 1+2 are current, step 3 is next */}
+                        {isMobile && (
+                            <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                    {(['ข้อมูล', 'รายการงาน', 'ตรวจสอบ'] as const).map((label, idx) => {
+                                        const activeColor = isAfterSale ? '#6366f1' : '#10b981';
+                                        const dotColor = idx < 2 ? activeColor : '#d1d5db';
+                                        const textColor = idx < 2 ? '#1e293b' : '#94a3b8';
+                                        return (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', flex: idx < 2 ? 1 : 'none' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                                    <div style={{
+                                                        width: '24px', height: '24px', borderRadius: '50%',
+                                                        background: dotColor, color: '#fff',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        fontSize: '0.65rem', fontWeight: 800
+                                                    }}>{idx + 1}</div>
+                                                    <span style={{ fontSize: '0.6rem', fontWeight: 600, color: textColor, whiteSpace: 'nowrap' }}>{label}</span>
+                                                </div>
+                                                {idx < 2 && (
+                                                    <div style={{ flex: 1, height: '2px', background: idx === 0 ? activeColor : '#e2e8f0', margin: '0 4px', marginBottom: '14px' }} />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Scrollable Content */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px', background: '#ffffff' }}>
+                        <div style={{ flex: isMobile ? undefined : 1, minHeight: 0, overflowY: 'auto', padding: isMobile ? '16px' : '32px', display: 'flex', flexDirection: 'column', gap: '32px', background: '#ffffff' }}>
 
                             {/* Section 1: General Info */}
                             <section>
@@ -854,7 +926,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                 <div style={{ background: '#f9fafb', padding: '32px', borderRadius: '16px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '28px' }}>
                                     {/* Project & Date Row */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: isMobile ? '16px' : '24px' }}>
                                         <div>
                                             <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>โครงการ (Project) *</label>
                                             <div style={{ position: 'relative' }}>
@@ -945,7 +1017,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     </div>
 
                                     {/* Reporter Info Row */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: isMobile ? '16px' : '24px' }}>
                                         <div>
                                             <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>ชื่อผู้แจ้ง (Reporter)</label>
                                             <input
@@ -974,7 +1046,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                     {/* PreHandover: Document attachment + SLA */}
                                     {!isAfterSale && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: isMobile ? '16px' : '24px' }}>
                                             {/* PDF Documents */}
                                             <div>
                                                 <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>
@@ -1036,7 +1108,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                 {!isAfterSale && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         {groups.map((group) => (
-                                            <div key={group.id} style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '16px 20px', display: 'flex', gap: '16px', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                                            <div key={group.id} style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '16px 20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', alignItems: isMobile ? 'stretch' : 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                                                 <div style={{ flex: 1 }}>
                                                     <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>หมวดงาน (Category)</label>
                                                     <div style={{ position: 'relative' }}>
@@ -1050,20 +1122,21 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                         <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={16} /></div>
                                                     </div>
                                                 </div>
-                                                <div style={{ minWidth: '140px' }}>
+                                                <div style={{ minWidth: isMobile ? 'auto' : '140px' }}>
                                                     <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จำนวนจุดที่พบ</label>
                                                     <input
                                                         type="number"
                                                         min={0}
-                                                        value={group.defectCount || 0}
+                                                        value={group.defectCount || ''}
+                                                        placeholder="0"
                                                         onChange={(e) => updateGroupDefectCount(group.id, parseInt(e.target.value) || 0)}
-                                                        style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', fontSize: '1rem', fontWeight: 700, outline: 'none', textAlign: 'center' }}
+                                                        style={{ width: '100%', padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#111827', fontSize: '1rem', fontWeight: 700, outline: 'none', textAlign: 'center', boxSizing: 'border-box' }}
                                                         onFocus={(e) => e.target.style.borderColor = '#10b981'}
                                                         onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                                                     />
                                                 </div>
                                                 {groups.length > 1 && (
-                                                    <button onClick={() => removeGroup(group.id)} style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', cursor: 'pointer', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 500, flexShrink: 0 }}>
+                                                    <button onClick={() => removeGroup(group.id)} style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', cursor: 'pointer', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 500, flexShrink: 0 }}>
                                                         <Trash2 size={14} /> ลบ
                                                     </button>
                                                 )}
@@ -1192,8 +1265,8 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 </button>
                                                             )}
                                                             {/* SYMMETRICAL GRID: Updated for 5 columns */}
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr', gap: '16px', marginBottom: '20px' }}>
-                                                            <div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr', gap: isMobile ? '10px' : '16px', marginBottom: '20px' }}>
+                                                            <div style={{ gridColumn: isMobile ? 'span 2' : 'auto' }}>
                                                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จุดที่พบ (Position)</label>
                                                                 <input
                                                                     type="text"
@@ -1216,7 +1289,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     onBlur={(e) => !isItemReadOnly && (e.target.style.borderColor = '#d1d5db')}
                                                                 />
                                                             </div>
-                                                            <div>
+                                                            <div style={{ gridColumn: isMobile ? 'span 2' : 'auto' }}>
                                                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>รายละเอียด (Detail)</label>
                                                                 <input
                                                                     type="text"
@@ -1285,7 +1358,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     {['จุด', 'ตำแหน่ง', 'ชั้น', 'ตรม.', 'แผ่น', 'บาน', 'เครื่อง', 'เมตร', 'เซนติเมตร'].map(u => <option key={u} value={u}>{u}</option>)}
                                                                 </select>
                                                             </div>
-                                                            <div>
+                                                            <div style={{ gridColumn: isMobile ? 'span 2' : 'auto' }}>
                                                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>SLA คาดการณ์</label>
                                                                 <select
                                                                     value={(item as any).estimatedSla || '24h'}
@@ -1320,9 +1393,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                             <label style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500 }}>
                                                                 <Camera size={18} /> รูปภาพประกอบ (Evidence)
                                                             </label>
-                                                            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                                            <div style={{ display: 'flex', gap: isMobile ? '10px' : '16px', flexWrap: isMobile ? 'nowrap' : 'wrap', justifyContent: isMobile ? 'flex-start' : 'center', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? '4px' : '0' }}>
                                                                 {item.images.map((img, imgIdx) => (
-                                                                    <div key={imgIdx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                                                                    <div key={imgIdx} style={{ position: 'relative', width: isMobile ? '80px' : '90px', height: isMobile ? '80px' : '90px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                                                                         <img src={img} alt="Evidence" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                                         {!isItemReadOnly && (
                                                                             <button
@@ -1355,7 +1428,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     <button
                                                                         onClick={() => triggerUpload(group.id, item.id)}
                                                                         disabled={isUploading}
-                                                                        style={{ width: '90px', height: '90px', borderRadius: '8px', border: '1px dashed #6366f1', background: '#e0e7ff', color: '#4f46e5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', transition: 'all 0.2s', opacity: isUploading ? 0.6 : 1 }}
+                                                                        style={{ width: isMobile ? '80px' : '90px', height: isMobile ? '80px' : '90px', flexShrink: 0, borderRadius: '8px', border: '1px dashed #6366f1', background: '#e0e7ff', color: '#4f46e5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', transition: 'all 0.2s', opacity: isUploading ? 0.6 : 1 }}
                                                                         onMouseOver={(e) => !isUploading && (e.currentTarget.style.background = '#c7d2fe')}
                                                                         onMouseOut={(e) => !isUploading && (e.currentTarget.style.background = '#e0e7ff')}
                                                                     >
@@ -1417,15 +1490,17 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         />
 
                         {/* Footer */}
-                        <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
-                            <button
-                                onClick={handleClose}
-                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, transition: 'all 0.2s' }}
-                                onMouseOver={(e) => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.borderColor = '#9ca3af'; }}
-                                onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#d1d5db'; }}
-                            >
-                                Cancel
-                            </button>
+                        <div style={{ padding: isMobile ? `16px 16px calc(16px + env(safe-area-inset-bottom))` : '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end', gap: '12px' }}>
+                            {!isMobile && (
+                                <button
+                                    onClick={handleClose}
+                                    style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, transition: 'all 0.2s' }}
+                                    onMouseOver={(e) => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.borderColor = '#9ca3af'; }}
+                                    onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#d1d5db'; }}
+                                >
+                                    Cancel
+                                </button>
+                            )}
                             <button
                                 onClick={() => {
                                     if (!formState.projectId) {
@@ -1436,7 +1511,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     setIsPreviewDraft(true);
                                     setStep('preview');
                                 }}
-                                style={{ padding: '10px 24px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                style={{ padding: '10px 24px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: isMobile ? '100%' : 'auto' }}
                                 onMouseOver={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#94a3b8'; }}
                                 onMouseOut={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
                             >
@@ -1452,7 +1527,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     setIsPreviewDraft(false);
                                     setStep('preview');
                                 }}
-                                style={{ padding: '10px 32px', background: '#4f46e5', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
+                                style={{ padding: '10px 32px', background: '#4f46e5', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)', width: isMobile ? '100%' : 'auto' }}
                                 onMouseOver={(e) => e.currentTarget.style.background = '#4338ca'}
                                 onMouseOut={(e) => e.currentTarget.style.background = '#4f46e5'}
                             >

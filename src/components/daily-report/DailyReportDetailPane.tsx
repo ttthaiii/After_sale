@@ -25,6 +25,7 @@ import {
   User,
 } from "lucide-react";
 import { useDailyReport, filterHistoryByRevision } from "../../context/DailyReportContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { SLACountdown } from "./SLACountdowns";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
 import { formatDate } from "../../utils/date";
@@ -41,6 +42,7 @@ const formatSubtaskId = (id: string | undefined): string => {
 };
 
 export const DailyReportDetailPane: React.FC = () => {
+  const isMobile = useIsMobile();
   const {
     selectedTaskInfo,
     user,
@@ -114,6 +116,16 @@ export const DailyReportDetailPane: React.FC = () => {
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
   });
+
+  const [expandedLaborIds, setExpandedLaborIds] = useState<Set<string>>(new Set());
+  const toggleLaborExpand = (id: string) => setExpandedLaborIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const [showDatePickerMobile, setShowDatePickerMobile] = useState(false);
+  const [pendingMobileDate, setPendingMobileDate] = useState<string | null>(null);
 
   const isAwaitingAdmin = React.useMemo(() => {
     return selectedTaskInfo?.wo?.status === 'Rejected' && !selectedTaskInfo?.wo?.reviewedByAdmin;
@@ -520,16 +532,17 @@ export const DailyReportDetailPane: React.FC = () => {
                   background: "#fff",
                   borderRadius: "16px",
                   border: "1px solid #e2e8f0",
-                  overflow: "visible",
+                  overflow: "hidden",
                   display: "flex",
-                  height: "220px",
+                  alignItems: "stretch",
+                  height: isMobile ? "auto" : "220px",
                 }}
               >
                 {" "}
-                
+
                 <div
                   style={{
-                    width: "190px",
+                    width: isMobile ? "100px" : "190px",
                     background: "#f1f5f9",
                     position: "relative",
                     flexShrink: 0,
@@ -588,31 +601,31 @@ export const DailyReportDetailPane: React.FC = () => {
                 <div
                   style={{
                     flex: 1,
-                    padding: "12px 16px",
+                    padding: isMobile ? "10px 12px" : "12px 16px",
                     display: "flex",
                     flexDirection: "column",
-                    height: "100%",
+                    minWidth: 0,
+                    overflow: "hidden",
                   }}
                 >
                   {" "}
-                  
+
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "stretch",
-                      height: "100%",
                     }}
                   >
                     {" "}
-                    
+
                     <div
                       style={{
                         flex: 1,
                         minWidth: 0,
                         display: "flex",
                         flexDirection: "column",
-                        height: "100%",
+                        overflow: "hidden",
                       }}
                     >
                       {" "}
@@ -652,18 +665,25 @@ export const DailyReportDetailPane: React.FC = () => {
                         <h2
                           style={{
                             margin: 0,
-                            fontSize: "1.1rem",
+                            fontSize: isMobile ? "0.95rem" : "1.1rem",
                             fontWeight: 900,
                             color: "#0f172a",
-                            lineHeight: 1.2,
+                            lineHeight: 1.3,
                             display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            flexWrap: "wrap",
+                            alignItems: isMobile ? "flex-start" : "center",
+                            flexDirection: isMobile ? "column" : "row",
+                            gap: isMobile ? "4px" : "8px",
+                            flexWrap: isMobile ? "nowrap" : "wrap",
                           }}
                         >
-                          {" "}
-                          <span>{selectedTaskInfo.task.isHelper ? (selectedTaskInfo.task.subtaskName || selectedTaskInfo.task.name) : (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName)}</span>
+                          <span style={isMobile ? {
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical" as const,
+                            overflow: "hidden",
+                            width: "100%",
+                          } : {}}>{selectedTaskInfo.task.isHelper ? (selectedTaskInfo.task.subtaskName || selectedTaskInfo.task.name) : (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName)}</span>
+                          <div style={isMobile ? { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" } : { display: "contents" }}>
                           
                           <span
                             style={{
@@ -704,69 +724,45 @@ export const DailyReportDetailPane: React.FC = () => {
                                 )}
                               </span>
                             )}
+                            {isMobile && (() => {
+                              const pct = selectedTaskInfo.task.dailyProgress || 0;
+                              const bg = pct >= 100 ? "#f0fdf4" : pct > 0 ? "#fffbeb" : "#f8fafc";
+                              const clr = pct >= 100 ? "#166534" : pct > 0 ? "#92400e" : "#64748b";
+                              const bdr = pct >= 100 ? "#dcfce7" : pct > 0 ? "#fde68a" : "#e2e8f0";
+                              return <span style={{ fontSize: "0.68rem", fontWeight: 900, background: bg, color: clr, padding: "2px 8px", borderRadius: "6px", border: `1px solid ${bdr}` }}>{pct}%</span>;
+                            })()}
+                          </div>
                         </h2>
 
                         <div
                           style={{
                             display: "flex",
                             flexDirection: "column",
-                            gap: "6px",
-                            marginTop: "8px",
+                            gap: isMobile ? "4px" : "6px",
+                            marginTop: "6px",
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
-                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสใบงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
-                              {selectedTaskInfo.wo.id || "-"}
-                            </span>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
-                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
-                              {formatSubtaskId(selectedTaskInfo.task.subtaskId || selectedTaskInfo.task.id) || "-"}
-                            </span>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
-                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>โครงการ:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b" }}>
-                              {(() => {
-                                const project = realProjects.find((p) => p.id === selectedTaskInfo.wo.projectId);
-                                return project ? project.name : "-";
-                              })()}
-                            </span>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
-                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>สถานที่:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b" }}>
-                              {(() => {
-                                const parts = [];
-                                if (selectedTaskInfo.wo.building) parts.push("อาคาร " + selectedTaskInfo.wo.building);
-                                if (selectedTaskInfo.wo.floor) parts.push("ชั้น " + selectedTaskInfo.wo.floor);
-                                if (selectedTaskInfo.wo.room) parts.push("ห้อง " + selectedTaskInfo.wo.room);
-                                return parts.length > 0 ? parts.join(" / ") : "-";
-                              })()}
-                            </span>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
-                            <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>หมวดงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b" }}>
-                              {(() => {
-                                const category = selectedTaskInfo.wo.categories.find((c) => c.id === selectedTaskInfo.categoryId);
-                                return category ? category.name : "-";
-                              })()}
-                            </span>
-                          </div>
+                          {[
+                            { label: "รหัสใบงาน:", value: selectedTaskInfo.wo.id || "-", mono: true },
+                            { label: "รหัสงาน:", value: formatSubtaskId(selectedTaskInfo.task.subtaskId || selectedTaskInfo.task.id) || "-", mono: true },
+                            { label: "โครงการ:", value: (() => { const p = realProjects.find((p) => p.id === selectedTaskInfo.wo.projectId); return p ? p.name : "-"; })(), mono: false },
+                            { label: "สถานที่:", value: (() => { const parts = []; if (selectedTaskInfo.wo.building) parts.push("อาคาร " + selectedTaskInfo.wo.building); if (selectedTaskInfo.wo.floor) parts.push("ชั้น " + selectedTaskInfo.wo.floor); if (selectedTaskInfo.wo.room) parts.push("ห้อง " + selectedTaskInfo.wo.room); return parts.length > 0 ? parts.join(" / ") : "-"; })(), mono: false },
+                            { label: "หมวดงาน:", value: (() => { const c = selectedTaskInfo.wo.categories.find((c) => c.id === selectedTaskInfo.categoryId); return c ? c.name : "-"; })(), mono: false },
+                          ].map(({ label, value, mono }) => (
+                            <div key={label} style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: isMobile ? "0.7rem" : "0.78rem" }}>
+                              <span style={{ fontWeight: 700, color: "#64748b", width: isMobile ? "60px" : "80px", flexShrink: 0 }}>{label}</span>
+                              <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: mono ? "monospace" : undefined, overflow: isMobile ? "visible" : "hidden", textOverflow: isMobile ? "clip" : "ellipsis", whiteSpace: isMobile ? "normal" : "nowrap", flex: 1, minWidth: 0, overflowWrap: isMobile ? "break-word" : "normal" }}>
+                                {value}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div> {" "}
                     
                     <div
                       style={{
-                        display: "flex",
+                        display: isMobile ? "none" : "flex",
                         flexDirection: "column",
                         gap: "6px",
                         alignItems: "flex-end",
@@ -932,6 +928,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           alignItems: "center",
                           justifyContent: "space-between",
                           position: "relative",
+                          zIndex: 10,
                         }}
                       >
                         {" "}
@@ -1300,14 +1297,141 @@ export const DailyReportDetailPane: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+
               </div>
             </div>{" "}
-            
+
+            {/* ── Mobile-only: date picker trigger row (below card, full width) ── */}
+            {isMobile && (() => {
+              const thaiDays = ["อา","จ","อ","พ","พฤ","ศ","ส"];
+              const rd = new Date(reportDate + "T12:00:00");
+              const dayName = thaiDays[rd.getDay()];
+              const shiftDate = (days: number) => {
+                const d = new Date(reportDate + "T12:00:00");
+                d.setDate(d.getDate() + days);
+                return d.toISOString().split("T")[0];
+              };
+              return (
+                <div style={{ display: "flex", alignItems: "center", background: "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                  <button onClick={() => handleDateChange(shiftDate(-1))} style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: "pointer", color: "#64748b", fontSize: "1.1rem", lineHeight: 1, flexShrink: 0 }}>‹</button>
+                  <div
+                    onClick={() => setShowDatePickerMobile(v => !v)}
+                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", cursor: "pointer" }}
+                  >
+                    <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>รายงานระบุวันที่</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#1d4ed8", fontSize: "0.88rem", fontWeight: 900 }}>
+                      <Calendar size={14} /> {formatDate(reportDate)}
+                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", background: "#f1f5f9", padding: "1px 6px", borderRadius: "5px" }}>วัน{dayName}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => handleDateChange(shiftDate(1))} style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: "pointer", color: "#64748b", fontSize: "1.1rem", lineHeight: 1, flexShrink: 0 }}>›</button>
+                </div>
+              );
+            })()}
+
+            {/* ── Mobile calendar overlay (position: fixed — never clipped) ── */}
+            {isMobile && showDatePickerMobile && (
+              <div
+                onClick={() => { setShowDatePickerMobile(false); setPendingMobileDate(null); }}
+                style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+              >
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{ width: "100%", maxWidth: "400px", background: "#fff", borderRadius: "20px", padding: "20px 16px 20px 16px", maxHeight: "85vh", overflowY: "auto" }}
+                >
+                  {/* Calendar header with X close button */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <button onClick={(e) => { e.stopPropagation(); if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(p => p - 1); } else { setCalendarMonth(p => p - 1); } }} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#64748b", fontSize: "1.2rem", padding: "4px 10px" }}>‹</button>
+                    <span style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0f172a" }}>
+                      {new Date(calendarYear, calendarMonth).toLocaleDateString("th-TH", { month: "long", year: "numeric" })}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <button onClick={(e) => { e.stopPropagation(); if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(p => p + 1); } else { setCalendarMonth(p => p + 1); } }} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#64748b", fontSize: "1.2rem", padding: "4px 10px" }}>›</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowDatePickerMobile(false); setPendingMobileDate(null); }}
+                        style={{ border: "none", background: "#f1f5f9", cursor: "pointer", color: "#64748b", borderRadius: "8px", width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", lineHeight: 1, marginLeft: "4px" }}
+                        aria-label="ปิด"
+                      >✕</button>
+                    </div>
+                  </div>
+                  {/* Day headers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "6px" }}>
+                    {["อา","จ","อ","พ","พฤ","ศ","ส"].map(d => (
+                      <div key={d} style={{ textAlign: "center", fontSize: "0.65rem", fontWeight: 800, color: "#94a3b8", padding: "4px 0" }}>{d}</div>
+                    ))}
+                  </div>
+                  {/* Day grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px" }}>
+                    {(() => {
+                      const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+                      const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                      const cells: React.ReactNode[] = [];
+                      for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
+                      for (let day = 1; day <= daysInMonth; day++) {
+                        const mm = String(calendarMonth + 1).padStart(2, "0");
+                        const dd = String(day).padStart(2, "0");
+                        const dateStr = `${calendarYear}-${mm}-${dd}`;
+                        const status = getDateStatus(dateStr, selectedTaskInfo.task, selectedTaskInfo.wo);
+                        const isConfirmed = dateStr === reportDate;
+                        const isPending = dateStr === pendingMobileDate;
+                        const isDisabled = status === "disabled";
+                        const dotColor = status === "reported" ? "#10b981" : status === "unlocked" ? "#f59e0b" : status === "locked" ? "#ef4444" : null;
+                        const cellBg = isConfirmed ? "#3b82f6" : isPending ? "#dbeafe" : "transparent";
+                        const cellColor = isDisabled ? "#cbd5e1" : isConfirmed ? "#fff" : isPending ? "#1d4ed8" : "#334155";
+                        cells.push(
+                          <div
+                            key={day}
+                            onClick={() => {
+                              if (isDisabled) return;
+                              if (status === "locked") {
+                                setPendingUnlockDate(dateStr); setUnlockReason(""); setShowUnlockModal(true); setShowDatePickerMobile(false); setPendingMobileDate(null);
+                              } else {
+                                setPendingMobileDate(dateStr);
+                              }
+                            }}
+                            style={{ width: "100%", aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: "8px", fontSize: "0.85rem", fontWeight: 800, cursor: isDisabled ? "not-allowed" : "pointer", position: "relative", background: cellBg, color: cellColor, opacity: isDisabled ? 0.6 : 1, border: isPending ? "2px solid #3b82f6" : "2px solid transparent", transition: "all 0.1s" }}
+                          >
+                            {day}
+                            {dotColor && <div style={{ position: "absolute", bottom: "2px", width: "4px", height: "4px", borderRadius: "50%", background: (isConfirmed || isPending) ? (isConfirmed ? "#fff" : "#3b82f6") : dotColor }} />}
+                          </div>
+                        );
+                      }
+                      return cells;
+                    })()}
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display: "flex", justifyContent: "space-around", marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #f1f5f9", fontSize: "0.65rem", fontWeight: 800 }}>
+                    {[["#10b981","มีข้อมูล"],["#f59e0b","ยังไม่ได้ลง"],["#ef4444","ไม่มีข้อมูล"]].map(([color, label]) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px", color: "#64748b" }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, display: "inline-block" }} />
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Confirm button */}
+                  <button
+                    onClick={() => {
+                      if (pendingMobileDate) {
+                        handleDateChange(pendingMobileDate);
+                        setShowDatePickerMobile(false);
+                        setPendingMobileDate(null);
+                      }
+                    }}
+                    disabled={!pendingMobileDate}
+                    style={{ marginTop: "16px", width: "100%", padding: "12px", borderRadius: "12px", border: "none", background: pendingMobileDate ? "#3b82f6" : "#e2e8f0", color: pendingMobileDate ? "#fff" : "#94a3b8", fontSize: "0.9rem", fontWeight: 800, cursor: pendingMobileDate ? "pointer" : "not-allowed", transition: "all 0.2s" }}
+                  >
+                    {pendingMobileDate ? `ยืนยัน ${new Date(pendingMobileDate + "T12:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "long" })}` : "เลือกวันที่ก่อน"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div
               style={{
                 flex: 1,
                 overflowY: "auto",
-                padding: "2rem",
+                padding: isMobile ? "1rem" : "2rem",
               }}
             >
               {isAwaitingAdmin ? (
@@ -1469,81 +1593,23 @@ export const DailyReportDetailPane: React.FC = () => {
                     style={{
                       background: "#fff7ed",
                       border: "1px solid #fed7aa",
-                      borderRadius: "12px",
-                      padding: "1.25rem",
-                      marginBottom: "2rem",
+                      borderRadius: "10px",
+                      padding: isMobile ? "8px 10px" : "10px 14px",
+                      marginBottom: isMobile ? "1rem" : "2rem",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                      gap: "8px",
                     }}
                   >
-                    {" "}
-                    
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "1rem",
-                        alignItems: "center",
-                      }}
-                    >
-                      {" "}
-                      
-                      <div
-                        style={{
-                          background: "#ffedd5",
-                          padding: "10px",
-                          borderRadius: "12px",
-                          color: "#f97316",
-                        }}
-                      >
-                        {" "}
-                        
-                        <AlertTriangle size={24} />
-                      </div>{" "}
-                      
-                      <div>
-                        {" "}
-                        
-                        <h4
-                          style={{
-                            margin: "0 0 4px 0",
-                            color: "#9a3412",
-                            fontSize: "0.95rem",
-                            fontWeight: 900,
-                          }}
-                        >
-                          SLA ไม่ตรงตามที่คาดการณ์
-                        </h4>{" "}
-                        
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: "0.85rem",
-                            color: "#c2410c",
-                            fontWeight: 500,
-                          }}
-                        >
-                          คุณขอ: 
-                          <span
-                            style={{
-                              fontWeight: 800,
-                            }}
-                          >
-                            {selectedTaskInfo.task.estimatedSla}
-                          </span>{" "}
-                          | แอดมินระบุ: 
-                          <span
-                            style={{
-                              fontWeight: 800,
-                            }}
-                          >
-                            {selectedTaskInfo.task.slaCategory}
-                          </span>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center", minWidth: 0 }}>
+                      <AlertTriangle size={isMobile ? 16 : 20} color="#f97316" style={{ flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: isMobile ? "0.72rem" : "0.8rem", color: "#9a3412", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          SLA ไม่ตรง — คุณขอ: <strong>{selectedTaskInfo.task.estimatedSla}</strong> | แอดมิน: <strong>{selectedTaskInfo.task.slaCategory}</strong>
                         </p>
                       </div>
-                    </div>{" "}
-                    
+                    </div>
                     <button
                       onClick={() =>
                         handleBounceBackSLA(
@@ -1557,21 +1623,20 @@ export const DailyReportDetailPane: React.FC = () => {
                         background: "#ef4444",
                         color: "#fff",
                         border: "none",
-                        padding: "10px 18px",
-                        borderRadius: "10px",
-                        fontSize: "0.85rem",
+                        padding: isMobile ? "6px 10px" : "8px 14px",
+                        borderRadius: "8px",
+                        fontSize: isMobile ? "0.7rem" : "0.78rem",
                         fontWeight: 800,
                         cursor: isSubmitting ? "not-allowed" : "pointer",
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
-                        boxShadow: "0 4px 12px rgba(239, 68, 68, 0.2)",
+                        gap: "4px",
+                        flexShrink: 0,
+                        whiteSpace: "nowrap",
                         transition: "all 0.2s",
                       }}
                     >
-                      {" "}
-                      
-                      <XCircle size={18} /> ตีกลับให้ประเมินใหม่
+                      <XCircle size={14} /> ประเมินใหม่
                     </button>
                   </div>
                 )}{" "}
@@ -1586,8 +1651,10 @@ export const DailyReportDetailPane: React.FC = () => {
                 <div
                   style={{
                     display: "flex",
+                    flexDirection: isMobile ? "column" : "row",
                     justifyContent: "space-between",
-                    alignItems: "center",
+                    alignItems: isMobile ? "flex-start" : "center",
+                    gap: isMobile ? "8px" : undefined,
                     marginBottom: "1.25rem",
                   }}
                 >
@@ -1606,7 +1673,7 @@ export const DailyReportDetailPane: React.FC = () => {
                   >
                     {" "}
                     
-                    <Users size={20} color="#3b82f6" /> การจัดการคนงาน (Labor)
+                    <Users size={20} color="#3b82f6" /> การจัดการคนงาน
                   </h3>{" "}
                   
                   <div
@@ -1614,6 +1681,7 @@ export const DailyReportDetailPane: React.FC = () => {
                       display: "flex",
                       gap: "8px",
                       alignItems: "center",
+                      width: isMobile ? "100%" : undefined,
                     }}
                   >
                     {selectedTaskInfo.task.history?.some(
@@ -1709,43 +1777,45 @@ export const DailyReportDetailPane: React.FC = () => {
                         <button
                           onClick={() => setActiveModal("Internal")}
                           style={{
-                            padding: "8px 14px",
+                            padding: isMobile ? "6px 12px" : "8px 14px",
                             borderRadius: "10px",
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            color: "#0f172a",
-                            fontSize: "0.8rem",
+                            border: "none",
+                            background: isMobile ? "#1d4ed8" : "#fff",
+                            color: isMobile ? "#fff" : "#0f172a",
+                            fontSize: isMobile ? "0.72rem" : "0.8rem",
                             fontWeight: 800,
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
-                            gap: "6px",
+                            justifyContent: "center",
+                            gap: "4px",
+                            whiteSpace: "nowrap",
+                            flex: isMobile ? 1 : undefined,
                           }}
                         >
-                          {" "}
-                          
-                          <Plus size={14} /> คนงานบริษัท (Internal)
+                          <Plus size={12} /> {isMobile ? "เลือกคนงาน" : "คนงานบริษัท (Internal)"}
                         </button>{" "}
-                        
+
                         <button
                           onClick={() => setActiveModal("Outsource")}
                           style={{
-                            padding: "8px 14px",
+                            padding: isMobile ? "6px 12px" : "8px 14px",
                             borderRadius: "10px",
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            color: "#0f172a",
-                            fontSize: "0.8rem",
+                            border: isMobile ? "none" : "1px solid #e2e8f0",
+                            background: isMobile ? "#bfdbfe" : "#fff",
+                            color: isMobile ? "#1e40af" : "#0f172a",
+                            fontSize: isMobile ? "0.72rem" : "0.8rem",
                             fontWeight: 800,
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
-                            gap: "6px",
+                            justifyContent: "center",
+                            gap: "4px",
+                            whiteSpace: "nowrap",
+                            flex: isMobile ? 1 : undefined,
                           }}
                         >
-                          {" "}
-                          
-                          <Plus size={14} /> ทีมงานผู้รับเหมา (Subco)
+                          <Plus size={12} /> {isMobile ? "เลือกผู้รับเหมา" : "ทีมงานผู้รับเหมา (Subco)"}
                         </button>
                       </Fragment>
                     )}
@@ -1791,6 +1861,197 @@ export const DailyReportDetailPane: React.FC = () => {
                       ) : (
                         <div>ยังไม่มีข้อมูลแรงงาน (กรุณากดปุ่มเพิ่มคนงานด้านบน)</div>
                       )}
+                    </div>
+                  ) : isMobile ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "8px" }}>
+                      {displayLabor.map((l) => {
+                        const hasOT = l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening;
+                        const hasNormal = l.shifts?.normal;
+                        const dotColor = hasOT ? "#f59e0b" : hasNormal ? "#22c55e" : "#cbd5e1";
+                        const isExpanded = expandedLaborIds.has(l.id);
+                        const avatarLetter = (l.staffName || l.affiliation || "?").charAt(0).toUpperCase();
+                        return (
+                          <div
+                            key={l.id}
+                            style={{
+                              background: "#fff",
+                              borderRadius: "16px",
+                              border: "1px solid #e2e8f0",
+                              boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {/* Card header row */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px" }}>
+                              {/* Avatar */}
+                              <div style={{
+                                width: 40, height: 40, borderRadius: "50%",
+                                background: l.membership === "Internal" ? "#1e3a5f" : "#14532d",
+                                color: "#fff", display: "flex", alignItems: "center",
+                                justifyContent: "center", fontWeight: 800, fontSize: "1rem", flexShrink: 0,
+                              }}>
+                                {avatarLetter}
+                              </div>
+                              {/* Name block */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {l.employeeId && (
+                                  <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 600, marginBottom: "1px" }}>
+                                    {l.employeeId}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {l.staffName || l.affiliation}
+                                </div>
+                                <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 600 }}>
+                                  {l.membership === "Internal" ? "คนงานบริษัท" : "ผู้รับเหมา"}
+                                </div>
+                              </div>
+                              {/* Right actions */}
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                {/* Status dot */}
+                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor }} />
+                                {/* Expand chevron */}
+                                <button
+                                  onClick={() => toggleLaborExpand(l.id)}
+                                  style={{
+                                    background: "none", border: "none", cursor: "pointer",
+                                    padding: "4px", color: "#94a3b8", display: "flex", alignItems: "center",
+                                    transition: "transform 0.2s",
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                                  }}
+                                  aria-label={isExpanded ? "ย่อ" : "ขยาย"}
+                                >
+                                  <ChevronRight size={18} />
+                                </button>
+                                {/* Delete */}
+                                {isEditingExisting && canEditWorker(l) && (
+                                  <button
+                                    onClick={() => setLabor(prev => prev.filter(item => item.id !== l.id))}
+                                    style={{
+                                      background: "none", border: "none", cursor: "pointer",
+                                      padding: "4px", color: "#ef4444", display: "flex", alignItems: "center",
+                                    }}
+                                    aria-label="ลบ"
+                                  >
+                                    <XCircle size={18} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {/* Expand body — shift controls */}
+                            {isExpanded && (() => {
+                              const otMorningTime = l.shiftTimes?.otMorning || "06:00 - 08:00";
+                              const otNoonTime = l.shiftTimes?.otNoon || "12:00 - 13:00";
+                              const otEveningTime = l.shiftTimes?.otEvening || "18:00 - 21:00";
+                              const isOtMorningBlockedByLeave = l.leave?.active ? isTimeOverlap("06:00 - 08:00", l.leave.time || "08:00 - 17:00") : false;
+                              const isOtNoonBlockedByLeave = l.leave?.active ? isTimeOverlap("12:00 - 13:00", l.leave.time || "08:00 - 17:00") : false;
+                              const isOtEveningBlockedByLeave = l.leave?.active ? isTimeOverlap("18:00 - 21:00", l.leave.time || "08:00 - 17:00") : false;
+                              const canEdit = isEditingExisting && canEditWorker(l);
+
+                              const ShiftRow = ({ shiftKey, label, color, blocked, timeValue, isInternal }: {
+                                shiftKey: string; label: string; color: string; blocked?: boolean; timeValue?: string; isInternal: boolean;
+                              }) => {
+                                const active = shiftKey === "normal" ? !!l.shifts?.normal
+                                  : shiftKey === "otMorning" ? !!l.shifts?.otMorning
+                                  : shiftKey === "otNoon" ? !!l.shifts?.otNoon
+                                  : shiftKey === "otEvening" ? !!l.shifts?.otEvening
+                                  : false;
+                                return (
+                                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                    <div
+                                      onClick={() => canEdit && !blocked && toggleShift(l.id, shiftKey as any)}
+                                      style={{
+                                        width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                                        border: `2px solid ${blocked ? "#fca5a5" : color}`,
+                                        background: active ? color : blocked ? "#fef2f2" : "#fff",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        cursor: canEdit && !blocked ? "pointer" : "default",
+                                        opacity: canEdit || active ? 1 : 0.5,
+                                      }}
+                                    >
+                                      {active && <CheckCircle2 size={12} color="#fff" />}
+                                    </div>
+                                    <span style={{ fontSize: "0.8rem", fontWeight: 700, color: blocked ? "#fca5a5" : "#374151", minWidth: 70 }}>
+                                      {blocked ? "🚫 " : ""}{label}
+                                    </span>
+                                    {active && timeValue && (
+                                      isInternal
+                                        ? renderTimeInput(l.id, shiftKey, timeValue)
+                                        : <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "3px 8px", fontSize: "0.75rem", fontWeight: 700, color: "#64748b" }}><Clock size={11} />{timeValue}</div>
+                                    )}
+                                  </div>
+                                );
+                              };
+
+                              return (
+                                <div style={{ borderTop: "1px solid #f1f5f9", padding: "12px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                                  <ShiftRow shiftKey="normal" label="ปกติ" color="#2563eb" timeValue={l.shiftTimes?.day || "08:00 - 17:00"} isInternal={l.membership === "Internal"} />
+                                  <ShiftRow shiftKey="otMorning" label="OT เช้า" color="#f59e0b" blocked={isOtMorningBlockedByLeave} timeValue={otMorningTime} isInternal={l.membership === "Internal"} />
+                                  <ShiftRow shiftKey="otNoon" label="OT เที่ยง" color="#f59e0b" blocked={isOtNoonBlockedByLeave} timeValue={otNoonTime} isInternal={l.membership === "Internal"} />
+                                  <ShiftRow shiftKey="otEvening" label="OT เย็น" color="#f59e0b" blocked={isOtEveningBlockedByLeave} timeValue={otEveningTime} isInternal={l.membership === "Internal"} />
+                                  {/* Leave row */}
+                                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                                    <div
+                                      onClick={() => {
+                                        if (!canEdit) return;
+                                        const leaveActive = !l.leave?.active;
+                                        const leaveTime = l.leave?.time || "08:00 - 17:00";
+                                        const shiftsObj = { ...l.shifts };
+                                        if (leaveActive) { shiftsObj.otMorning = isTimeOverlap("06:00 - 08:00", leaveTime) ? false : shiftsObj.otMorning; shiftsObj.otNoon = isTimeOverlap("12:00 - 13:00", leaveTime) ? false : shiftsObj.otNoon; shiftsObj.otEvening = isTimeOverlap("18:00 - 21:00", leaveTime) ? false : shiftsObj.otEvening; }
+                                        setLabor(prev => prev.map(item => item.id === l.id ? ({ ...item, shifts: shiftsObj as typeof item.shifts, leave: { active: leaveActive, time: leaveTime, medCertFileUrl: item.leave?.medCertFileUrl || "" } }) : item));
+                                      }}
+                                      style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, border: "2px solid #ef4444", background: l.leave?.active ? "#ef4444" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: canEdit ? "pointer" : "default", opacity: canEdit ? 1 : 0.5 }}
+                                    >
+                                      {l.leave?.active && <CheckCircle2 size={12} color="#fff" />}
+                                    </div>
+                                    <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", minWidth: 50 }}>ลา</span>
+                                    {l.leave?.active && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                        {renderLeaveTimeInput(l.id, l.leave?.time || "08:00 - 17:00")}
+                                        {/* MedCert attachment */}
+                                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                          {l.leave?.medCertFileUrl ? (
+                                            <Fragment>
+                                              <a href={l.leave.medCertFileUrl} target="_blank" rel="noreferrer"
+                                                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 6, background: "#eff6ff", color: "#2563eb" }}
+                                                title="ดูใบรับรองแพทย์">
+                                                <Eye size={12} />
+                                              </a>
+                                              {canEdit && (
+                                                <button onClick={() => handleRemoveLeaveCert(l.id)}
+                                                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 6, background: "#fef2f2", color: "#ef4444", border: "none", cursor: "pointer", padding: 0 }}
+                                                  title="ลบรูปแนบ">
+                                                  <Trash2 size={12} />
+                                                </button>
+                                              )}
+                                            </Fragment>
+                                          ) : canEdit ? (
+                                            uploadingLeaveCertId === l.id ? (
+                                              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 6, background: "#fef3c7" }} title="กำลังอัปโหลด...">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" style={{ animation: "spin 0.8s linear infinite" }}>
+                                                  <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                                                  <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="3" fill="none" strokeDasharray="31.4" strokeDashoffset="10" />
+                                                </svg>
+                                              </div>
+                                            ) : (
+                                              <label style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 6, background: "#f1f5f9", color: "#64748b", cursor: "pointer" }} title="แนบใบรับรองแพทย์/หลักฐาน">
+                                                <Paperclip size={12} />
+                                                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleUploadLeaveCert(l.id, e.target.files?.[0] || undefined)} />
+                                              </label>
+                                            )
+                                          ) : (
+                                            <span style={{ color: "#cbd5e1", fontSize: "0.7rem" }}>ไม่มีหลักฐาน</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                      <table
@@ -2781,8 +3042,8 @@ export const DailyReportDetailPane: React.FC = () => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(280px, 1.2fr) 2.8fr",
-                  gap: "2.5rem",
+                  gridTemplateColumns: isMobile ? "1fr" : "minmax(280px, 1.2fr) 2.8fr",
+                  gap: isMobile ? "1.5rem" : "2.5rem",
                 }}
               >
                 {" "}
@@ -2808,14 +3069,14 @@ export const DailyReportDetailPane: React.FC = () => {
                   
                   <div
                     style={{
-                      padding: "1.5rem",
+                      padding: isMobile ? "1rem" : "1.5rem",
                       background: "#f8fafc",
                       borderRadius: "20px",
                       border: "1px solid #e2e8f0",
                     }}
                   >
                     {" "}
-                    
+
                     {selectedTaskInfo?.task?.isHelper ? (
                       <div style={{ textAlign: "center", padding: "1rem 0", color: "#475569", fontWeight: 800, fontSize: "0.88rem" }}>
                         งานช่วย: ความคืบหน้าถูกล็อกที่ {selectedTaskInfo?.task?.dailyProgress || 0}% (กำหนดโดย Site หลัก)
@@ -2877,7 +3138,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           <div
                             style={{
                               position: "relative",
-                              width: "100px",
+                              width: isMobile ? "80px" : "100px",
                             }}
                           >
                             {" "}
@@ -3151,8 +3412,11 @@ export const DailyReportDetailPane: React.FC = () => {
                     style={{
                       display: "flex",
                       gap: "10px",
-                      flexWrap: "wrap",
+                      flexWrap: isMobile ? "nowrap" : "wrap",
+                      overflowX: isMobile ? "auto" : "visible",
+                      scrollbarWidth: "none",
                       marginBottom: "1.25rem",
+                      paddingBottom: isMobile ? "4px" : "0",
                     }}
                   >
                     {[
@@ -3269,7 +3533,8 @@ export const DailyReportDetailPane: React.FC = () => {
                               boxShadow: isActive
                                 ? "0 4px 12px rgba(0,0,0,0.08)"
                                 : "none",
-                              minWidth: "135px",
+                              minWidth: isMobile ? "110px" : "135px",
+                              flexShrink: 0,
                             }}
                             key={tab.id}
                           >
@@ -3673,10 +3938,11 @@ export const DailyReportDetailPane: React.FC = () => {
                         return (
                            <div
                             style={{
-                              display: "flex",
-                              gap: "16px",
-                              flexWrap: "wrap",
-                              alignItems: "flex-end",
+                              display: isMobile ? "grid" : "flex",
+                              gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : undefined,
+                              gap: isMobile ? "12px" : "16px",
+                              flexWrap: isMobile ? undefined : "wrap",
+                              alignItems: isMobile ? undefined : "flex-end",
                             }}
                             key={shiftKey}
                           >
@@ -3696,8 +3962,9 @@ export const DailyReportDetailPane: React.FC = () => {
                                      <div
                                       style={{
                                         position: "relative",
-                                        width: 120,
-                                        height: 120,
+                                        width: isMobile ? "100%" : 120,
+                                        height: isMobile ? 0 : 120,
+                                        paddingBottom: isMobile ? "100%" : 0,
                                         borderRadius: 14,
                                         overflow: "hidden",
                                         border: "1px solid #e2e8f0",
@@ -3710,6 +3977,8 @@ export const DailyReportDetailPane: React.FC = () => {
                                       <img
                                         src={typeof photoUrl === "string" ? photoUrl : (photoUrl instanceof File ? URL.createObjectURL(photoUrl) : undefined)}
                                         style={{
+                                          position: isMobile ? "absolute" : undefined,
+                                          top: 0, left: 0,
                                           width: "100%",
                                           height: "100%",
                                           objectFit: "cover",
@@ -3751,8 +4020,9 @@ export const DailyReportDetailPane: React.FC = () => {
                                     !isSlotTimeAllowed(slotIdx) ? (
                                       <div
                                         style={{
-                                          width: 120,
-                                          height: 120,
+                                          width: isMobile ? "100%" : 120,
+                                          aspectRatio: isMobile ? "1" : undefined,
+                                          height: isMobile ? undefined : 120,
                                           border: "1px dashed #cbd5e1",
                                           borderRadius: 14,
                                           background: "#f1f5f9",
@@ -3785,8 +4055,9 @@ export const DailyReportDetailPane: React.FC = () => {
                                     ) : (
                                       <label
                                       style={{
-                                        width: 120,
-                                        height: 120,
+                                        width: isMobile ? "100%" : 120,
+                                        aspectRatio: isMobile ? "1" : undefined,
+                                        height: isMobile ? undefined : 120,
                                         border: "2px dashed #cbd5e1",
                                         borderRadius: 14,
                                         background: "#fff",
@@ -3842,8 +4113,9 @@ export const DailyReportDetailPane: React.FC = () => {
                                 ) : (
                                      <div
                                       style={{
-                                        width: 120,
-                                        height: 120,
+                                        width: isMobile ? "100%" : 120,
+                                        aspectRatio: isMobile ? "1" : undefined,
+                                        height: isMobile ? undefined : 120,
                                         border: "1px dashed #e2e8f0",
                                         borderRadius: 14,
                                         background: "#f8fafc",
@@ -4377,55 +4649,6 @@ export const DailyReportDetailPane: React.FC = () => {
                 borderBottomRightRadius: "24px",
               }}
             >
-              {" "}
-              
-              <button
-                onClick={() => setSelectedTaskInfo(null)}
-                style={{
-                  background: "#f8fafc",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "50%",
-                  width: "44px",
-                  height: "44px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  color: "#000000",
-                  transition: "all 0.2s",
-                  boxShadow:
-                    "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
-                  padding: 0,
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = "#000000";
-                  e.currentTarget.style.color = "#ffffff";
-                  e.currentTarget.style.borderColor = "#000000";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = "#f8fafc";
-                  e.currentTarget.style.color = "#000000";
-                  e.currentTarget.style.borderColor = "#cbd5e1";
-                }}
-              >
-                {" "}
-                
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  {" "}
-                  
-                  <line x1="18" y1="6" x2="6" y2="18" /> 
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
               {(!hasHistoryForSelectedDate || isEditingExisting) &&
                 !isTaskFinished &&
                 !isAwaitingAdmin &&
@@ -4433,17 +4656,11 @@ export const DailyReportDetailPane: React.FC = () => {
                    <Fragment>
                     {" "}
                     
-                    <div
-                      style={{
-                        flex: 1,
-                      }}
-                    />{" "}
-                    
                     <button
                       onClick={handleSaveDraft}
                       disabled={isSubmitting || isUploading}
                       style={{
-                        padding: "12px 24px",
+                        padding: "6px 24px",
                         borderRadius: "14px",
                         border: "1.5px solid #cbd5e1",
                         background: "#fff",
@@ -4480,7 +4697,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         onClick={handleSubmit}
                         disabled={isSubmitting || isUploading}
                         style={{
-                          padding: "12px 32px",
+                          padding: "6px 32px",
                           borderRadius: "14px",
                           border: "none",
                           background: isSubmitting || isUploading ? "#94a3b8" : isReportDatePast3Days ? "#ea580c" : "#2563eb",

@@ -213,67 +213,55 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
             flexDirection: "column",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: "1rem",
-              gap: "12px",
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 900 }}>
+          <div style={{ marginBottom: "1rem" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 900 }}>
               เลือก{type === "Internal" ? "คนงานบริษัท" : "ผู้รับเหมา"}
             </h3>
-            <div
-              style={{
-                background: selectedIds.length > 0 ? "#eff6ff" : "#f8fafc",
-                color: selectedIds.length > 0 ? "#2563eb" : "#64748b",
-                border: "1px solid",
-                borderColor: selectedIds.length > 0 ? "#bfdbfe" : "#e2e8f0",
-                padding: "4px 12px",
-                borderRadius: "9999px",
-                fontSize: "0.8rem",
-                fontWeight: 800,
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {selectedIds.length > 0 ? (
-                <>
-                  เลือกแล้ว{" "}
-                  <span
-                    style={{
-                      color: "#1d4ed8",
-                      fontSize: "0.95rem",
-                      fontWeight: 900,
-                    }}
-                  >
-                    {selectedIds.length}
-                  </span>{" "}
-                  คน
-                </>
-              ) : (
-                "ยังไม่ได้เลือก"
-              )}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{
+                  background: selectedIds.length > 0 ? "#eff6ff" : "#f8fafc",
+                  color: selectedIds.length > 0 ? "#2563eb" : "#64748b",
+                  border: "1px solid",
+                  borderColor: selectedIds.length > 0 ? "#bfdbfe" : "#e2e8f0",
+                  padding: "4px 12px",
+                  borderRadius: "9999px",
+                  fontSize: "0.8rem",
+                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {selectedIds.length > 0 ? (
+                  <>
+                    เลือกแล้ว{" "}
+                    <span style={{ color: "#1d4ed8", fontSize: "0.95rem", fontWeight: 900 }}>
+                      {selectedIds.length}
+                    </span>{" "}
+                    คน
+                  </>
+                ) : (
+                  "ยังไม่ได้เลือก"
+                )}
+              </div>
+              <input
+                type="text"
+                placeholder="ค้นหาคนงาน..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "0.8rem",
+                  outline: "none",
+                  flex: 1,
+                  fontWeight: 700,
+                }}
+              />
             </div>
-            <input
-              type="text"
-              placeholder="ค้นหาคนงาน..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "10px",
-                border: "1px solid #cbd5e1",
-                fontSize: "0.8rem",
-                outline: "none",
-                width: "180px",
-                fontWeight: 700,
-              }}
-            />
           </div>
           <div
             style={{

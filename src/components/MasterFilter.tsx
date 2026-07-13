@@ -1,5 +1,6 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronLeft, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface MasterFilterProps {
     selectedMonth: string;
@@ -13,10 +14,10 @@ interface MasterFilterProps {
     setIsAllTime?: (val: boolean) => void;
 }
 
-const MasterFilter: React.FC<MasterFilterProps> = ({ 
-    selectedMonth, 
-    setSelectedMonth, 
-    selectedWeek, 
+const MasterFilter: React.FC<MasterFilterProps> = ({
+    selectedMonth,
+    setSelectedMonth,
+    selectedWeek,
     setSelectedWeek,
     style,
     minimal = false,
@@ -24,6 +25,9 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
     isAllTime = false,
     setIsAllTime
 }) => {
+    const isMobile = useIsMobile();
+    const [popupOpen, setPopupOpen] = useState(false);
+
     const handleMonthChange = (delta: number) => {
         let year, month;
         if (selectedMonth === 'all') {
@@ -45,16 +49,109 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
 
     const monthName = `${new Date(year, month - 1, 1).toLocaleDateString('th-TH', { month: 'long' })} ${year}`;
 
+    if (isMobile) {
+        const weekLabel = selectedWeek === 0 ? 'ทั้งหมด' : `สัปดาห์ ${selectedWeek}`;
+        return (
+            <div style={{ position: 'relative', flex: style?.flex, width: style?.width }}>
+                {/* Trigger button */}
+                <button
+                    onClick={() => setPopupOpen(v => !v)}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: popupOpen ? '#f5f3ff' : '#fff',
+                        border: `1.5px solid ${popupOpen ? '#4f46e5' : '#e2e8f0'}`,
+                        borderRadius: '16px',
+                        padding: '9px 14px',
+                        fontSize: '0.88rem',
+                        fontWeight: 800,
+                        color: '#1e293b',
+                        cursor: 'pointer',
+                        width: '100%',
+                        boxShadow: popupOpen ? '0 0 0 3px rgba(79,70,229,0.1)' : '0 1px 4px rgba(0,0,0,0.06)',
+                        transition: 'all 0.2s ease',
+                    }}
+                >
+                    <Calendar size={15} color="#4f46e5" strokeWidth={2.5} />
+                    <span style={{ flex: 1, textAlign: 'left' }}>{monthName}</span>
+                    <span style={{ color: '#4f46e5', fontWeight: 900, fontSize: '0.8rem', background: '#ede9fe', padding: '2px 8px', borderRadius: '8px' }}>{weekLabel}</span>
+                    <ChevronDown size={15} color="#94a3b8" style={{ transform: popupOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
+                </button>
+
+                {/* Click-outside backdrop */}
+                {popupOpen && (
+                    <div onClick={() => setPopupOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 499 }} />
+                )}
+
+                {/* Dropdown panel */}
+                {popupOpen && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        left: 0,
+                        right: 0,
+                        background: '#fff',
+                        borderRadius: '18px',
+                        border: '1.5px solid #e2e8f0',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                        padding: '14px',
+                        zIndex: 500,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                    }}>
+                        {/* Month navigator */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', borderRadius: '14px', padding: '8px 14px' }}>
+                            <button onClick={() => handleMonthChange(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', padding: '4px' }}>
+                                <ChevronLeft size={20} strokeWidth={3} />
+                            </button>
+                            <span style={{ fontSize: '1rem', fontWeight: 900, color: '#1e293b' }}>{monthName}</span>
+                            <button onClick={() => handleMonthChange(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', padding: '4px' }}>
+                                <ChevronRight size={20} strokeWidth={3} />
+                            </button>
+                        </div>
+
+                        {/* Week buttons */}
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {weeks.map((w) => (
+                                <button
+                                    key={w}
+                                    onClick={() => { setSelectedWeek(w); setPopupOpen(false); }}
+                                    style={{
+                                        flex: w === 0 ? '1 1 100%' : '1 1 calc(20% - 6px)',
+                                        height: '38px',
+                                        borderRadius: '12px',
+                                        background: selectedWeek === w ? '#4f46e5' : '#f8fafc',
+                                        color: selectedWeek === w ? '#fff' : '#64748b',
+                                        fontSize: '0.88rem',
+                                        fontWeight: 900,
+                                        cursor: 'pointer',
+                                        border: selectedWeek === w ? '2px solid #4f46e5' : '1px solid #f1f5f9',
+                                        boxShadow: selectedWeek === w ? '0 4px 10px rgba(79,70,229,0.2)' : 'none',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                >
+                                    {w === 0 ? 'ทั้งหมด' : w}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
-        <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '12px', 
-            background: minimal ? 'transparent' : '#ffffff', 
-            padding: minimal ? '0' : '24px', 
-            borderRadius: minimal ? '0' : '32px', 
-            border: minimal ? 'none' : '1px solid #e2e8f0', 
-            boxShadow: minimal ? 'none' : '0 4px 20px -4px rgba(0, 0, 0, 0.05)', 
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            background: minimal ? 'transparent' : '#ffffff',
+            padding: minimal ? '0' : '24px',
+            borderRadius: minimal ? '0' : '32px',
+            border: minimal ? 'none' : '1px solid #e2e8f0',
+            boxShadow: minimal ? 'none' : '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
             flex: 1,
             height: '124px',
             justifyContent: 'center',
