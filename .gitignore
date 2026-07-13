@@ -1,2 +1,29 @@
 node_modules
 .env
+# ─── Harness Agent — Development Repo ──────────────────────────────────────────
+# This is the harness development repository. ALL harness files are tracked here.
+# .sessions/, knowledge/index_*.json, harness_flow_*.md → all committed.
+#
+# When deploying harness to a TARGET PROJECT:
+#   → Use Implement/03_config.md §Gitignore to add harness runtime exclusions
+#   → Use scripts/bootstrap_sessions.py to initialize .sessions/ on first run
+#   → Templates: docs/session_templates/
+
+# ─── macOS resource forks ──────────────────────────────────────────────────────
+._*
+.DS_Store
+
+# ─── Claude Code local settings ────────────────────────────────────────────────
+.claude/settings.local.json
+
+# ─── Transient per-task scratch (T-230b) ──────────────────────────────────────
+# Scope-baseline snapshot — regenerated every task by scripts/posttool_track.py
+# when gather_complete.md is written. Must stay untracked so it never appears in
+# its own `git status --porcelain` snapshot (would self-flag the [scope-creep] gate).
+.sessions/.scope_baseline
+
+# ─── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+
