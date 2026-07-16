@@ -1,11 +1,15 @@
 import React from 'react';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { scaleFont } from './ui/responsiveText';
 
-export const StatCard = ({ title, value, icon, color, subtext, gradient, onClick, trend, style }: any) => (
+export const StatCard = ({ title, value, icon, color, subtext, gradient, onClick, trend, style }: any) => {
+    const isMobile = useIsMobile();
+    return (
     <div
         onClick={onClick}
         style={{
             background: gradient || '#ffffff',
-            padding: '1.5rem',
+            padding: isMobile ? '1.15rem' : '1.5rem',
             borderRadius: '24px',
             display: 'flex',
             flexDirection: 'column',
@@ -13,7 +17,7 @@ export const StatCard = ({ title, value, icon, color, subtext, gradient, onClick
             border: gradient ? 'none' : '1px solid #e2e8f0',
             boxShadow: gradient ? '0 10px 15px -3px rgba(0, 0, 0, 0.1)' : '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            minHeight: '160px',
+            minHeight: isMobile ? '120px' : '160px',
             position: 'relative',
             overflow: 'hidden',
             ...style,
@@ -39,11 +43,12 @@ export const StatCard = ({ title, value, icon, color, subtext, gradient, onClick
         </div>
         <div style={{ position: 'relative', zIndex: 1, marginTop: '1rem' }}>
             <div style={{ fontSize: '0.875rem', color: gradient ? 'rgba(255,255,255,0.8)' : '#64748b', fontWeight: 600, marginBottom: '4px' }}>{title}</div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: gradient ? '#fff' : '#0f172a', lineHeight: 1, letterSpacing: '-0.03em' }}>{value}</div>
+            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: gradient ? '#fff' : '#0f172a', lineHeight: 1, letterSpacing: '-0.03em' }}>{value}</div>
             {subtext && <div style={{ fontSize: '0.75rem', color: gradient ? 'rgba(255,255,255,0.7)' : '#94a3b8', marginTop: '8px', fontWeight: 500 }}>{subtext}</div>}
         </div>
     </div>
-);
+    );
+};
 
 export const SectionHeader = ({ title, icon, subtitle, actions }: any) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>

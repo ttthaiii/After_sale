@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
-import { 
-    CheckCircle2, XCircle, Camera, AlertTriangle, 
-    Building2, MapPin, Package, UserCheck, FileText, 
-    Loader2, Sparkles
+import {
+    CheckCircle2, XCircle, Camera, AlertTriangle,
+    Building2, MapPin, Package, UserCheck, FileText,
+    Loader2, Sparkles, ChevronLeft
 } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function OwnerReview() {
+    const isMobile = useIsMobile();
     const [searchParams] = useSearchParams();
     const woId = searchParams.get('woId') || '';
     const catId = searchParams.get('catId') || '';
@@ -79,9 +81,32 @@ export default function OwnerReview() {
         fetchData();
     }, [woId, catId, taskId]);
 
+    // Safe back affordance: only show when there is somewhere to go back to.
+    // Opened fresh from a QR code (history.length === 1) → hidden, so the user is
+    // never dumped onto a blank page; the page's own guidance covers that case.
+    const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
+    const BackButton = () => (
+        !canGoBack ? null : (
+            <button
+                onClick={() => window.history.back()}
+                style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    background: '#ffffff', border: '1px solid #e2e8f0', color: '#475569',
+                    fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
+                    borderRadius: '12px', padding: '8px 14px',
+                    minWidth: isMobile ? '44px' : undefined, minHeight: isMobile ? '44px' : undefined,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                }}
+            >
+                <ChevronLeft size={16} />
+                <span>ย้อนกลับ</span>
+            </button>
+        )
+    );
+
     if (loading) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', gap: '16px' }}>
                 <Loader2 size={40} className="animate-spin" style={{ color: '#4f46e5' }} />
                 <div style={{ fontSize: '1rem', fontWeight: 700, color: '#4f46e5', fontFamily: 'system-ui' }}>กำลังโหลดข้อมูลตรวจรับงาน...</div>
             </div>
@@ -90,15 +115,18 @@ export default function OwnerReview() {
 
     if (!workOrder || !task) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
-                <div style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', maxWidth: '480px', width: '100%', textAlign: 'center', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05)' }}>
-                    <div style={{ width: '64px', height: '64px', background: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
-                        <AlertTriangle size={32} />
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
+                <div style={{ width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {canGoBack && <div><BackButton /></div>}
+                    <div style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', width: '100%', textAlign: 'center', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05)' }}>
+                        <div style={{ width: '64px', height: '64px', background: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+                            <AlertTriangle size={32} />
+                        </div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0 0 10px 0' }}>ไม่พบข้อมูลรายการงาน</h3>
+                        <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
+                            ลิงก์ตรวจรับงานอาจไม่ถูกต้อง หรือรายการงานนี้ได้รับการแก้ไข/ลบออกจากระบบแล้ว โปรดติดต่อแอดมินหรือโฟร์แมนโครงการ
+                        </p>
                     </div>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0 0 10px 0' }}>ไม่พบข้อมูลรายการงาน</h3>
-                    <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
-                        ลิงก์ตรวจรับงานอาจไม่ถูกต้อง หรือรายการงานนี้ได้รับการแก้ไข/ลบออกจากระบบแล้ว โปรดติดต่อแอดมินหรือโฟร์แมนโครงการ
-                    </p>
                 </div>
             </div>
         );
@@ -170,7 +198,7 @@ export default function OwnerReview() {
 
     if (submitted) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '20px', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '20px', boxSizing: 'border-box' }}>
                 <div style={{
                     background: '#ffffff',
                     width: '100%', maxWidth: '520px',
@@ -218,7 +246,11 @@ export default function OwnerReview() {
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '16px 16px 40px 16px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
             <div style={{ maxWidth: '640px', margin: '0 auto' }}>
-                
+
+                {canGoBack && (
+                    <div style={{ marginBottom: '4px' }}><BackButton /></div>
+                )}
+
                 {/* Brand Header */}
                 <div style={{ textAlign: 'center', margin: '20px 0 24px 0' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#eff6ff', padding: '6px 16px', borderRadius: '50px', border: '1px solid #dbeafe', marginBottom: '12px' }}>

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useDailyReport } from '../../context/DailyReportContext';
 import { PreHandoverSummaryModal } from './PreHandoverSummaryModal';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { gridCols } from '../ui/responsiveGrid';
 
 // ─── Inline Calendar Component ───────────────────────────────────────────────
 const MONTH_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -160,6 +162,8 @@ export const PreHandoverDetailPane: React.FC = () => {
     setZoomImage,
     setActiveModal,
   } = useDailyReport();
+
+  const isMobile = useIsMobile();
   // availableStaff / availableContractors now consumed by BatchAddModal via context
 
   const isPhEditable = !isPhExistingReport || isPhEditingExisting;
@@ -433,7 +437,7 @@ export const PreHandoverDetailPane: React.FC = () => {
                 position: 'absolute', top: '100%', right: 0, marginTop: '8px',
                 zIndex: 1000, background: '#fff', border: '1px solid #cbd5e1',
                 borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
-                padding: '16px', width: '280px',
+                padding: '16px', width: isMobile ? '100%' : '280px',
               }}>
                 <PhCalendar
                   reportDate={reportDate}
@@ -638,7 +642,7 @@ export const PreHandoverDetailPane: React.FC = () => {
 
 
         {/* ─── Progress + Photos grid (matching AfterSale layout) ─── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1.2fr) 2.8fr', gap: '2rem', marginBottom: '16px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'minmax(260px, 1.2fr) 2.8fr'), gap: '2rem', marginBottom: '16px', alignItems: 'start' }}>
 
           {/* Progress left */}
           <div style={{ pointerEvents: isPhEditable ? 'auto' : 'none', opacity: isPhEditable ? 1 : 0.82 }}>

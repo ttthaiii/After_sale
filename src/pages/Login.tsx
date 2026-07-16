@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, HardHat, UserSearch, LogIn, User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const Login = () => {
     const { login } = useAuth();
     const navigate = useNavigate();
+    const isMobile = useIsMobile();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -41,7 +43,7 @@ const Login = () => {
     return (
         <div style={{
             height: '100vh',
-            width: '100vw',
+            width: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -121,7 +123,9 @@ const Login = () => {
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    padding: '4px'
+                                    padding: '4px',
+                                    minWidth: isMobile ? '44px' : undefined,
+                                    minHeight: isMobile ? '44px' : undefined
                                 }}
                             >
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}

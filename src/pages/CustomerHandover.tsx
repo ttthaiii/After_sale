@@ -6,8 +6,9 @@ import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import {
     Star, Sparkles, Building2, ChevronDown, ChevronUp,
     Loader2, CheckCircle2, AlertTriangle, ClipboardList,
-    MapPin, Camera
+    MapPin, Camera, User, Phone, ChevronLeft
 } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const getAfterPhotos = (task: any): string[] => {
     const photosList: string[] = [];
@@ -33,6 +34,7 @@ const getAfterPhotos = (task: any): string[] => {
 };
 
 export default function CustomerHandover() {
+    const isMobile = useIsMobile();
     const [searchParams] = useSearchParams();
     const woId = searchParams.get('woId') || '';
     
@@ -218,9 +220,32 @@ export default function CustomerHandover() {
         fetchWoData();
     }, [woId]);
 
+    // Safe back affordance: only show when there is somewhere to go back to.
+    // Opened fresh from a QR code (history.length === 1) → hidden, so the customer
+    // is never dumped onto a blank page; the page's own guidance covers that case.
+    const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
+    const BackButton = () => (
+        !canGoBack ? null : (
+            <button
+                onClick={() => window.history.back()}
+                style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    background: '#ffffff', border: '1px solid #e2e8f0', color: '#475569',
+                    fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
+                    borderRadius: '12px', padding: '8px 14px',
+                    minWidth: isMobile ? '44px' : undefined, minHeight: isMobile ? '44px' : undefined,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                }}
+            >
+                <ChevronLeft size={16} />
+                <span>ย้อนกลับ</span>
+            </button>
+        )
+    );
+
     if (loading) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', gap: '16px' }}>
                 <Loader2 size={40} className="animate-spin" style={{ color: '#3b82f6' }} />
                 <div style={{ fontSize: '1rem', fontWeight: 700, color: '#3b82f6', fontFamily: 'system-ui' }}>กำลังโหลดข้อมูลการส่งมอบงาน...</div>
             </div>
@@ -229,15 +254,18 @@ export default function CustomerHandover() {
 
     if (!workOrder) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
-                <div style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', maxWidth: '480px', width: '100%', textAlign: 'center', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05)' }}>
-                    <div style={{ width: '64px', height: '64px', background: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
-                        <AlertTriangle size={32} />
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
+                <div style={{ width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {canGoBack && <div><BackButton /></div>}
+                    <div style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', width: '100%', textAlign: 'center', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05)' }}>
+                        <div style={{ width: '64px', height: '64px', background: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+                            <AlertTriangle size={32} />
+                        </div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0 0 10px 0' }}>ไม่พบข้อมูลการตรวจรับงาน</h3>
+                        <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
+                            ลิงก์ส่งมอบงานอาจไม่ถูกต้อง หรือรายการงานนี้ได้รับการแก้ไขแล้ว โปรดตรวจสอบคิวอาร์โค้ดส่งมอบอีกครั้ง
+                        </p>
                     </div>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0 0 10px 0' }}>ไม่พบข้อมูลการตรวจรับงาน</h3>
-                    <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
-                        ลิงก์ส่งมอบงานอาจไม่ถูกต้อง หรือรายการงานนี้ได้รับการแก้ไขแล้ว โปรดตรวจสอบคิวอาร์โค้ดส่งมอบอีกครั้ง
-                    </p>
                 </div>
             </div>
         );
@@ -334,7 +362,7 @@ export default function CustomerHandover() {
 
     if (submitted) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
                 <div style={{ background: '#fff', padding: '3rem 2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', maxWidth: '540px', width: '100%', textAlign: 'center', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.06)' }}>
                     {submitType === 'approve' ? (
                         <>
@@ -357,6 +385,11 @@ export default function CustomerHandover() {
                             </p>
                         </>
                     )}
+
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', fontSize: '0.85rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                        <Sparkles size={16} style={{ color: '#3b82f6' }} />
+                        <span>ท่านสามารถปิดหน้านี้บนมือถือของท่านได้เลย</span>
+                    </div>
                 </div>
             </div>
         );
@@ -418,6 +451,9 @@ export default function CustomerHandover() {
 
                     {/* Header */}
                     <div style={{ padding: '20px 24px', borderBottom: '1px solid #ccfbf1', background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)', borderRadius: '24px 24px 0 0' }}>
+                        {canGoBack && (
+                            <div style={{ marginBottom: '12px' }}><BackButton /></div>
+                        )}
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ccfbf1', padding: '4px 10px', borderRadius: '50px', border: '1px solid #99f6e4', marginBottom: '8px' }}>
                             <ClipboardList size={12} color="#0d9488" />
                             <span style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0d9488', letterSpacing: '0.05em' }}>PRE-HANDOVER INSPECTION</span>
@@ -537,6 +573,9 @@ export default function CustomerHandover() {
                 
                 {/* Header */}
                 <div style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7' }}>
+                    {canGoBack && (
+                        <div style={{ marginBottom: '12px' }}><BackButton /></div>
+                    )}
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', padding: '4px 10px', borderRadius: '50px', border: '1px solid #dbeafe', marginBottom: '8px' }}>
                         <Building2 size={12} color="#3b82f6" />
                         <span style={{ fontSize: '0.65rem', fontWeight: 900, color: '#1e40af', letterSpacing: '0.05em' }}>HANDOVER PORTAL</span>

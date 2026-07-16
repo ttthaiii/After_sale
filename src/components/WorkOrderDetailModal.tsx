@@ -3,6 +3,7 @@ import { WorkOrder, MasterTask } from '../types';
 import WorkOrderCard from './WorkOrderCard';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { formatDateTime } from '../utils/date';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 
 interface WorkOrderDetailModalProps {
@@ -23,6 +24,7 @@ const WorkOrderDetailModal = ({
     onPreHandoverAssign
 }: WorkOrderDetailModalProps) => {
     const { staff } = useWorkOrders();
+    const isMobile = useIsMobile();
 
 
     if (!isOpen) return null;
@@ -44,7 +46,7 @@ const WorkOrderDetailModal = ({
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            padding: '2rem'
+            padding: isMobile ? '12px' : '2rem'
         }} onClick={onClose}>
 
             <div
@@ -168,7 +170,7 @@ const WorkOrderDetailModal = ({
                 </div>
 
                 {/* Content */}
-                <div style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+                <div style={{ padding: isMobile ? '12px' : '2rem', overflowY: 'auto', flex: 1 }}>
 
                     {/* Customer Inspection Metrics Drawer */}
                     {(() => {
@@ -185,7 +187,7 @@ const WorkOrderDetailModal = ({
                         return (
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: hasTimeline && hasSurvey ? '1fr 1fr' : '1fr',
+                                gridTemplateColumns: isMobile ? '1fr' : (hasTimeline && hasSurvey ? '1fr 1fr' : '1fr'),
                                 gap: '1.5rem',
                                 marginBottom: '2rem',
                                 animation: 'fadeIn 0.3s ease-out'

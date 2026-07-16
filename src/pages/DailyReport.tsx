@@ -16,6 +16,7 @@ import { BatchAddModal } from "../components/daily-report/BatchAddModal";
 import { AnalogTimePicker } from "../components/AnalogTimePicker";
 import TaskReviewModal from "../components/TaskReviewModal";
 import CustomerInspectionMockup from "../components/CustomerInspectionMockup";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const TaskReviewModalAny = TaskReviewModal as any;
 
@@ -56,14 +57,15 @@ const DailyReportContent: React.FC = () => {
     setModalAlert,
     setReportDate,
   } = useDailyReport();
+  const isMobile = useIsMobile();
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: isSidebarOpen ? "360px 1fr" : "1fr",
-        gap: "2rem",
-        height: "calc(100vh - 120px)",
+        gridTemplateColumns: isMobile ? "1fr" : (isSidebarOpen ? "360px 1fr" : "1fr"),
+        gap: isMobile ? "1rem" : "2rem",
+        height: isMobile ? "auto" : "calc(100vh - 120px)",
         transition: "grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >

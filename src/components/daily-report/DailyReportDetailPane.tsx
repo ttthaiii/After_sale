@@ -29,6 +29,8 @@ import { SLACountdown } from "./SLACountdowns";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
 import { formatDate } from "../../utils/date";
 import { todayTH } from "../../lib/dateUtils";
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { gridCols } from '../ui/responsiveGrid';
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
@@ -107,6 +109,8 @@ export const DailyReportDetailPane: React.FC = () => {
     setIsEditingExisting,
     setActiveModal,
   } = useDailyReport();
+
+  const isMobile = useIsMobile();
 
   const [expandedPhotos, setExpandedPhotos] = useState<Set<string>>(new Set());
   const togglePhotos = (key: string) => setExpandedPhotos(prev => {
@@ -2781,7 +2785,7 @@ export const DailyReportDetailPane: React.FC = () => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(280px, 1.2fr) 2.8fr",
+                  gridTemplateColumns: gridCols(isMobile, "minmax(280px, 1.2fr) 2.8fr"),
                   gap: "2.5rem",
                 }}
               >

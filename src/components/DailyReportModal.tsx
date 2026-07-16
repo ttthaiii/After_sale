@@ -7,6 +7,8 @@ import { storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
 import CustomDateInput from './CustomDateInput';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from './ui/responsiveGrid';
 
 interface DailyReportModalProps {
     isOpen: boolean;
@@ -17,6 +19,7 @@ interface DailyReportModalProps {
 }
 
 const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportModalProps) => {
+    const isMobile = useIsMobile();
     const [progress, setProgress] = useState(task.dailyProgress || 0);
     const [note, setNote] = useState('');
     const [labor, setLabor] = useState<LaborRecord[]>([]);
@@ -320,7 +323,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
                 </div>
 
                 {/* Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px' : '32px', display: 'grid', gridTemplateColumns: gridCols(isMobile, '1.2fr 1fr'), gap: '32px' }}>
                     {/* Left Side: Labor & Progress */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
                         {/* Labor Section */}
@@ -594,7 +597,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
                             <h3 style={{ fontSize: '1rem', fontWeight: 900, color: '#475569', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 รูปภาพอ้างอิงและอัปเดต
                             </h3>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '16px' }}>
                                 {/* Before Photo */}
                                 <div>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8', marginBottom: '8px', textAlign: 'center' }}>[ รูปต้นเรื่อง ]</div>
@@ -638,7 +641,7 @@ const DailyReportModal = ({ isOpen, onClose, onSubmit, task, wo }: DailyReportMo
 
                             {/* Photo Gallery */}
                             {photos.length > 0 && (
-                                <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                                <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(3, 1fr)'), gap: '8px' }}>
                                     {photos.map((url, i) => (
                                         <div key={i} style={{ position: 'relative', height: '80px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                                             <img loading="lazy" src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />

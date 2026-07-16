@@ -4,6 +4,8 @@ import { MasterTask, Staff, Contractor } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import CustomDateInput from './CustomDateInput';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from './ui/responsiveGrid';
 
 interface AdminAssignModalProps {
     isOpen: boolean;
@@ -27,6 +29,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { sendNotification } = useNotifications();
     const { user } = useAuth();
+    const isMobile = useIsMobile();
 
     if (!isOpen || !task) return null;
 
@@ -128,7 +131,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 800, color: '#1e293b', marginBottom: '12px' }}>
                             <Clock size={18} color="#6366f1" /> ระดับความสำคัญ (SLA Category)
                         </label>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(3, 1fr)'), gap: '8px' }}>
                             {['Immediately', '24h', '1-3d', '3-7d', '7-14d', '14-30d'].map(cat => (
                                 <button
                                     key={cat}

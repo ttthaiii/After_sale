@@ -4,6 +4,8 @@ import { WorkOrder, MasterTask, Project, Staff, Contractor } from '../types';
 import { formatDate, formatDateTime } from '../utils/date';
 import { db } from '../lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from './ui/responsiveGrid';
 
 interface HistoryDetailModalProps {
     isOpen: boolean;
@@ -17,6 +19,7 @@ interface HistoryDetailModalProps {
 }
 
 const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, currentUserId, selectedTaskId }: HistoryDetailModalProps) => {
+    const isMobile = useIsMobile();
     const [taskRevisions, setTaskRevisions] = useState<Record<string, any[]>>({});
     const [selectedRevisions, setSelectedRevisions] = useState<Record<string, string>>({});
 
@@ -569,7 +572,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
             style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem'
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? '12px' : '2rem'
             }}
         >
             <style>{`
@@ -735,7 +738,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                 {/* Content */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
                     {/* Summary Info Cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '1.5rem', marginBottom: '1.5rem' }}>
                         <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
                             <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px' }}>ยูนิตและสถานที่</div>
                             <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem' }}>{workOrder.locationName}</div>
@@ -748,7 +751,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '1.5rem', marginBottom: '2.5rem' }}>
                         <div style={{ background: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                             <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <User size={14} /> ผู้แจ้งซ่อม / นิติ
@@ -1190,7 +1193,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                         )}
 
                                         {/* Photos Side-by-Side */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '1.5rem' }}>
                                             <div style={{ position: 'relative' }}>
                                                 <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(15, 23, 42, 0.8)', color: 'white', padding: '4px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, zIndex: 1, backdropFilter: 'blur(4px)' }}>BEFORE</div>
                                                 <div style={{ width: '100%', aspectRatio: '16/10', borderRadius: '16px', overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1390,7 +1393,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         การตรวจรับและส่งมอบงานคุณภาพ (Official Handover & Inspection)
                     </h4>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '2rem', marginTop: '1rem' }}>
                         {/* Left Side: Rating & Evaluation Checklist */}
                         <div>
                             <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>คะแนนประเมินโดยลูกค้า</div>

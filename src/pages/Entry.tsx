@@ -12,7 +12,9 @@ import {
     CheckCircle2,
     XCircle,
     ClipboardCheck,
-    Info
+    Info,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -20,12 +22,16 @@ import ForemanReportModal from '../components/ForemanReportModal';
 import { WorkOrder, WorkOrderType } from '../types';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatDateTime } from '../utils/date';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from '../components/ui/responsiveGrid';
+import { ts } from '../components/ui/responsiveText';
 
 const Entry = () => {
     const { user } = useAuth();
     const { workOrders, deleteWorkOrder, archiveWorkOrder } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
+    const isMobile = useIsMobile();
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [selectedType, setSelectedType] = useState<WorkOrderType>('AfterSale');
@@ -198,11 +204,11 @@ const Entry = () => {
                 background: '#ffffff',
                 border: '1px solid #e5e7eb',
                 borderRadius: '24px',
-                padding: '24px 32px',
+                padding: isMobile ? '14px 16px' : '24px 32px',
                 textAlign: 'left',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '24px',
+                gap: isMobile ? '12px' : '24px',
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 width: '100%',
@@ -223,22 +229,22 @@ const Entry = () => {
         >
             <div style={{
                 background: `linear-gradient(135deg, ${color}20 0%, ${color}10 100%)`,
-                width: '60px',
-                height: '60px',
-                borderRadius: '16px',
+                width: isMobile ? '44px' : '60px',
+                height: isMobile ? '44px' : '60px',
+                borderRadius: isMobile ? '12px' : '16px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: color,
                 flexShrink: 0
             }}>
-                <Icon size={28} />
+                <Icon size={isMobile ? 22 : 28} />
             </div>
-            <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#111827' }}>{title}</h3>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>{subtitle}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1.15rem'), fontWeight: 700, color: '#111827' }}>{title}</h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: ts(isMobile, 'label', '0.85rem'), color: '#6b7280', fontWeight: 500, whiteSpace: isMobile ? 'nowrap' : undefined, overflow: isMobile ? 'hidden' : undefined, textOverflow: isMobile ? 'ellipsis' : undefined }}>{subtitle}</p>
             </div>
-            <div style={{ color: '#9ca3af' }}>
+            <div style={isMobile ? { flexShrink: 0, width: '40px', height: '40px', borderRadius: '50%', background: color, color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' } : { color: '#9ca3af' }}>
                 <Plus size={20} />
             </div>
         </button>
@@ -247,7 +253,7 @@ const Entry = () => {
     const SectionHeader = ({ title, count, color }: any) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
             <div style={{ width: '3px', height: '16px', background: color, borderRadius: '4px' }} />
-            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>{title}</h2>
+            <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h3', '1rem'), fontWeight: 700, color: '#111827' }}>{title}</h2>
             {count > 0 && (
                 <span style={{ 
                     background: `${color}15`, 
@@ -267,6 +273,11 @@ const Entry = () => {
         const rejectionReason = wo.status === 'Rejected' ? wo.categories
             .flatMap(c => c.tasks)
             .find(t => t.status === 'Rejected' && t.rootCause)?.rootCause : null;
+        // Mobile: collapse the status timeline + action buttons behind a toggle so the
+        // card matches the compact mockup by default (progressive disclosure). Desktop
+        // is unaffected — showDetails is always true when !isMobile.
+        const [expanded, setExpanded] = useState(false);
+        const showDetails = !isMobile || expanded;
 
         return (
             <div
@@ -274,16 +285,18 @@ const Entry = () => {
                 style={{
                     background: highlightedId === wo.id ? '#fffbeb' : '#ffffff',
                     border: highlightedId === wo.id ? '2px solid #f59e0b' : '1px solid #f3f4f6',
-                    borderRadius: '20px',
-                    padding: '16px 20px',
-                    marginBottom: '12px',
+                    borderRadius: isMobile ? '16px' : '20px',
+                    padding: isMobile ? '12px 14px' : '16px 20px',
+                    marginBottom: isMobile ? '10px' : '12px',
                     display: 'flex',
+                    flexDirection: 'row',
+                    flexWrap: isMobile ? 'wrap' : undefined,
                     alignItems: 'flex-start', // Top-aligned
-                    gap: '16px',
+                    gap: isMobile ? '10px 12px' : '16px',
                     transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                     boxShadow: highlightedId === wo.id ? '0 10px 15px -3px rgba(245, 158, 11, 0.2)' : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
                     cursor: 'pointer',
-                    minHeight: '100px', // Uniform height
+                    minHeight: isMobile ? 'auto' : '100px', // Uniform height
                     position: 'relative',
                     transform: highlightedId === wo.id ? 'scale(1.02)' : 'translateY(0)',
                     zIndex: highlightedId === wo.id ? 10 : 1
@@ -302,10 +315,10 @@ const Entry = () => {
             >
                 {/* Icon Column */}
                 <div style={{
-                    width: '48px',
-                    height: '48px',
+                    width: isMobile ? '40px' : '48px',
+                    height: isMobile ? '40px' : '48px',
                     background: '#f8fafc',
-                    borderRadius: '14px',
+                    borderRadius: isMobile ? '12px' : '14px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -313,13 +326,13 @@ const Entry = () => {
                     flexShrink: 0,
                     marginTop: '2px'
                 }}>
-                    <Package size={22} />
+                    <Package size={isMobile ? 20 : 22} />
                 </div>
 
                 {/* Content Column */}
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.02em' }}>{wo.id}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{wo.id}</span>
                     </div>
                     
                     <h4 style={{ 
@@ -359,15 +372,27 @@ const Entry = () => {
                         )}
                     </div>
 
+                    {/* Mobile-only toggle: reveal the full timeline + action buttons */}
+                    {isMobile && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+                            style={{ alignSelf: 'flex-start', marginTop: '6px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            {expanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                        </button>
+                    )}
+
                     {/* ✅ Status Progress Timeline */}
-                    {!isDraft && (
-                        <div style={{ 
-                            marginTop: '12px', 
-                            padding: '12px', 
-                            background: '#f8fafc', 
+                    {!isDraft && showDetails && (
+                        <div style={{
+                            marginTop: '12px',
+                            padding: '12px',
+                            background: '#f8fafc',
                             borderRadius: '12px',
                             display: 'flex',
-                            alignItems: 'center',
+                            flexDirection: isMobile ? 'column' : 'row',
+                            alignItems: isMobile ? 'flex-start' : 'center',
                             gap: '8px'
                         }}>
                             {/* Step 1: Submitted */}
@@ -376,12 +401,12 @@ const Entry = () => {
                                     <CheckCircle2 size={12} />
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#1e293b' }}>ส่งแล้ว</span>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>ส่งแล้ว</span>
                                     <span style={{ fontSize: '0.6rem', color: '#64748b' }}>{formatDate(wo.createdAt)}</span>
                                 </div>
                             </div>
 
-                            <div style={{ flex: 1, height: '2px', background: wo.adminReviewedAt ? '#22c55e' : '#e2e8f0' }} />
+                            <div style={{ flex: 1, height: '2px', background: wo.adminReviewedAt ? '#22c55e' : '#e2e8f0', display: isMobile ? 'none' : 'block' }} />
 
                             {/* Step 2: Admin Reviewed */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -395,12 +420,12 @@ const Entry = () => {
                                     {wo.adminReviewedAt ? <CheckCircle2 size={12} /> : <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#94a3b8' }} />}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: wo.adminReviewedAt ? '#1e293b' : '#94a3b8' }}>แอดมินเปิดดู</span>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: wo.adminReviewedAt ? '#1e293b' : '#94a3b8', whiteSpace: 'nowrap' }}>แอดมินเปิดดู</span>
                                     {wo.adminReviewedAt && <span style={{ fontSize: '0.6rem', color: '#64748b' }}>{formatDate(wo.adminReviewedAt)}</span>}
                                 </div>
                             </div>
 
-                            <div style={{ flex: 1, height: '2px', background: (wo.status !== 'Evaluating' && wo.status !== 'Draft') ? '#22c55e' : '#e2e8f0' }} />
+                            <div style={{ flex: 1, height: '2px', background: (wo.status !== 'Evaluating' && wo.status !== 'Draft') ? '#22c55e' : '#e2e8f0', display: isMobile ? 'none' : 'block' }} />
 
                             {/* Step 3: Result */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -414,7 +439,7 @@ const Entry = () => {
                                     {(wo.status !== 'Evaluating' && wo.status !== 'Draft') ? (wo.status === 'Rejected' ? <XCircle size={12} /> : <CheckCircle2 size={12} />) : <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#94a3b8' }} />}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: (wo.status !== 'Evaluating' && wo.status !== 'Draft') ? '#1e293b' : '#94a3b8' }}>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: (wo.status !== 'Evaluating' && wo.status !== 'Draft') ? '#1e293b' : '#94a3b8', whiteSpace: 'nowrap' }}>
                                         {wo.status === 'Evaluating' ? 'กำลังประเมิน' : (wo.status === 'Rejected' ? 'ปฏิเสธ' : 'ประเมินแล้ว')}
                                     </span>
                                 </div>
@@ -423,8 +448,9 @@ const Entry = () => {
                     )}
                 </div>
 
-                {/* Actions Column - Vertical Arrangement */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'center', alignSelf: 'stretch' }}>
+                {/* Actions Column - Vertical Arrangement (full-width row on mobile, below icon+content) */}
+                {showDetails && (
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', flexWrap: 'wrap', gap: '6px', justifyContent: isMobile ? 'flex-start' : 'center', alignSelf: 'stretch', flexBasis: isMobile ? '100%' : undefined }}>
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleEditDraftOrEvaluating(wo); }}
                         title={wo.status === 'Rejected' ? 'แก้ไขใหม่' : 'แก้ไข'}
@@ -442,7 +468,7 @@ const Entry = () => {
                             fontSize: '0.75rem',
                             fontWeight: 700,
                             transition: 'all 0.15s',
-                            minWidth: '94px'
+                            minWidth: isMobile ? 'auto' : '94px'
                         }}
                         onMouseOver={(e) => { e.currentTarget.style.background = '#dbeafe'; }}
                         onMouseOut={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
@@ -468,7 +494,7 @@ const Entry = () => {
                                 fontSize: '0.75rem',
                                 fontWeight: 700,
                                 transition: 'all 0.15s',
-                                minWidth: '94px'
+                                minWidth: isMobile ? 'auto' : '94px'
                             }}
                             onMouseOver={(e) => { e.currentTarget.style.background = '#fee2e2'; }}
                             onMouseOut={(e) => { e.currentTarget.style.background = '#fef2f2'; }}
@@ -495,7 +521,7 @@ const Entry = () => {
                                 fontSize: '0.75rem',
                                 fontWeight: 700,
                                 transition: 'all 0.15s',
-                                minWidth: '94px'
+                                minWidth: isMobile ? 'auto' : '94px'
                             }}
                             onMouseOver={(e) => { e.currentTarget.style.background = '#fee2e2'; }}
                             onMouseOut={(e) => { e.currentTarget.style.background = '#fff1f2'; }}
@@ -505,6 +531,7 @@ const Entry = () => {
                         </button>
                     )}
                 </div>
+                )}
             </div>
         );
     };
@@ -537,28 +564,28 @@ const Entry = () => {
     );
 
     return (
-        <div style={{ 
-            padding: '40px', 
-            maxWidth: '1600px', 
-            margin: '0 auto', 
-            fontFamily: "'Plus Jakarta Sans', 'Sarabun', sans-serif" 
+        <div style={{
+            padding: isMobile ? '16px' : '40px',
+            maxWidth: '1600px',
+            margin: '0 auto',
+            fontFamily: "'Plus Jakarta Sans', 'Sarabun', sans-serif"
         }}>
             {/* Header Area */}
-            <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ marginBottom: isMobile ? '24px' : '40px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '16px' : '0', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-end' }}>
                 <div>
-                    <h1 style={{ margin: 0, fontSize: '2.25rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.025em' }}>
+                    <h1 style={{ margin: 0, fontSize: ts(isMobile, 'display', '2.25rem'), fontWeight: 800, color: '#111827', letterSpacing: '-0.025em' }}>
                         ใบงานและติดตามผล
                     </h1>
-                    <p style={{ margin: '8px 0 0 0', fontSize: '1rem', color: '#6b7280', fontWeight: 500 }}>
+                    <p style={{ margin: '8px 0 0 0', fontSize: ts(isMobile, 'body', '1rem'), color: '#6b7280', fontWeight: 500 }}>
                         ศุนย์รวมการจัดการใบงานและติดตามสถานะประเมิน
                     </p>
                 </div>
                 
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '12px', width: isMobile ? '100%' : undefined }}>
+                    <div style={{ position: 'relative', width: isMobile ? '100%' : undefined }}>
                         <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} size={18} />
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             placeholder="ค้นหาเลขที่หรือสถานที่..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -566,7 +593,7 @@ const Entry = () => {
                                 padding: '12px 16px 12px 40px',
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '12px',
-                                width: '320px',
+                                width: isMobile ? '100%' : '320px',
                                 outline: 'none',
                                 fontSize: '0.9rem',
                                 background: '#f9fafb',
@@ -578,7 +605,7 @@ const Entry = () => {
             </div>
 
             {/* Top Action Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '48px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: isMobile ? '16px' : '24px', marginBottom: isMobile ? '28px' : '48px' }}>
                 <ActionCard 
                     title="แจ้งซ่อมทั่วไป"
                     subtitle="งานซ่อมบำรุงและดูแลหลังการขาย (After Sale)"
@@ -596,14 +623,14 @@ const Entry = () => {
             </div>
 
             {/* Dashboard Content: 4-Zone Grid */}
-            <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: '1fr 1fr', 
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: gridCols(isMobile, '1fr 1fr'),
                 gap: '20px' // Reduced gap as requested
             }}>
                 
                 {/* 1. After Sale Drafts */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: isMobile ? '12px' : '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                         <div style={{ 
                             background: '#6366f115', color: '#6366f1',
@@ -612,7 +639,7 @@ const Entry = () => {
                         }}>
                             <Wrench size={18} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#111827' }}>แบบร่างแจ้งซ่อมทั่วไป</h2>
+                        <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1rem'), fontWeight: 800, color: '#111827' }}>แบบร่างแจ้งซ่อมทั่วไป</h2>
                     </div>
                     <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
                         {afterSaleDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
@@ -620,7 +647,7 @@ const Entry = () => {
                 </div>
 
                 {/* 2. Pre-Handover Drafts */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: isMobile ? '12px' : '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                         <div style={{ 
                             background: '#10b98115', color: '#10b981',
@@ -629,7 +656,7 @@ const Entry = () => {
                         }}>
                             <ClipboardCheck size={18} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#111827' }}>แบบร่างตรวจรับห้อง</h2>
+                        <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1rem'), fontWeight: 800, color: '#111827' }}>แบบร่างตรวจรับห้อง</h2>
                     </div>
                     <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
                         {preHandoverDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
@@ -637,7 +664,7 @@ const Entry = () => {
                 </div>
 
                 {/* 3. After Sale Tracking */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: isMobile ? '12px' : '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                         <div style={{ 
                             background: '#6366f115', color: '#6366f1',
@@ -646,7 +673,7 @@ const Entry = () => {
                         }}>
                             <Clock size={18} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#111827' }}>ติดตามการแจ้งซ่อม</h2>
+                        <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1rem'), fontWeight: 800, color: '#111827' }}>ติดตามการแจ้งซ่อม</h2>
                     </div>
                     <SectionHeader title="รายการรอประเมิน / แก้ไข" count={afterSaleTracking.length} color="#6366f1" />
                     <ScrollableZone emptyIcon={Clock} emptyText="ไม่มีงานที่รอประเมิน">
@@ -655,7 +682,7 @@ const Entry = () => {
                 </div>
 
                 {/* 4. Pre-Handover Tracking */}
-                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #f3f4f6', padding: isMobile ? '12px' : '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                         <div style={{ 
                             background: '#10b98115', color: '#10b981',
@@ -664,7 +691,7 @@ const Entry = () => {
                         }}>
                             <Clock size={18} />
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#111827' }}>ติดตามการตรวจรับ</h2>
+                        <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1rem'), fontWeight: 800, color: '#111827' }}>ติดตามการตรวจรับ</h2>
                     </div>
                     <SectionHeader title="รายการรอประเมิน / แก้ไข" count={preHandoverTracking.length} color="#10b981" />
                     <ScrollableZone emptyIcon={Clock} emptyText="ไม่มีงานที่รอประเมิน">
