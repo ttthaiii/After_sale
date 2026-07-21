@@ -233,7 +233,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
 
                         {/* Per-category table */}
                         <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 80px 1fr', rowGap: isMobile ? '8px' : undefined, padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                            <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: '1fr 80px 1fr', padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>หมวดงาน</span>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textAlign: 'center' }}>จุดที่พบ</span>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>มอบหมายให้</span>
@@ -249,10 +249,12 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                                             {assigned?.foremanId ? <CheckCircle2 size={14} color="#10b981" /> : <div style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #d1d5db' }} />}
                                             <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>{cat.name}</span>
                                         </div>
-                                        <span style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.88rem', color: (cat as any).defectCount > 0 ? '#92400e' : '#334155' }}>
+                                        <span style={{ textAlign: isMobile ? 'left' : 'center', fontWeight: 700, fontSize: '0.88rem', color: (cat as any).defectCount > 0 ? '#92400e' : '#334155' }}>
+                                            {isMobile && <span style={{ fontWeight: 700, color: '#94a3b8', fontSize: '0.78rem' }}>จุดที่พบ: </span>}
                                             {(cat as any).defectCount ?? 0} จุด
                                         </span>
                                         <div style={{ position: 'relative' }}>
+                                            {isMobile && <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>มอบหมายให้</div>}
                                             <select
                                                 value={assigned?.foremanId || ''}
                                                 onChange={e => handleCategoryAssign(cat.id, e.target.value)}
