@@ -526,19 +526,22 @@ export const DailyReportDetailPane: React.FC = () => {
                   border: "1px solid #e2e8f0",
                   overflow: "visible",
                   display: "flex",
-                  height: "220px",
+                  flexDirection: isMobile ? "column" : "row",
+                  height: isMobile ? "auto" : "220px",
                 }}
               >
                 {" "}
                 
                 <div
                   style={{
-                    width: "190px",
+                    width: isMobile ? "100%" : "190px",
+                    height: isMobile ? "170px" : undefined,
                     background: "#f1f5f9",
                     position: "relative",
                     flexShrink: 0,
                     borderTopLeftRadius: "15px",
-                    borderBottomLeftRadius: "15px",
+                    borderBottomLeftRadius: isMobile ? "0" : "15px",
+                    borderTopRightRadius: isMobile ? "15px" : "0",
                     overflow: "hidden",
                   }}
                 >
@@ -603,9 +606,10 @@ export const DailyReportDetailPane: React.FC = () => {
                   <div
                     style={{
                       display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
                       justifyContent: "space-between",
                       alignItems: "stretch",
-                      height: "100%",
+                      height: isMobile ? "auto" : "100%",
                     }}
                   >
                     {" "}
@@ -773,9 +777,10 @@ export const DailyReportDetailPane: React.FC = () => {
                         display: "flex",
                         flexDirection: "column",
                         gap: "6px",
-                        alignItems: "flex-end",
-                        minWidth: "200px",
-                        marginLeft: "20px",
+                        alignItems: isMobile ? "stretch" : "flex-end",
+                        minWidth: isMobile ? 0 : "200px",
+                        marginLeft: isMobile ? 0 : "20px",
+                        marginTop: isMobile ? "12px" : 0,
                       }}
                     >
                       {(() => {
@@ -1311,7 +1316,7 @@ export const DailyReportDetailPane: React.FC = () => {
               style={{
                 flex: 1,
                 overflowY: "auto",
-                padding: "2rem",
+                padding: isMobile ? "1rem" : "2rem",
               }}
             >
               {isAwaitingAdmin ? (
@@ -1477,8 +1482,10 @@ export const DailyReportDetailPane: React.FC = () => {
                       padding: "1.25rem",
                       marginBottom: "2rem",
                       display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
                       justifyContent: "space-between",
-                      alignItems: "center",
+                      alignItems: isMobile ? "stretch" : "center",
+                      gap: isMobile ? "12px" : 0,
                       boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
                     }}
                   >
@@ -1590,13 +1597,15 @@ export const DailyReportDetailPane: React.FC = () => {
                 <div
                   style={{
                     display: "flex",
+                    flexDirection: isMobile ? "column" : "row",
                     justifyContent: "space-between",
-                    alignItems: "center",
+                    alignItems: isMobile ? "stretch" : "center",
+                    gap: isMobile ? "12px" : 0,
                     marginBottom: "1.25rem",
                   }}
                 >
                   {" "}
-                  
+
                   <h3
                     style={{
                       fontSize: "1.1rem",
@@ -1606,10 +1615,11 @@ export const DailyReportDetailPane: React.FC = () => {
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {" "}
-                    
+
                     <Users size={20} color="#3b82f6" /> การจัดการคนงาน (Labor)
                   </h3>{" "}
                   
@@ -1756,6 +1766,21 @@ export const DailyReportDetailPane: React.FC = () => {
                   </div>
                 </div>{" "}
                 
+                {isMobile && displayLabor.length > 0 && (
+                  <div
+                    style={{
+                      fontSize: "0.72rem",
+                      color: "#94a3b8",
+                      fontWeight: 700,
+                      marginBottom: "6px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <ChevronRight size={12} /> เลื่อนตารางแนวนอนเพื่อดู OT / การลา
+                  </div>
+                )}
                 <div
                   style={{
                     background: "#fff",

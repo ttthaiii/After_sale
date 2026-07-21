@@ -5,6 +5,7 @@ import {
   AlertCircle,
   XCircle,
   Info,
+  ChevronLeft,
 } from "lucide-react";
 import { DailyReportProvider, useDailyReport } from "../context/DailyReportContext";
 import { formatDate } from "../utils/date";
@@ -32,6 +33,8 @@ const DailyReportContent: React.FC = () => {
     showUnlockModal,
     setShowUnlockModal,
     selectedTaskInfo,
+    setSelectedTaskInfo,
+    setSelectedPhCatInfo,
     zoomImage,
     setZoomImage,
     isReviewModalOpen,
@@ -73,7 +76,78 @@ const DailyReportContent: React.FC = () => {
       {isSidebarOpen && <WorkOrderGroupList />}
 
       {/* Main Details Form Pane */}
-      {selectedPhCatInfo ? <PreHandoverDetailPane /> : <DailyReportDetailPane />}
+      {(() => {
+        const hasSelection = !!selectedTaskInfo || !!selectedPhCatInfo;
+        const detailPane = selectedPhCatInfo ? (
+          <PreHandoverDetailPane />
+        ) : (
+          <DailyReportDetailPane />
+        );
+
+        // Desktop: unchanged — pane sits in the 2-column grid beside the list.
+        if (!isMobile) return detailPane;
+
+        // Mobile: no inline pane stacked at the bottom. When a work order is
+        // selected, present the form as a full-screen popup overlay instead.
+        if (!hasSelection) return null;
+
+        return (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 1500,
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "10px 12px",
+                background: "#f8fafc",
+                borderBottom: "1px solid #e2e8f0",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setSelectedTaskInfo(null);
+                  setSelectedPhCatInfo(null);
+                }}
+                aria-label="ปิด"
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "12px",
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "#0f172a",
+                  flexShrink: 0,
+                }}
+              >
+                <ChevronLeft size={22} strokeWidth={2.5} />
+              </button>
+              <div
+                style={{ fontSize: "1rem", fontWeight: 800, color: "#0f172a" }}
+              >
+                รายงานผลงาน
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>{detailPane}</div>
+          </div>
+        );
+      })()}
 
       {/* Analog Time Picker Modal Overlay */}
       {timePickerTarget && (
