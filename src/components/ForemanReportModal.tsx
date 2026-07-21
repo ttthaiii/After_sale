@@ -771,10 +771,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             )}
                         </div>
 
-                        <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+                        <div style={{ padding: isMobile ? '16px' : '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'stretch', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: isMobile ? '10px' : '16px' }}>
                             <button
                                 onClick={() => setStep('form')}
-                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
                             >
                                 ย้อนกลับ (Edit)
                             </button>
@@ -792,7 +792,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px'
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    whiteSpace: 'nowrap'
                                 }}
                             >
                                 {isSubmitting && <Loader2 className="animate-spin" size={20} />}
@@ -1050,14 +1052,14 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                 {!isAfterSale && (
                                     <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                                         {/* Column headers */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: '12px', padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 76px 34px' : '1fr 160px 40px', gap: isMobile ? '8px' : '12px', padding: isMobile ? '10px 12px' : '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                                             <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>หมวดงาน (Category)</span>
                                             <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, textAlign: 'center' }}>จำนวนจุดที่พบ</span>
                                             <span />
                                         </div>
                                         {/* Data rows — no labels, uniform height */}
                                         {groups.map((group, idx) => (
-                                            <div key={group.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: '12px', padding: '10px 16px', alignItems: 'center', borderBottom: idx < groups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                            <div key={group.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 76px 34px' : '1fr 160px 40px', gap: isMobile ? '8px' : '12px', padding: isMobile ? '10px 12px' : '10px 16px', alignItems: 'center', borderBottom: idx < groups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                                                 <div style={{ position: 'relative' }}>
                                                     <select
                                                         value={group.category}
@@ -1433,7 +1435,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         />
 
                         {/* Footer */}
-                        <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+                        <div style={{ padding: isMobile ? '16px' : '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'stretch', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: isMobile ? '10px' : '16px' }}>
                             <button
                                 onClick={handleClose}
                                 style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, transition: 'all 0.2s' }}
@@ -1452,7 +1454,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     setIsPreviewDraft(true);
                                     setStep('preview');
                                 }}
-                                style={{ padding: '10px 24px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                style={{ padding: '10px 24px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', whiteSpace: 'nowrap' }}
                                 onMouseOver={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#94a3b8'; }}
                                 onMouseOut={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
                             >
@@ -1468,7 +1470,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     setIsPreviewDraft(false);
                                     setStep('preview');
                                 }}
-                                style={{ padding: '10px 32px', background: '#4f46e5', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
+                                style={{ padding: '10px 32px', background: '#4f46e5', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1rem', whiteSpace: 'nowrap', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
                                 onMouseOver={(e) => e.currentTarget.style.background = '#4338ca'}
                                 onMouseOut={(e) => e.currentTarget.style.background = '#4f46e5'}
                             >

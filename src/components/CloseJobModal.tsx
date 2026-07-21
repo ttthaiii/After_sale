@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { WorkOrder } from '../types';
 import { Camera, CheckCircle2 } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface CloseJobModalProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface CloseJobModalProps {
 const CloseJobModal = ({ isOpen, onClose, onConfirm, workOrder, targetTaskId }: CloseJobModalProps) => {
     const [photos, setPhotos] = useState<Record<string, File | null>>({});
     const [note, setNote] = useState('');
+    const isMobile = useIsMobile();
 
     if (!isOpen) return null;
 
@@ -55,14 +57,14 @@ const CloseJobModal = ({ isOpen, onClose, onConfirm, workOrder, targetTaskId }: 
             }}>
                 {/* Header */}
                 <div style={{
-                    padding: '1.5rem 2.5rem',
+                    padding: isMobile ? '1.25rem 1rem' : '1.5rem 2.5rem',
                     background: '#ffffff',
                     borderBottom: '1px solid #f1f5f9',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                 }}>
                     <div>
-                        <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <CheckCircle2 size={32} style={{ color: '#10b981' }} />
+                        <h2 style={{ margin: 0, fontSize: isMobile ? '1.15rem' : '1.6rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px' }}>
+                            <CheckCircle2 size={isMobile ? 24 : 32} style={{ color: '#10b981' }} />
                             {tasksToVerify.length === 1 ? 'ยืนยันการปิดรายการงาน' : 'ยืนยันการปิดใบงานค้าง'}
                         </h2>
                         <div style={{ color: '#64748b', fontSize: '1rem', marginTop: '6px', fontWeight: 600 }}>
@@ -105,7 +107,7 @@ const CloseJobModal = ({ isOpen, onClose, onConfirm, workOrder, targetTaskId }: 
                     </button>
                 </div>
 
-                <div style={{ padding: '2rem 2.5rem', overflowY: 'auto', flex: 1, background: '#fcfcfd' }}>
+                <div style={{ padding: isMobile ? '1.25rem 1rem' : '2rem 2.5rem', overflowY: 'auto', flex: 1, background: '#fcfcfd' }}>
                     {/* Comparison Banner */}
                     <div style={{ background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', padding: '1.5rem', borderRadius: '24px', border: '1px solid #bae6fd', marginBottom: '2.5rem', display: 'flex', alignItems: 'center', gap: '18px' }}>
                         <div style={{ width: '48px', height: '48px', background: '#0284c7', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.2)' }}>
@@ -132,7 +134,7 @@ const CloseJobModal = ({ isOpen, onClose, onConfirm, workOrder, targetTaskId }: 
                                         #{index + 1} {task.name}
                                     </div>
                                 )}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', padding: '2rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? '1rem' : '2rem', padding: isMobile ? '1rem' : '2rem' }}>
                                     {/* Before Photo */}
                                     <div>
                                         <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '1px' }}>
@@ -209,9 +211,9 @@ const CloseJobModal = ({ isOpen, onClose, onConfirm, workOrder, targetTaskId }: 
 
                 {/* Footer */}
                 <div style={{
-                    padding: '1.75rem 2.5rem',
+                    padding: isMobile ? '1.25rem 1rem' : '1.75rem 2.5rem',
                     background: '#ffffff',
-                    display: 'flex', gap: '1.5rem',
+                    display: 'flex', gap: isMobile ? '1rem' : '1.5rem',
                     borderTop: '1px solid #f1f5f9',
                     alignItems: 'center'
                 }}>

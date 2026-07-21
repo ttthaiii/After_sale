@@ -641,9 +641,9 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                 }}
             >
                 {/* Header */}
-                <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: workOrder.status === 'Rejected' ? '#fffafb' : '#f8fafc' }}>
+                <div style={{ padding: isMobile ? '16px' : '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '12px' : 0, background: workOrder.status === 'Rejected' ? '#fffafb' : '#f8fafc' }}>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
                                 {workOrder.status === 'Rejected' ? 'รายละเอียดการปฏิเสธงาน (Rejected Details)' : 'สรุปผลการดำเนินงาน (Work Summary)'}
                             </span>
@@ -736,7 +736,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                 </div>
 
                 {/* Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px' : '32px' }}>
                     {/* Summary Info Cards */}
                     <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '1.5rem', marginBottom: '1.5rem' }}>
                         <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
@@ -914,7 +914,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                         boxShadow: isCompleted ? '0 4px 12px rgba(16, 185, 129, 0.05)' : 'none',
                                         borderColor: isCompleted ? '#d1fae5' : '#e2e8f0'
                                     }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+                                        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', gap: isMobile ? '12px' : 0, marginBottom: '1.5rem' }}>
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                     <div style={{ 
@@ -1056,7 +1056,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                                 )}
                                             </div>
                                             {workOrder.status !== 'Rejected' && (
-                                                <div style={{ textAlign: 'right', minWidth: '180px' }}>
+                                                <div style={{ textAlign: isMobile ? 'left' : 'right', minWidth: isMobile ? 0 : '180px' }}>
                                                     <div style={{ fontSize: '0.6rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>SLA Performance</div>
                                                     {/* Verdict badge */}
                                                     <div style={{
@@ -1424,19 +1424,22 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                     </div>
 
                     {/* Signatures */}
-                    <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        marginTop: '2.5rem', 
-                        paddingTop: '2rem', 
-                        borderTop: '1px dashed #cbd5e1' 
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        justifyContent: 'space-between',
+                        alignItems: isMobile ? 'stretch' : 'flex-start',
+                        gap: isMobile ? '24px' : 0,
+                        marginTop: '2.5rem',
+                        paddingTop: '2rem',
+                        borderTop: '1px dashed #cbd5e1'
                     }} className="print-signatures">
-                        <div style={{ textAlign: 'center', width: '200px' }}>
+                        <div style={{ textAlign: 'center', width: isMobile ? '100%' : '200px' }}>
                             <div style={{ height: '40px', borderBottom: '1px solid #475569', marginBottom: '8px' }}></div>
                             <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>ลงชื่อ: {workOrder.reporterName ? (workOrder.reporterName.startsWith('คุณ') ? workOrder.reporterName : `คุณ${workOrder.reporterName}`) : 'ผู้แจ้งซ่อม'}</div>
                             <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>นิติบุคคล / ผู้แจ้งซ่อม</div>
                         </div>
-                        <div style={{ textAlign: 'center', width: '200px' }}>
+                        <div style={{ textAlign: 'center', width: isMobile ? '100%' : '200px' }}>
                             <div style={{ height: '40px', borderBottom: '1px solid #475569', marginBottom: '8px' }}></div>
                             <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>
                                 {(() => {
