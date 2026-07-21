@@ -409,7 +409,7 @@ export const PreHandoverDetailPane: React.FC = () => {
       </div>
 
       {/* ─── Scrollable body ─── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px' : '20px 24px' }}>
 
         {/* Report Date — compact button + dropdown */}
         <div style={{ ...sectionStyle, padding: '14px 20px' }}>
@@ -490,15 +490,15 @@ export const PreHandoverDetailPane: React.FC = () => {
 
         {/* ─── Labor ─── */}
         <div style={sectionStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '12px' : 0, marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
               <Users size={20} color="#3b82f6" /> การจัดการคนงาน (Labor)
             </h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center' }}>
               {isPhExistingReport && !isPhEditingExisting && (
                 <button
                   onClick={() => setIsPhEditingExisting(true)}
-                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #6366f1', background: '#fff', color: '#6366f1', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
+                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #6366f1', background: '#fff', color: '#6366f1', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
                 >
                   <Edit2 size={14} /> แก้ไขข้อมูล
                 </button>
@@ -506,7 +506,7 @@ export const PreHandoverDetailPane: React.FC = () => {
               {isPhExistingReport && isPhEditingExisting && (
                 <button
                   onClick={() => setIsPhEditingExisting(false)}
-                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #ef4444', background: '#fef2f2', color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
+                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #ef4444', background: '#fef2f2', color: '#ef4444', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
                 >
                   <XCircle size={14} /> ยกเลิก
                 </button>
@@ -515,13 +515,13 @@ export const PreHandoverDetailPane: React.FC = () => {
                 <>
                   <button
                     onClick={() => setActiveModal('Internal')}
-                    style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', whiteSpace: 'nowrap' }}
                   >
                     <Plus size={14} /> คนงานบริษัท (Internal)
                   </button>
                   <button
                     onClick={() => setActiveModal('Outsource')}
-                    style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', whiteSpace: 'nowrap' }}
                   >
                     <Plus size={14} /> ทีมงานผู้รับเหมา (Subco)
                   </button>
@@ -531,6 +531,11 @@ export const PreHandoverDetailPane: React.FC = () => {
           </div>
 
           {/* Labor table */}
+          {isMobile && labor.length > 0 && (
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <ChevronRight size={12} /> เลื่อนตารางแนวนอนเพื่อดู OT / การลา
+            </div>
+          )}
           <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', overflowX: 'auto', pointerEvents: isPhEditable ? 'auto' : 'none', opacity: isPhEditable ? 1 : 0.82 }}>
             {labor.length === 0 ? (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
@@ -847,8 +852,8 @@ export const PreHandoverDetailPane: React.FC = () => {
 
         {/* ─── Notes ─── */}
         <div style={sectionStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div style={sectionTitleStyle}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '12px' : 0, justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ ...sectionTitleStyle, marginBottom: 0 }}>
               <FileText size={16} color="#64748b" /> หมายเหตุ (Site Notes)
             </div>
             <div
@@ -1035,7 +1040,9 @@ export const PreHandoverDetailPane: React.FC = () => {
       {/* ─── Footer ─── */}
       <div style={{
         padding: '16px 24px', background: '#fff', borderTop: '1px solid #e2e8f0',
-        display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0,
+        display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px',
+        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+        alignItems: 'stretch', flexShrink: 0,
       }}>
         <button
           onClick={() => selectPhCatInfo(null)}
@@ -1056,7 +1063,8 @@ export const PreHandoverDetailPane: React.FC = () => {
               color: phRetroactiveSubmitDone ? '#15803d' : '#fff',
               border: 'none', fontWeight: 900,
               cursor: (phRetroactiveSubmitDone || isSubmitting) ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', gap: '8px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              whiteSpace: 'nowrap',
               boxShadow: phRetroactiveSubmitDone ? 'none' : '0 4px 6px rgba(234,88,12,0.25)',
             }}
           >
@@ -1077,7 +1085,8 @@ export const PreHandoverDetailPane: React.FC = () => {
                 fontWeight: 900,
                 cursor: isSubmitting || isUploading ? 'not-allowed' : 'pointer',
                 boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-                display: 'flex', alignItems: 'center', gap: '8px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                whiteSpace: 'nowrap',
                 transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => { if (!isSubmitting && !isUploading) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#94a3b8'; } }}
@@ -1097,7 +1106,8 @@ export const PreHandoverDetailPane: React.FC = () => {
                 fontWeight: 900,
                 cursor: isSubmitting || isUploading ? 'not-allowed' : 'pointer',
                 boxShadow: isSubmitting || isUploading ? 'none' : '0 4px 6px rgba(13,148,136,0.25)',
-                display: 'flex', alignItems: 'center', gap: '8px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                whiteSpace: 'nowrap',
               }}
             >
               {isPhEditingExisting ? 'ยืนยันการแก้ไขรายงาน' : 'ยืนยันการส่งรายงาน'}
