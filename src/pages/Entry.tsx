@@ -23,7 +23,7 @@ import { formatDate, formatDateTime } from '../utils/date';
 
 const Entry = () => {
     const { user } = useAuth();
-    const { workOrders, deleteWorkOrder, archiveWorkOrder } = useWorkOrders();
+    const { workOrders, deleteWorkOrder } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -65,12 +65,13 @@ const Entry = () => {
                 } else {
                     const statusThaiMap: Record<string, string> = {
                         'Evaluating': 'อยู่ระหว่างให้แอดมินประเมิน',
-                        'Pending': 'รออนุมัติขั้นสุดท้าย',
-                        'Approved': 'ได้รับอนุมัติและพร้อมทำงานแล้ว',
+                        'Assigned': 'ได้รับอนุมัติและพร้อมทำงานแล้ว',
                         'Partially Approved': 'อนุมัติบางส่วนและเริ่มงานแล้ว',
                         'In Progress': 'กำลังดำเนินการก่อสร้าง/ซ่อมแซม',
-                        'Completed': 'เสร็จสิ้นเรียบร้อยแล้ว',
-                        'Verified': 'ตรวจสอบความสมบูรณ์แล้ว',
+                        'For Checking': 'งานเสร็จ รอออก QR',
+                        'pending_delivery': 'รอลูกค้าประเมิน',
+                        'customer_reject': 'ลูกค้าส่งกลับแก้ไข',
+                        'Complete': 'เสร็จสิ้นเรียบร้อยแล้ว',
                         'Cancelled': 'ถูกยกเลิกแล้ว'
                     };
                     
@@ -119,6 +120,11 @@ const Entry = () => {
     };
 
     const handleEditDraftOrEvaluating = (order: WorkOrder) => {
+        // Eval-lock: while an admin has this WO open for review, FM cannot edit until a decision (reject).
+        if (order.evalLocked === true) {
+            alert('แอดมินกำลังตรวจสอบใบสั่งงานนี้อยู่ — แก้ไขไม่ได้จนกว่าแอดมินจะตีกลับงาน (reject)');
+            return;
+        }
         setSelectedOrder(order);
         setSelectedType(order.type);
         setIsEditModalOpen(true);
@@ -142,7 +148,10 @@ const Entry = () => {
     const filteredTracking = useMemo(() => {
         return workOrders
             .filter(wo => 
-                (wo.status === 'Evaluating' || wo.status === 'Rejected') && 
+                // Route by TASK (Option A): show WOs in evaluation, plus any WO holding a Rejected task
+                // (admin-rejected — FM must fix+resubmit or acknowledge), even inside a Partially Approved WO.
+                // taskArchived = FM already cancelled that task — it's resolved, don't keep the WO stuck here.
+                (wo.status === 'Evaluating' || (wo.categories || []).some(c => (c.tasks || []).some(t => t.status === 'Rejected' && !t.taskArchived))) &&
                 !wo.isArchived &&
                 (user?.role === 'Admin' || wo.reporterId === user?.id) &&
                 (searchQuery === '' || (wo.locationName || '').toLowerCase().includes(searchQuery.toLowerCase()) || (wo.id || '').toLowerCase().includes(searchQuery.toLowerCase()))
@@ -163,10 +172,13 @@ const Entry = () => {
     const StatusBadge = ({ status }: { status: string }) => {
         const styles: Record<string, { bg: string, text: string, label: string, icon: any }> = {
             'Evaluating': { bg: '#eff6ff', text: '#3b82f6', label: 'รอประเมิน', icon: <Search size={12} /> },
-            'Pending': { bg: '#fff7ed', text: '#f97316', label: 'รออนุมัติ', icon: <Clock size={12} /> },
-            'Approved': { bg: '#f0fdf4', text: '#22c55e', label: 'อนุมัติแล้ว', icon: <CheckCircle2 size={12} /> },
+            'Assigned': { bg: '#f0fdf4', text: '#22c55e', label: 'มอบหมายแล้ว', icon: <CheckCircle2 size={12} /> },
+            'Partially Approved': { bg: '#fff7ed', text: '#f97316', label: 'อนุมัติบางส่วน', icon: <CheckCircle2 size={12} /> },
             'In Progress': { bg: '#f5f3ff', text: '#8b5cf6', label: 'กำลังดำเนินการ', icon: <Wrench size={12} /> },
-            'Completed': { bg: '#f0fdf4', text: '#16a34a', label: 'เสร็จสิ้น', icon: <CheckCircle2 size={12} /> },
+            'For Checking': { bg: '#ecfeff', text: '#0891b2', label: 'รอออก QR', icon: <CheckCircle2 size={12} /> },
+            'pending_delivery': { bg: '#fefce8', text: '#ca8a04', label: 'รอลูกค้าประเมิน', icon: <Clock size={12} /> },
+            'customer_reject': { bg: '#fef2f2', text: '#dc2626', label: 'ลูกค้าปฏิเสธ', icon: <XCircle size={12} /> },
+            'Complete': { bg: '#f0fdf4', text: '#16a34a', label: 'เสร็จสิ้น', icon: <CheckCircle2 size={12} /> },
             'Rejected': { bg: '#fef2f2', text: '#ef4444', label: 'ปฏิเสธ', icon: <XCircle size={12} /> },
         };
 
@@ -264,9 +276,14 @@ const Entry = () => {
     );
 
     const WorkOrderCard = ({ wo, isDraft }: { wo: WorkOrder, isDraft: boolean }) => {
+        // Once admin has decided ANY task (evaluation started), whole-WO edit + cancel are locked (Step 1b).
+        // A cancelled (taskArchived) Rejected task is already resolved — it shouldn't hold this lock on its own.
+        const hasDecidedTask = (wo.categories || []).some(c => (c.tasks || []).some(t =>
+            ['Assigned', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'].includes(t.status) ||
+            (t.status === 'Rejected' && !t.taskArchived)));
         const rejectionReason = wo.status === 'Rejected' ? wo.categories
             .flatMap(c => c.tasks)
-            .find(t => t.status === 'Rejected' && t.rootCause)?.rootCause : null;
+            .find(t => t.status === 'Rejected' && t.rootCause && !t.taskArchived)?.rootCause : null;
 
         return (
             <div
@@ -425,7 +442,13 @@ const Entry = () => {
 
                 {/* Actions Column - Vertical Arrangement */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'center', alignSelf: 'stretch' }}>
-                    <button 
+                    {wo.evalLocked === true && (
+                        <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '6px 8px', textAlign: 'center', minWidth: '94px', lineHeight: 1.3 }}>
+                            🔒 แอดมินกำลังตรวจสอบ
+                        </div>
+                    )}
+                    {!hasDecidedTask && wo.evalLocked !== true && (
+                    <button
                         onClick={(e) => { e.stopPropagation(); handleEditDraftOrEvaluating(wo); }}
                         title={wo.status === 'Rejected' ? 'แก้ไขใหม่' : 'แก้ไข'}
                         style={{ 
@@ -450,6 +473,7 @@ const Entry = () => {
                         <Edit size={14} />
                         {wo.status === 'Rejected' ? 'แก้ไขใหม่' : 'แก้ไข'}
                     </button>
+                    )}
 
                     {isDraft && (
                         <button 
@@ -478,9 +502,9 @@ const Entry = () => {
                         </button>
                     )}
                     
-                    {(wo.status === 'Rejected' || wo.status === 'Evaluating') && (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); if(window.confirm('ยืนยันการยกเลิกใบงานนี้?')) archiveWorkOrder(wo.id); }}
+                    {wo.status === 'Evaluating' && !hasDecidedTask && wo.evalLocked !== true && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); if(window.confirm('ยืนยันการยกเลิกใบงานนี้?')) deleteWorkOrder(wo.id); }}
                             style={{ 
                                 padding: '6px 12px', 
                                 color: '#ef4444', 

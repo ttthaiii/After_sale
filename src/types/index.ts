@@ -1,4 +1,4 @@
-export type UserRole = 'Foreman' | 'BackOffice' | 'Approver' | 'Admin' | 'Manager';
+export type UserRole = 'Foreman' | 'Approver' | 'Admin' | 'Manager';
 
 export interface User {
     id: string;
@@ -9,7 +9,7 @@ export interface User {
     assignedProjects?: string[];
 }
 
-export type TaskStatus = 'Pending' | 'Assigned' | 'In Progress' | 'Completed' | 'Verified' | 'Approved' | 'Rejected';
+export type TaskStatus = 'Draft' | 'Evaluating' | 'Assigned' | 'In Progress' | 'For Checking' | 'pending_delivery' | 'Complete' | 'Rejected' | 'Cancelled';
 
 export interface TaskAssignee {
     employeeId: string;
@@ -120,7 +120,7 @@ export interface MasterTask {
     name: string;
     subtaskName?: string;
     title?: string;
-    status: TaskStatus | 'upcoming' | 'in-progress' | 'for-checking' | 'completed' | 'pending_inspection' | 'approved' | 'rejected';
+    status: TaskStatus;
     beforePhotoUrl?: string;
     afterPhotoUrl?: string;
     latestPhotoUrl?: string;
@@ -156,7 +156,9 @@ export interface MasterTask {
     slaCategory?: 'Immediately' | '24h' | '1-3d' | '3-7d' | '7-14d' | '14-30d' | null;
     estimatedSla?: 'Immediately' | '24h' | '1-3d' | '3-7d' | '7-14d' | '14-30d' | null;
     actualCompletionTime?: number;
-    evaluationStatus?: 'Pending' | 'Evaluated';
+    taskArchived?: boolean; // true = FM acknowledged an out-of-scope Rejected task; excluded from deriveWoStatus rollup
+    updatedAt?: string;  // ISO — bumped on every task mutation (stale-approve baseline · Workstream B)
+    updatedBy?: string;  // employeeId/uid of last mutator (audit trail · Workstream C)
     position?: string;
     amount?: number;
     unit?: string;
@@ -199,16 +201,17 @@ export interface Attachment {
 export interface Contractor {
     id: string;
     name: string;
-    specialty: string[]; 
+    specialty: string[];
     phone?: string;
     rating?: number;
+    isActive?: boolean; // soft-delete flag; false = deactivated but kept for old work-order history
 }
 
 export interface Staff {
     id: string;
     employeeId?: string; // New: Official employee identifier
     name: string;
-    role: 'Foreman' | 'Admin' | 'Manager' | 'BackOffice' | 'Approver';
+    role: 'Foreman' | 'Admin' | 'Manager' | 'Approver';
     department?: string;
     phone?: string;
     affiliation?: string; 
@@ -265,11 +268,13 @@ export interface WorkOrder {
     appointmentDate?: string;
     initialProblem?: string;
 
-    status: 'Draft' | 'Evaluating' | 'Pending' | 'Approved' | 'Partially Approved' | 'In Progress' | 'Completed' | 'Verified' | 'Rejected' | 'Cancelled' | 'pending_delivery' | 'customer_reviewing';
+    status: 'Draft' | 'Evaluating' | 'Assigned' | 'Partially Approved' | 'Rejected' | 'In Progress' | 'For Checking' | 'pending_delivery' | 'customer_reject' | 'Complete' | 'Cancelled';
     isNew?: boolean;
     isArchived?: boolean;
     submittedAt?: string | null;
     adminReviewedAt?: string;
+    evalLocked?: boolean;    // true = admin opened this WO for review while Evaluating → editing locked until a decision (reject/approve). Pessimistic lock.
+    evalLockedBy?: string;   // name/id of the admin who locked it (shown to foreman)
     completedAt?: string | null;
     lastUpdate?: string;
 

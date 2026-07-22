@@ -1,487 +1,2652 @@
 {
-  "files": {
-    "src/check_notifs.ts": {
-      "description": "Module or component check_notifs.ts located in src.",
-      "associated_tasks": [],
-      "backlinks": []
+  ".agents/skills/agent/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/vite-env.d.ts": {
-      "description": "/ <reference types=\"vite/client\" />",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/agent/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/data/mockData.ts": {
-      "description": "Module or component mockData.ts located in data.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/services/migrationService.ts",
-        "src/components/DailyReportModal.tsx",
-        "src/components/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/ascii_flow/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/lib/firebase.ts": {
-      "description": "Module or component firebase.ts located in lib.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/check_notifs.ts",
-        "src/services/logService.ts",
-        "src/services/migrationService.ts",
-        "src/services/staffSystemMigration.ts",
-        "src/components/ActivityLogTable.tsx",
-        "src/components/DailyReportModal.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/MasterDataModal.tsx",
-        "src/components/TaskEvaluationModal.tsx",
-        "src/context/AuthContext.tsx",
-        "src/context/NotificationContext.tsx",
-        "src/context/WorkOrderContext.tsx",
-        "src/pages/AdminMasterData.tsx",
-        "src/pages/DailyReport.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/ascii_flow/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/services/logService.ts": {
-      "description": "บันทึกกิจกรรมของผู้ใช้งานลง Firestore",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/ForemanReportModal.tsx",
-        "src/context/AuthContext.tsx",
-        "src/pages/AdminMasterData.tsx",
-        "src/pages/DailyReport.tsx",
-        "src/pages/Evaluation.tsx",
-        "src/pages/History.tsx",
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coder/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/services/migrationService.ts": {
-      "description": "สคริปต์สำหรับย้ายข้อมูลจาก mockData.ts เข้าสู่ Firebase Firestore เรียกใช้ฟังก์ชัน migrateAll() เพียงครั้งเดียวเพื่อเตรียมข้อมูลเริ่มต้น",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/AdminMasterData.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coding/agent/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/services/staffSystemMigration.ts": {
-      "description": "🚨 ปฏิบัติการย้ายไอดีพนักงานทั้งระบบ (Universal Staff ID Migration) ทำหน้าที่ย้าย Document ID จาก Sxxx ไปเป็น EmployeeID และตามแก้ Reference ทั้งหมด",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/AdminMasterData.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coding/agent/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/types/dashboard.ts": {
-      "description": "Module or component dashboard.ts located in types.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx",
-        "src/pages/DashboardComparison.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coding/coder/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/types/index.ts": {
-      "description": "Module or component index.ts located in types.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/data/mockData.ts",
-        "src/services/logService.ts",
-        "src/components/ActivityLogTable.tsx",
-        "src/components/AdminAssignModal.tsx",
-        "src/components/CloseJobModal.tsx",
-        "src/components/DailyReportModal.tsx",
-        "src/components/ForemanCalendar.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/HistoryDetailModal.tsx",
-        "src/components/MasterDataModal.tsx",
-        "src/components/TaskEvaluationModal.tsx",
-        "src/components/TaskUpdateModal.tsx",
-        "src/components/TrackingCard.tsx",
-        "src/components/WorkOrderCard.tsx",
-        "src/components/WorkOrderDetailModal.tsx",
-        "src/components/WorkOrderViewModal.tsx",
-        "src/components/WorkTypeSwitcher.tsx",
-        "src/context/AuthContext.tsx",
-        "src/context/WorkOrderContext.tsx",
-        "src/pages/AdminMasterData.tsx",
-        "src/pages/DailyReport.tsx",
-        "src/pages/Entry.tsx",
-        "src/pages/Evaluation.tsx",
-        "src/pages/History.tsx",
-        "src/pages/MyDrafts.tsx",
-        "src/pages/MyTracking.tsx",
-        "src/pages/SLAMonitor.tsx",
-        "src/pages/WorkOrders.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coding/delegate/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/utils/imageCompression.ts": {
-      "description": "Module or component imageCompression.ts located in utils.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/DailyReportModal.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/MasterDataModal.tsx",
-        "src/pages/DailyReport.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coding/editor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/App.tsx": {
-      "description": "Module or component App.tsx located in src.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/main.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/coding/editor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/main.tsx": {
-      "description": "Module or component main.tsx located in src.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/content/ascii_flow/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/ActivityLogTable.tsx": {
-      "description": "Module or component ActivityLogTable.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/AdminMasterData.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/content/ascii_flow/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/AdminAssignModal.tsx": {
-      "description": "Module or component AdminAssignModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/content/doc_builder/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/AnalogTimePicker.tsx": {
-      "description": "Module or component AnalogTimePicker.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/ForemanCalendar.tsx",
-        "src/pages/DailyReport.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/content/doc_builder/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/CloseJobModal.tsx": {
-      "description": "Module or component CloseJobModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/content/project_presenter/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/DailyReportModal.tsx": {
-      "description": "Module or component DailyReportModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/content/project_presenter/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/DashboardShared.tsx": {
-      "description": "Module or component DashboardShared.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx",
-        "src/pages/DashboardComparison.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/doc_builder/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/DateRangePicker.tsx": {
-      "description": "Module or component DateRangePicker.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/doc_builder/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/ForemanCalendar.tsx": {
-      "description": "Module or component ForemanCalendar.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx",
-        "src/pages/OverviewContent.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/editor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/ForemanReportModal.tsx": {
-      "description": "Module or component ForemanReportModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Entry.tsx",
-        "src/pages/MyDrafts.tsx",
-        "src/pages/MyTracking.tsx",
-        "src/pages/WorkOrders.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/editor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/HistoryDetailModal.tsx": {
-      "description": "Module or component HistoryDetailModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx",
-        "src/pages/History.tsx",
-        "src/pages/MyTracking.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/file_manager/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/ImageOverlay.tsx": {
-      "description": "Module or component ImageOverlay.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/ForemanCalendar.tsx",
-        "src/components/TaskEvaluationModal.tsx",
-        "src/components/WorkOrderCard.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/debug/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/LoadingOverlay.tsx": {
-      "description": "Module or component LoadingOverlay.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/DailyReportModal.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/MasterDataModal.tsx",
-        "src/components/TaskUpdateModal.tsx",
-        "src/components/WorkOrderDetailModal.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/harness_doc_auditor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/MasterDataModal.tsx": {
-      "description": "Module or component MasterDataModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/AdminMasterData.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/harness_doctor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/MasterFilter.tsx": {
-      "description": "Module or component MasterFilter.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx",
-        "src/pages/History.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/harness_doctor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/Sidebar.tsx": {
-      "description": "Module or component Sidebar.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/layouts/MainLayout.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/harness_editor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/SLAMonitor.tsx": {
-      "description": "Module or component SLAMonitor.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/harness_editor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/TaskEvaluationModal.tsx": {
-      "description": "Module or component TaskEvaluationModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Evaluation.tsx",
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/mece/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/TaskHistoryModal.tsx": {
-      "description": "Module or component TaskHistoryModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/mece/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/TaskUpdateModal.tsx": {
-      "description": "Module or component TaskUpdateModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/WorkOrders.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/scrutinize/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/TrackingCard.tsx": {
-      "description": "Module or component TrackingCard.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/self_improve/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/WorkOrderCard.tsx": {
-      "description": "Module or component WorkOrderCard.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/components/WorkOrderDetailModal.tsx",
-        "src/pages/Evaluation.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/self_improve/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/WorkOrderDetailModal.tsx": {
-      "description": "Module or component WorkOrderDetailModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Evaluation.tsx",
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/skeptical_reviewer/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/WorkOrderViewModal.tsx": {
-      "description": "Module or component WorkOrderViewModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/skill_auditor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/WorkTypeSwitcher.tsx": {
-      "description": "Module or component WorkTypeSwitcher.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/WorkOrders.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/skill_auditor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/components/WOSummaryModal.tsx": {
-      "description": "Module or component WOSummaryModal.tsx located in components.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/token_auditor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/context/AuthContext.tsx": {
-      "description": "Module or component AuthContext.tsx located in context.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx",
-        "src/components/AdminAssignModal.tsx",
-        "src/components/ForemanCalendar.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/Sidebar.tsx",
-        "src/components/TaskEvaluationModal.tsx",
-        "src/components/TaskUpdateModal.tsx",
-        "src/context/NotificationContext.tsx",
-        "src/context/WorkOrderContext.tsx",
-        "src/layouts/MainLayout.tsx",
-        "src/pages/AdminMasterData.tsx",
-        "src/pages/DailyReport.tsx",
-        "src/pages/Dashboard.tsx",
-        "src/pages/Entry.tsx",
-        "src/pages/Evaluation.tsx",
-        "src/pages/History.tsx",
-        "src/pages/Login.tsx",
-        "src/pages/MyDrafts.tsx",
-        "src/pages/MyTracking.tsx",
-        "src/pages/SLAMonitor.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness/token_tracker/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/context/NotificationContext.tsx": {
-      "description": "Module or component NotificationContext.tsx located in context.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx",
-        "src/components/AdminAssignModal.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/Sidebar.tsx",
-        "src/components/TaskEvaluationModal.tsx",
-        "src/pages/Evaluation.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness_doc_auditor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/context/WorkOrderContext.tsx": {
-      "description": "Module or component WorkOrderContext.tsx located in context.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx",
-        "src/components/ForemanCalendar.tsx",
-        "src/components/ForemanReportModal.tsx",
-        "src/components/SLAMonitor.tsx",
-        "src/components/TaskUpdateModal.tsx",
-        "src/components/WorkOrderCard.tsx",
-        "src/components/WorkOrderDetailModal.tsx",
-        "src/pages/AdminMasterData.tsx",
-        "src/pages/DailyReport.tsx",
-        "src/pages/Dashboard.tsx",
-        "src/pages/Entry.tsx",
-        "src/pages/Evaluation.tsx",
-        "src/pages/History.tsx",
-        "src/pages/MyDrafts.tsx",
-        "src/pages/MyTracking.tsx",
-        "src/pages/SLAMonitor.tsx",
-        "src/pages/WorkOrders.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness_doctor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/layouts/MainLayout.tsx": {
-      "description": "Module or component MainLayout.tsx located in layouts.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness_doctor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/AdminMasterData.tsx": {
-      "description": "Module or component AdminMasterData.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness_editor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/DailyReport.tsx": {
-      "description": "Module or component DailyReport.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/harness_editor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/Dashboard.tsx": {
-      "description": "Module or component Dashboard.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/identity/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/DashboardComparison.tsx": {
-      "description": "Module or component DashboardComparison.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/pages/Dashboard.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/knowledge/index_manager/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/Entry.tsx": {
-      "description": "Module or component Entry.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/knowledge/repo_researcher/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/Evaluation.tsx": {
-      "description": "Module or component Evaluation.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/knowledge/session_manager/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/History.tsx": {
-      "description": "Module or component History.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/knowledge/session_manager/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/Login.tsx": {
-      "description": "Module or component Login.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/mece/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/MyDrafts.tsx": {
-      "description": "Module or component MyDrafts.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/mece/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/MyTracking.tsx": {
-      "description": "Module or component MyTracking.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/project_presenter/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/OverviewContent.tsx": {
-      "description": "Module or component OverviewContent.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/project_presenter/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/SLAMonitor.tsx": {
-      "description": "Module or component SLAMonitor.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": [
-        "src/App.tsx"
-      ]
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/registry.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "src/pages/WorkOrders.tsx": {
-      "description": "Module or component WorkOrders.tsx located in pages.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/repo_researcher/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "cloud-functions/dailyReportFlattener.ts": {
-      "description": "Cloud Function (Gen 2): flattenDailyReportToTimesheet NOTE: This is kept as reference. Due to Eventarc not supporting asia-southeast3 (Bangkok) as a trigger source, this must be converted to onCall by the project owner. See: daily_timesheet_sync_brief.md for full instructions.",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/self_improve/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "cloud-functions/index.ts": {
-      "description": "Export HTTP Endpoint สำหรับการซิงค์ข้อมูล",
-      "associated_tasks": [],
-      "backlinks": []
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/self_improve/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
     },
-    "cloud-functions/laborSync.ts": {
-      "description": "HTTP Endpoint: syncDailyReport รับข้อมูล Path ของ Daily Report จากระบบ Labor Management หรือ After-Sale Frontend แล้วทำการ: 1. ดึงข้อมูลจาก Firestore After-Sale DB ตาม Path ที่ระบุ 2. แปลงโครงสร้างข้อมูล (Flatten) แล้วบันทึกลง DailyEmployeeTimesheets 3. ยิง Webhook แจ้ง Labor Management System ให้ทำการ Reconcile Body Parameters: - reportPath: string  — Firestore path เต็มๆ ของ dailyReport document เช่น \"workOrders/{id}/categories/{id}/tasks/{id}/revisions/{id}/dailyReports/{date}\" หรือ \"workOrders/{id}/categories/{id}/tasks/{id}/help/{id}/dailyReports/{date}\" - reportDate: string  — วันที่รายงาน (YYYY-MM-DD)",
-      "associated_tasks": [],
-      "backlinks": [
-        "cloud-functions/index.ts"
-      ]
-    }
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/session_manager/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/session_manager/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/skeptical_reviewer/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/skill-manifest.json": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/skill_auditor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/skill_auditor/SKILL_detail.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/token_auditor/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/token_tracker/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/user-coach/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/user/identity/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/user/user-coach/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/skills/variable_manager/SKILL.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  ".agents/tools/tool-manifest.json": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "AGENTS.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "CLAUDE.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "CODING_FAILURE_PATTERNS.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "INVARIANTS.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "REPO_MAP.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/domain_rules.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/harness_health_checklist.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/master_roadmap.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/optimization_logs.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/active_thread.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/compact_state.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/gather_complete.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/handoff_block_schema.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/loop_doc_schema.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/mece_plan_schema.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/research_improvement.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/research_repo_map.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/research_summary.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/self_improve_log.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/session_handoff.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/session_tokens.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/session_templates/storytelling_template.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "docs/token_benchmark.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/9arm-skills-patterns-to-port-into-ai-agent-harness-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/9arm-skills-repo-scan-and-skill-taxonomy-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/9arm-skills-skill-building-framework-2026-06-04.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/9arm-skills-upstream-comparison-2026-06-18.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/9arm-skills-writing-techniques-concrete-examples-2026-06-04.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/agent-harness-skill-spec-closeout-writer-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/agent-harness-skill-spec-requirements-interviewer-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/agent-harness-skill-spec-skeptical-reviewer-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/agent-harness-skill-spec-verifier-orchestrator-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/audit_engine_rubric.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/bc_coverage.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/boot_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/cfp_archive.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/cfp_topics.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/claude-code-compact-context-compression-2026-05-29.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/claude-code-harness-research-notebooklm-summary-2026-05-28.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/code_linkage_index.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/context-compression-roadmap-vps-agent-2026-05-29.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/error_debug_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/error_index.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/error_topics.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/glossary.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness-agent-skill-system-framework-2026-06-04.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness-file-role-map.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness-reference-file-role-clarity-2026-05-13.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness-reference-forking-token-agent-application-2026-05-25.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness_authoring_techniques.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness_flow_20260525.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/harness_flow_20260526.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/implement-plan-local-llm-deployment-2026-06-17.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/info_gather_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/karpathy-llm-wiki-pattern-2026-06-24.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/karpathy-skills-comparison-2026-06-21.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/llm-api-pricing-comparison-2026-06.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/loops_catalog.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/mattpocock-skills-comparison-2026-06-19.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/mece_plan_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/obsidian-graph-view-principles-2026-06-25.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/obsidian-style-graph-knowledge-wiki-for-llm-2026-06-24.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/out_of_scope.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/per_turn_routing_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/provider-routing-strategy-2026-06-01.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/react_execution_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/recipes/g0-interview-pattern.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/recipes/reviewer-spawn.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/self_improvement_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/session_close_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/skill-index.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/skill_authoring_principles.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/skill_quality_checklist.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/telemetry-schema-harness-2026-06-01.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-counting-anthropic-claude-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-counting-cohere-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-counting-cross-provider-comparison-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-counting-google-gemini-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-counting-openai-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-efficiency-agent-workflow-framework-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-efficiency-implementation-checklist-for-agent-systems-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token-telemetry-schema-and-dashboard-spec-for-agent-systems-2026-05-31.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/token_tracking_loop.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/topic_facet_schema.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/topic_registry.json": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/user_learning_profile.json": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/user_modeling_grounding.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/wiki-index-integrity-audit-2026-06-24.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "knowledge/wiki-index-sync-diagram-guide-2026-06-24.md": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/backfill_knowledge_index.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/backlink_analyzer.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/bootstrap_sessions.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/build_backlink_graph.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/cfp_decay.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/cfp_fix_probe.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/cfp_recurrence.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/choose_tools.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/code_graph.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/compact_reset.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/compute_compact_size.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/git_guard.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/index_reconcile.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/initial_indexer.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/knowledge_conflict_checker.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/learning_profile.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/lookup.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/posttool_track.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/repo_map_check.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/repo_scout.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/review_intent.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/rule_indexer.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/safe_run.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/session_analyzer.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/session_close.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/session_compactor.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/session_indexer.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/skill_gate.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/symbol_indexer.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/tok.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/token_estimator.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/trim_exec_log.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "scripts/verify_runner.py": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/App.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/ActivityLogTable.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/AdminAssignHelperModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/AdminAssignModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/AnalogTimePicker.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/CloseJobModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/CustomDateInput.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/CustomerInspectionMockup.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/DashboardShared.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/DateRangePicker.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/ForemanCalendar.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/ForemanReportModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/HistoryDetailModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/ImageOverlay.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/LoadingOverlay.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/MasterDataModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/MasterFilter.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/Sidebar.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/TaskEvaluationModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/TaskHistoryModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/TaskReviewModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/TaskUpdateModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/TrackingCard.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/WOSummaryModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/WorkOrderCard.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/WorkOrderDetailModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/WorkOrderViewModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/WorkTypeSwitcher.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/BatchAddModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/DailyReportDetailPane.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/DailyReportSummaryModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/SLACountdowns.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/WorkOrderGroupList.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/context/AuthContext.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/context/DailyReportContext.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/context/NotificationContext.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/context/WorkOrderContext.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/layouts/MainLayout.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/lib/firebase.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/main.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/AdminMasterData.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/CustomerHandover.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/DailyReport.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/DailyReport_backup_before_user_restore.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/Dashboard.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/DashboardComparison.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/Entry.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/Evaluation.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/History.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/Login.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/MyDrafts.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/MyTracking.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/OverviewContent.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/OwnerReview.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/SLAMonitor.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/pages/WorkOrders.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/services/logService.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/types/dailyReport.types.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/types/dashboard.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/types/index.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/utils/date.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/utils/imageCompression.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/vite-env.d.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/PreHandoverAssignModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/PreHandoverDetailPane.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/daily-report/PreHandoverSummaryModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/lib/dateUtils.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/components/ImportExcelModal.tsx": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/utils/deriveWoStatus.test.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/utils/deriveWoStatus.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/utils/assembleWorkOrders.ts": {
+    "description": "T-335 assembler: rebuilds nested WorkOrder[] (categories/tasks/subtasks/reports) from the flat delta cache; 1:1 port of the old fetchSubcollections",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/store/workOrderCacheStore.ts": {
+    "description": "T-335 framework-free flat delta cache (7 Maps keyed by firestore path) + upsert/remove/clear + parentPathOf/groupByParent helpers",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/hooks/useRealtimeWorkOrders.ts": {
+    "description": "T-335 hook: 6 collectionGroup onSnapshot delta listeners feeding the flat cache; useRef cache + version counter; full unsubscribe + clearCache cleanup",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
+  },
+  "src/utils/workOrder.ts": {
+    "description": "",
+    "topics": {
+      "major": [],
+      "minor": []
+    },
+    "backlinks": [],
+    "references": [],
+    "related": []
   }
 }

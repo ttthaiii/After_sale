@@ -40,12 +40,12 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
         };
 
         const taskRisks = validTasks.map(t => {
-            const isDone = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
+            const isDone = t.dailyProgress === 100 || t.status === 'Complete';
             if (isDone) return { diffHours: 9999, isDone: true };
 
             const limit = slaHoursMap[t.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
             const start = t.startDate
-            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+            ? new Date(`${t.startDate.split('T')[0]}T08:00:00+07:00`).getTime()
             : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
             const now = Date.now();
             return { diffHours: limit - (now - start) / (1000 * 60 * 60), isDone: false };
@@ -75,7 +75,7 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
 
         const limit = slaHoursMap[t.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
         const start = t.startDate
-            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+            ? new Date(`${t.startDate.split('T')[0]}T08:00:00+07:00`).getTime()
             : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
         const now = Date.now();
         const diffHours = limit - (now - start) / (1000 * 60 * 60);
@@ -84,11 +84,12 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
         let statusColor = '#64748b';
 
         switch (t.status) {
-            case 'Completed': statusLabel = 'รอตรวจ'; statusColor = '#10b981'; break;
-            case 'In Progress': statusLabel = 'กำลังทำ'; statusColor = '#3b82f6'; break;
+            case 'Evaluating': statusLabel = 'รอแอดมิน'; statusColor = '#94a3b8'; break;
             case 'Assigned': statusLabel = 'รอดำเนินการ'; statusColor = '#f59e0b'; break;
-            case 'Verified': statusLabel = 'ตรวจแล้ว'; statusColor = '#6366f1'; break;
-            case 'Pending': statusLabel = 'รอแอดมิน'; statusColor = '#94a3b8'; break;
+            case 'In Progress': statusLabel = 'กำลังทำ'; statusColor = '#3b82f6'; break;
+            case 'For Checking': statusLabel = 'รอตรวจ'; statusColor = '#0891b2'; break;
+            case 'pending_delivery': statusLabel = 'รอลูกค้าประเมิน'; statusColor = '#d97706'; break;
+            case 'Complete': statusLabel = 'ตรวจแล้ว'; statusColor = '#6366f1'; break;
         }
 
         // Responsible Info
@@ -376,14 +377,14 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
                                                         </td>
                                                         <td style={{ padding: '16px 24px', textAlign: 'right' }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-                                                                {task.status === 'Pending' && role !== 'Foreman' ? (
+                                                                {task.status === 'Evaluating' && role !== 'Foreman' ? (
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); onAssignTask?.(task.id, wo.id); }}
                                                                         style={{ background: '#4f46e5', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
                                                                     >
                                                                         <User size={12} /> มอบหมาย
                                                                     </button>
-                                                                ) : task.dailyProgress === 100 && role === 'Foreman' && task.status === 'Completed' ? (
+                                                                ) : task.dailyProgress === 100 && role === 'Foreman' && task.status === 'For Checking' ? (
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); onVerifyTask?.(task.id, wo.id); }}
                                                                         style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}

@@ -2,191 +2,2062 @@
   "variables": {
     "MOCK_PROJECTS": {
       "source": "src/data/mockData.ts",
-      "line": 3
+      "line": 3,
+      "line_end": 4,
+      "read_hint": {
+        "offset": 1,
+        "limit": 16
+      },
+      "type": "Function",
+      "keywords": [
+        "data",
+        "mock",
+        "mock_projects"
+      ]
     },
     "MOCK_CONTRACTORS": {
       "source": "src/data/mockData.ts",
-      "line": 28
+      "line": 28,
+      "line_end": 29,
+      "read_hint": {
+        "offset": 23,
+        "limit": 16
+      },
+      "type": "Function",
+      "keywords": [
+        "data",
+        "mock",
+        "mock_contractors"
+      ]
     },
     "MOCK_STAFF": {
       "source": "src/data/mockData.ts",
-      "line": 44
+      "line": 44,
+      "line_end": 45,
+      "read_hint": {
+        "offset": 39,
+        "limit": 16
+      },
+      "type": "Function",
+      "keywords": [
+        "data",
+        "mock",
+        "mock_staff"
+      ]
     },
     "MOCK_WORK_ORDERS": {
       "source": "src/data/mockData.ts",
-      "line": 55
+      "line": 55,
+      "line_end": 141,
+      "read_hint": {
+        "offset": 50,
+        "limit": 80
+      },
+      "type": "Function",
+      "keywords": [
+        "data",
+        "mock",
+        "mock_work_orders"
+      ]
     },
     "db": {
       "source": "src/lib/firebase.ts",
-      "line": 21
+      "line": 19,
+      "line_end": 23,
+      "read_hint": {
+        "offset": 14,
+        "limit": 19
+      },
+      "type": "Function",
+      "keywords": [
+        "db",
+        "firebase",
+        "lib"
+      ]
     },
     "auth": {
       "source": "src/lib/firebase.ts",
-      "line": 22
+      "line": 20,
+      "line_end": 23,
+      "read_hint": {
+        "offset": 15,
+        "limit": 18
+      },
+      "type": "Function",
+      "keywords": [
+        "auth",
+        "firebase",
+        "lib"
+      ]
     },
     "storage": {
       "source": "src/lib/firebase.ts",
-      "line": 23
+      "line": 21,
+      "line_end": 23,
+      "read_hint": {
+        "offset": 16,
+        "limit": 17
+      },
+      "type": "Function",
+      "keywords": [
+        "firebase",
+        "lib",
+        "storage"
+      ]
     },
     "logService": {
       "source": "src/services/logService.ts",
-      "line": 84
+      "line": 107,
+      "line_end": 107,
+      "read_hint": {
+        "offset": 102,
+        "limit": 15
+      },
+      "type": "Function",
+      "keywords": [
+        "log",
+        "service",
+        "services"
+      ]
     },
     "migrateProjects": {
       "source": "src/services/migrationService.ts",
-      "line": 10
+      "line": 10,
+      "line_end": 15,
+      "read_hint": {
+        "offset": 5,
+        "limit": 20
+      },
+      "type": "Function",
+      "keywords": [
+        "migrate",
+        "migration",
+        "projects",
+        "service",
+        "services"
+      ]
     },
     "migrateStaff": {
       "source": "src/services/migrationService.ts",
-      "line": 17
+      "line": 17,
+      "line_end": 22,
+      "read_hint": {
+        "offset": 12,
+        "limit": 20
+      },
+      "type": "Function",
+      "keywords": [
+        "migrate",
+        "migration",
+        "service",
+        "services",
+        "staff"
+      ]
     },
     "migrateContractors": {
       "source": "src/services/migrationService.ts",
-      "line": 24
+      "line": 24,
+      "line_end": 29,
+      "read_hint": {
+        "offset": 19,
+        "limit": 20
+      },
+      "type": "Function",
+      "keywords": [
+        "contractors",
+        "migrate",
+        "migration",
+        "service",
+        "services"
+      ]
     },
     "migrateWorkOrders": {
       "source": "src/services/migrationService.ts",
-      "line": 31
+      "line": 31,
+      "line_end": 36,
+      "read_hint": {
+        "offset": 26,
+        "limit": 20
+      },
+      "type": "Function",
+      "keywords": [
+        "migrate",
+        "migration",
+        "orders",
+        "service",
+        "services",
+        "work"
+      ]
     },
     "migrateStaffFields": {
       "source": "src/services/migrationService.ts",
-      "line": 38
+      "line": 38,
+      "line_end": 66,
+      "read_hint": {
+        "offset": 33,
+        "limit": 43
+      },
+      "type": "Function",
+      "keywords": [
+        "fields",
+        "migrate",
+        "migration",
+        "service",
+        "services",
+        "staff"
+      ]
     },
     "migrateAll": {
       "source": "src/services/migrationService.ts",
-      "line": 68
+      "line": 68,
+      "line_end": 81,
+      "read_hint": {
+        "offset": 63,
+        "limit": 28
+      },
+      "type": "Function",
+      "keywords": [
+        "all",
+        "migrate",
+        "migration",
+        "service",
+        "services"
+      ]
     },
     "performUniversalStaffMigration": {
       "source": "src/services/staffSystemMigration.ts",
-      "line": 8
+      "line": 8,
+      "line_end": 129,
+      "read_hint": {
+        "offset": 3,
+        "limit": 80
+      },
+      "type": "Function",
+      "keywords": [
+        "migration",
+        "perform",
+        "services",
+        "staff",
+        "system",
+        "universal"
+      ]
     },
     "clearAllNotifications": {
       "source": "src/services/staffSystemMigration.ts",
-      "line": 134
+      "line": 134,
+      "line_end": 157,
+      "read_hint": {
+        "offset": 129,
+        "limit": 38
+      },
+      "type": "Function",
+      "keywords": [
+        "all",
+        "clear",
+        "migration",
+        "notifications",
+        "services",
+        "staff",
+        "system"
+      ]
     },
     "SLAStatus": {
       "source": "src/types/dashboard.ts",
-      "line": 1
+      "line": 1,
+      "line_end": 9,
+      "read_hint": {
+        "offset": 1,
+        "limit": 23
+      },
+      "type": "Interface",
+      "keywords": [
+        "dashboard",
+        "sla",
+        "status",
+        "types"
+      ]
     },
     "DashboardTask": {
       "source": "src/types/dashboard.ts",
-      "line": 11
+      "line": 11,
+      "line_end": 22,
+      "read_hint": {
+        "offset": 6,
+        "limit": 26
+      },
+      "type": "Interface",
+      "keywords": [
+        "dashboard",
+        "task",
+        "types"
+      ]
     },
     "DashboardWorkOrder": {
       "source": "src/types/dashboard.ts",
-      "line": 24
+      "line": 24,
+      "line_end": 41,
+      "read_hint": {
+        "offset": 19,
+        "limit": 32
+      },
+      "type": "Interface",
+      "keywords": [
+        "dashboard",
+        "order",
+        "types",
+        "work"
+      ]
     },
     "DashboardStats": {
       "source": "src/types/dashboard.ts",
-      "line": 43
+      "line": 43,
+      "line_end": 72,
+      "read_hint": {
+        "offset": 38,
+        "limit": 44
+      },
+      "type": "Interface",
+      "keywords": [
+        "dashboard",
+        "stats",
+        "types"
+      ]
     },
     "UserRole": {
       "source": "src/types/index.ts",
-      "line": 1
+      "line": 1,
+      "line_end": 10,
+      "read_hint": {
+        "offset": 1,
+        "limit": 24
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "role",
+        "types",
+        "user"
+      ]
     },
     "User": {
       "source": "src/types/index.ts",
-      "line": 3
+      "line": 3,
+      "line_end": 10,
+      "read_hint": {
+        "offset": 1,
+        "limit": 22
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "types",
+        "user"
+      ]
     },
     "TaskStatus": {
       "source": "src/types/index.ts",
-      "line": 11
+      "line": 12,
+      "line_end": 19,
+      "read_hint": {
+        "offset": 7,
+        "limit": 22
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "status",
+        "task",
+        "types"
+      ]
     },
     "LaborRecord": {
       "source": "src/types/index.ts",
-      "line": 13
+      "line": 21,
+      "line_end": 65,
+      "read_hint": {
+        "offset": 16,
+        "limit": 59
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "labor",
+        "record",
+        "types"
+      ]
     },
     "TaskUpdate": {
       "source": "src/types/index.ts",
-      "line": 38
+      "line": 67,
+      "line_end": 86,
+      "read_hint": {
+        "offset": 62,
+        "limit": 34
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "task",
+        "types",
+        "update"
+      ]
     },
     "DailyReport": {
       "source": "src/types/index.ts",
-      "line": 49
+      "line": 88,
+      "line_end": 116,
+      "read_hint": {
+        "offset": 83,
+        "limit": 43
+      },
+      "type": "Interface",
+      "keywords": [
+        "daily",
+        "index",
+        "report",
+        "types"
+      ]
     },
     "MasterTask": {
       "source": "src/types/index.ts",
-      "line": 70
+      "line": 118,
+      "line_end": 192,
+      "read_hint": {
+        "offset": 113,
+        "limit": 80
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "master",
+        "task",
+        "types"
+      ]
     },
     "Attachment": {
       "source": "src/types/index.ts",
-      "line": 107
+      "line": 194,
+      "line_end": 199,
+      "read_hint": {
+        "offset": 189,
+        "limit": 20
+      },
+      "type": "Interface",
+      "keywords": [
+        "attachment",
+        "index",
+        "types"
+      ]
     },
     "Contractor": {
       "source": "src/types/index.ts",
-      "line": 114
+      "line": 201,
+      "line_end": 208,
+      "read_hint": {
+        "offset": 196,
+        "limit": 22
+      },
+      "type": "Interface",
+      "keywords": [
+        "contractor",
+        "index",
+        "types"
+      ]
     },
     "Staff": {
       "source": "src/types/index.ts",
-      "line": 122
+      "line": 210,
+      "line_end": 228,
+      "read_hint": {
+        "offset": 205,
+        "limit": 33
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "staff",
+        "types"
+      ]
     },
     "Category": {
       "source": "src/types/index.ts",
-      "line": 136
+      "line": 230,
+      "line_end": 236,
+      "read_hint": {
+        "offset": 225,
+        "limit": 21
+      },
+      "type": "Interface",
+      "keywords": [
+        "category",
+        "index",
+        "types"
+      ]
     },
     "WorkOrderType": {
       "source": "src/types/index.ts",
-      "line": 142
+      "line": 238,
+      "line_end": 249,
+      "read_hint": {
+        "offset": 233,
+        "limit": 26
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "order",
+        "type",
+        "types",
+        "work"
+      ]
     },
     "Project": {
       "source": "src/types/index.ts",
-      "line": 144
+      "line": 240,
+      "line_end": 249,
+      "read_hint": {
+        "offset": 235,
+        "limit": 24
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "project",
+        "types"
+      ]
     },
     "WorkOrder": {
       "source": "src/types/index.ts",
-      "line": 153
+      "line": 91,
+      "line_end": 108,
+      "read_hint": {
+        "offset": 86,
+        "limit": 32
+      },
+      "type": "Interface",
+      "keywords": [
+        "index",
+        "order",
+        "types",
+        "work"
+      ]
     },
     "ActivityLog": {
       "source": "src/types/index.ts",
-      "line": 186
+      "line": 310,
+      "line_end": 321,
+      "read_hint": {
+        "offset": 305,
+        "limit": 26
+      },
+      "type": "Interface",
+      "keywords": [
+        "activity",
+        "index",
+        "log",
+        "types"
+      ]
     },
     "compressImage": {
       "source": "src/utils/imageCompression.ts",
-      "line": 1
+      "line": 1,
+      "line_end": 46,
+      "read_hint": {
+        "offset": 1,
+        "limit": 60
+      },
+      "type": "Function",
+      "keywords": [
+        "compress",
+        "compression",
+        "image",
+        "utils"
+      ]
     },
     "AnalogTimePicker": {
       "source": "src/components/AnalogTimePicker.tsx",
-      "line": 9
+      "line": 9,
+      "line_end": 228,
+      "read_hint": {
+        "offset": 4,
+        "limit": 80
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "analog",
+        "picker",
+        "time"
+      ]
     },
     "StatCard": {
       "source": "src/pages/OverviewContent.tsx",
-      "line": 35
+      "line": 3,
+      "line_end": 3,
+      "read_hint": {
+        "offset": 1,
+        "limit": 15
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "card",
+        "content",
+        "overview",
+        "pages",
+        "stat"
+      ]
     },
     "SectionHeader": {
       "source": "src/pages/OverviewContent.tsx",
-      "line": 80
+      "line": 48,
+      "line_end": 48,
+      "read_hint": {
+        "offset": 43,
+        "limit": 15
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "content",
+        "header",
+        "overview",
+        "pages",
+        "section"
+      ]
     },
     "AuthProvider": {
       "source": "src/context/AuthContext.tsx",
-      "line": 17
+      "line": 31,
+      "line_end": 240,
+      "read_hint": {
+        "offset": 26,
+        "limit": 80
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "auth",
+        "context",
+        "provider"
+      ]
     },
     "useAuth": {
       "source": "src/context/AuthContext.tsx",
-      "line": 168
+      "line": 242,
+      "line_end": 248,
+      "read_hint": {
+        "offset": 237,
+        "limit": 21
+      },
+      "type": "Hook",
+      "keywords": [
+        "auth",
+        "context",
+        "use"
+      ]
     },
     "Notification": {
       "source": "src/context/NotificationContext.tsx",
-      "line": 17
+      "line": 16,
+      "line_end": 29,
+      "read_hint": {
+        "offset": 11,
+        "limit": 28
+      },
+      "type": "Interface",
+      "keywords": [
+        "context",
+        "notification"
+      ]
     },
     "NotificationProvider": {
       "source": "src/context/NotificationContext.tsx",
-      "line": 42
+      "line": 41,
+      "line_end": 175,
+      "read_hint": {
+        "offset": 36,
+        "limit": 80
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "context",
+        "notification",
+        "provider"
+      ]
     },
     "useNotifications": {
       "source": "src/context/NotificationContext.tsx",
-      "line": 178
+      "line": 177,
+      "line_end": 183,
+      "read_hint": {
+        "offset": 172,
+        "limit": 21
+      },
+      "type": "Hook",
+      "keywords": [
+        "context",
+        "notification",
+        "notifications",
+        "use"
+      ]
     },
     "WorkOrderProvider": {
       "source": "src/context/WorkOrderContext.tsx",
-      "line": 26
+      "line": 214,
+      "line_end": 274,
+      "read_hint": {
+        "offset": 209,
+        "limit": 75
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "context",
+        "order",
+        "provider",
+        "work"
+      ]
     },
     "useWorkOrders": {
       "source": "src/context/WorkOrderContext.tsx",
-      "line": 237
+      "line": 1965,
+      "line_end": 1971,
+      "read_hint": {
+        "offset": 1960,
+        "limit": 21
+      },
+      "type": "Hook",
+      "keywords": [
+        "context",
+        "order",
+        "orders",
+        "use",
+        "work"
+      ]
     },
     "WOGroupCard": {
       "source": "src/pages/OverviewContent.tsx",
-      "line": 212
+      "line": 210,
+      "line_end": 210,
+      "read_hint": {
+        "offset": 205,
+        "limit": 15
+      },
+      "type": "ReactComponent",
+      "keywords": [
+        "card",
+        "content",
+        "group",
+        "overview",
+        "pages",
+        "wo"
+      ]
+    },
+    "checkIds": {
+      "type": "Function",
+      "source": "src\\check_notifs.ts",
+      "line": 5,
+      "line_end": 22,
+      "read_hint": {
+        "offset": 1,
+        "limit": 32
+      },
+      "keywords": [
+        "check",
+        "ids"
+      ],
+      "used_in": []
+    },
+    "CustomDateInput": {
+      "type": "ReactComponent",
+      "source": "src\\components\\CustomDateInput.tsx",
+      "line": 14,
+      "line_end": 89,
+      "read_hint": {
+        "offset": 9,
+        "limit": 80
+      },
+      "keywords": [
+        "custom",
+        "date",
+        "input"
+      ],
+      "used_in": []
+    },
+    "CustomerInspectionMockup": {
+      "type": "ReactComponent",
+      "source": "src\\components\\CustomerInspectionMockup.tsx",
+      "line": 51,
+      "line_end": 111,
+      "read_hint": {
+        "offset": 46,
+        "limit": 75
+      },
+      "keywords": [
+        "customer",
+        "inspection",
+        "mockup"
+      ],
+      "used_in": []
+    },
+    "ImportType": {
+      "type": "Interface",
+      "source": "src\\components\\ImportExcelModal.tsx",
+      "line": 5,
+      "line_end": 10,
+      "read_hint": {
+        "offset": 1,
+        "limit": 20
+      },
+      "keywords": [
+        "excel",
+        "import",
+        "modal",
+        "type"
+      ],
+      "used_in": []
+    },
+    "ImportOutcome": {
+      "type": "Interface",
+      "source": "src\\components\\ImportExcelModal.tsx",
+      "line": 7,
+      "line_end": 10,
+      "read_hint": {
+        "offset": 2,
+        "limit": 18
+      },
+      "keywords": [
+        "excel",
+        "import",
+        "modal",
+        "outcome"
+      ],
+      "used_in": []
+    },
+    "TaskReviewModal": {
+      "type": "ReactComponent",
+      "source": "src\\components\\TaskReviewModal.tsx",
+      "line": 30,
+      "line_end": 90,
+      "read_hint": {
+        "offset": 25,
+        "limit": 75
+      },
+      "keywords": [
+        "modal",
+        "review",
+        "task"
+      ],
+      "used_in": []
+    },
+    "BatchAddModal": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\BatchAddModal.tsx",
+      "line": 6,
+      "line_end": 66,
+      "read_hint": {
+        "offset": 1,
+        "limit": 75
+      },
+      "keywords": [
+        "add",
+        "batch",
+        "daily-report",
+        "modal"
+      ],
+      "used_in": []
+    },
+    "DailyReportDetailPane": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\DailyReportDetailPane.tsx",
+      "line": 43,
+      "line_end": 103,
+      "read_hint": {
+        "offset": 38,
+        "limit": 75
+      },
+      "keywords": [
+        "daily",
+        "daily-report",
+        "detail",
+        "pane",
+        "report"
+      ],
+      "used_in": []
+    },
+    "DailyReportSummaryModal": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\DailyReportSummaryModal.tsx",
+      "line": 18,
+      "line_end": 78,
+      "read_hint": {
+        "offset": 13,
+        "limit": 75
+      },
+      "keywords": [
+        "daily",
+        "daily-report",
+        "modal",
+        "report",
+        "summary"
+      ],
+      "used_in": []
+    },
+    "PreHandoverDetailPane": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\PreHandoverDetailPane.tsx",
+      "line": 117,
+      "line_end": 177,
+      "read_hint": {
+        "offset": 112,
+        "limit": 75
+      },
+      "keywords": [
+        "daily-report",
+        "detail",
+        "handover",
+        "pane",
+        "pre"
+      ],
+      "used_in": []
+    },
+    "PreHandoverSummaryModal": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\PreHandoverSummaryModal.tsx",
+      "line": 18,
+      "line_end": 78,
+      "read_hint": {
+        "offset": 13,
+        "limit": 75
+      },
+      "keywords": [
+        "daily-report",
+        "handover",
+        "modal",
+        "pre",
+        "summary"
+      ],
+      "used_in": []
+    },
+    "formatDeadline": {
+      "type": "Function",
+      "source": "src\\components\\daily-report\\SLACountdowns.tsx",
+      "line": 8,
+      "line_end": 11,
+      "read_hint": {
+        "offset": 3,
+        "limit": 18
+      },
+      "keywords": [
+        "countdowns",
+        "daily-report",
+        "deadline",
+        "format",
+        "sla"
+      ],
+      "used_in": []
+    },
+    "SLACountdown": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\SLACountdowns.tsx",
+      "line": 13,
+      "line_end": 73,
+      "read_hint": {
+        "offset": 8,
+        "limit": 75
+      },
+      "keywords": [
+        "countdown",
+        "countdowns",
+        "daily-report",
+        "sla"
+      ],
+      "used_in": []
+    },
+    "GroupSLACountdown": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\SLACountdowns.tsx",
+      "line": 340,
+      "line_end": 400,
+      "read_hint": {
+        "offset": 335,
+        "limit": 75
+      },
+      "keywords": [
+        "countdown",
+        "countdowns",
+        "daily-report",
+        "group",
+        "sla"
+      ],
+      "used_in": []
+    },
+    "WorkOrderGroupList": {
+      "type": "ReactComponent",
+      "source": "src\\components\\daily-report\\WorkOrderGroupList.tsx",
+      "line": 72,
+      "line_end": 132,
+      "read_hint": {
+        "offset": 67,
+        "limit": 75
+      },
+      "keywords": [
+        "daily-report",
+        "group",
+        "list",
+        "order",
+        "work"
+      ],
+      "used_in": []
+    },
+    "filterHistoryByRevision": {
+      "type": "Function",
+      "source": "src\\context\\DailyReportContext.tsx",
+      "line": 210,
+      "line_end": 246,
+      "read_hint": {
+        "offset": 205,
+        "limit": 51
+      },
+      "keywords": [
+        "by",
+        "context",
+        "daily",
+        "filter",
+        "history",
+        "report",
+        "revision"
+      ],
+      "used_in": []
+    },
+    "calculateWorkingHours": {
+      "type": "Function",
+      "source": "src\\context\\DailyReportContext.tsx",
+      "line": 248,
+      "line_end": 267,
+      "read_hint": {
+        "offset": 243,
+        "limit": 34
+      },
+      "keywords": [
+        "calculate",
+        "context",
+        "daily",
+        "hours",
+        "report",
+        "working"
+      ],
+      "used_in": []
+    },
+    "getRequiredRegularPhotoCount": {
+      "type": "Function",
+      "source": "src\\context\\DailyReportContext.tsx",
+      "line": 269,
+      "line_end": 306,
+      "read_hint": {
+        "offset": 264,
+        "limit": 52
+      },
+      "keywords": [
+        "context",
+        "count",
+        "daily",
+        "get",
+        "photo",
+        "regular",
+        "report",
+        "required"
+      ],
+      "used_in": []
+    },
+    "DailyReportProvider": {
+      "type": "ReactComponent",
+      "source": "src\\context\\DailyReportContext.tsx",
+      "line": 308,
+      "line_end": 368,
+      "read_hint": {
+        "offset": 303,
+        "limit": 75
+      },
+      "keywords": [
+        "context",
+        "daily",
+        "provider",
+        "report"
+      ],
+      "used_in": []
+    },
+    "useDailyReport": {
+      "type": "Hook",
+      "source": "src\\context\\DailyReportContext.tsx",
+      "line": 3014,
+      "line_end": 3020,
+      "read_hint": {
+        "offset": 3009,
+        "limit": 21
+      },
+      "keywords": [
+        "context",
+        "daily",
+        "report",
+        "use"
+      ],
+      "used_in": []
+    },
+    "StaleDataError": {
+      "type": "Class",
+      "source": "src\\context\\WorkOrderContext.tsx",
+      "line": 14,
+      "line_end": 23,
+      "read_hint": {
+        "offset": 9,
+        "limit": 24
+      },
+      "keywords": [
+        "data",
+        "error",
+        "stale"
+      ],
+      "used_in": []
+    },
+    "todayTH": {
+      "type": "Function",
+      "source": "src\\lib\\dateUtils.ts",
+      "line": 2,
+      "line_end": 7,
+      "read_hint": {
+        "offset": 1,
+        "limit": 20
+      },
+      "keywords": [
+        "date",
+        "lib",
+        "th",
+        "today",
+        "utils"
+      ],
+      "used_in": []
+    },
+    "toDateStrTH": {
+      "type": "Function",
+      "source": "src\\lib\\dateUtils.ts",
+      "line": 6,
+      "line_end": 7,
+      "read_hint": {
+        "offset": 1,
+        "limit": 16
+      },
+      "keywords": [
+        "date",
+        "lib",
+        "str",
+        "th",
+        "to",
+        "utils"
+      ],
+      "used_in": []
+    },
+    "CustomerHandover": {
+      "type": "ReactComponent",
+      "source": "src\\pages\\CustomerHandover.tsx",
+      "line": 35,
+      "line_end": 95,
+      "read_hint": {
+        "offset": 30,
+        "limit": 75
+      },
+      "keywords": [
+        "customer",
+        "handover",
+        "pages"
+      ],
+      "used_in": []
+    },
+    "OwnerReview": {
+      "type": "ReactComponent",
+      "source": "src\\pages\\OwnerReview.tsx",
+      "line": 11,
+      "line_end": 71,
+      "read_hint": {
+        "offset": 6,
+        "limit": 75
+      },
+      "keywords": [
+        "owner",
+        "pages",
+        "review"
+      ],
+      "used_in": []
+    },
+    "TimeLeft": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 3,
+      "line_end": 8,
+      "read_hint": {
+        "offset": 1,
+        "limit": 20
+      },
+      "keywords": [
+        "daily",
+        "left",
+        "report.types",
+        "time",
+        "types"
+      ],
+      "used_in": []
+    },
+    "ShiftConfig": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 10,
+      "line_end": 15,
+      "read_hint": {
+        "offset": 5,
+        "limit": 20
+      },
+      "keywords": [
+        "config",
+        "daily",
+        "report.types",
+        "shift",
+        "types"
+      ],
+      "used_in": []
+    },
+    "ShiftTimes": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 17,
+      "line_end": 22,
+      "read_hint": {
+        "offset": 12,
+        "limit": 20
+      },
+      "keywords": [
+        "daily",
+        "report.types",
+        "shift",
+        "times",
+        "types"
+      ],
+      "used_in": []
+    },
+    "LeaveInfo": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 24,
+      "line_end": 29,
+      "read_hint": {
+        "offset": 19,
+        "limit": 20
+      },
+      "keywords": [
+        "daily",
+        "info",
+        "leave",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "LaborEntry": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 31,
+      "line_end": 45,
+      "read_hint": {
+        "offset": 26,
+        "limit": 29
+      },
+      "keywords": [
+        "daily",
+        "entry",
+        "labor",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "WorkTask": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 47,
+      "line_end": 83,
+      "read_hint": {
+        "offset": 42,
+        "limit": 51
+      },
+      "keywords": [
+        "daily",
+        "report.types",
+        "task",
+        "types",
+        "work"
+      ],
+      "used_in": []
+    },
+    "WorkOrderCategory": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 85,
+      "line_end": 89,
+      "read_hint": {
+        "offset": 80,
+        "limit": 19
+      },
+      "keywords": [
+        "category",
+        "daily",
+        "order",
+        "report.types",
+        "types",
+        "work"
+      ],
+      "used_in": []
+    },
+    "HistoryLaborEntry": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 110,
+      "line_end": 124,
+      "read_hint": {
+        "offset": 105,
+        "limit": 29
+      },
+      "keywords": [
+        "daily",
+        "entry",
+        "history",
+        "labor",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "HistoryLeaveEntry": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 126,
+      "line_end": 140,
+      "read_hint": {
+        "offset": 121,
+        "limit": 29
+      },
+      "keywords": [
+        "daily",
+        "entry",
+        "history",
+        "leave",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "HistoryPhotos": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 142,
+      "line_end": 153,
+      "read_hint": {
+        "offset": 137,
+        "limit": 26
+      },
+      "keywords": [
+        "daily",
+        "history",
+        "photos",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "HistoryEntry": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 155,
+      "line_end": 174,
+      "read_hint": {
+        "offset": 150,
+        "limit": 34
+      },
+      "keywords": [
+        "daily",
+        "entry",
+        "history",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "EditHistoryRecord": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 176,
+      "line_end": 187,
+      "read_hint": {
+        "offset": 171,
+        "limit": 26
+      },
+      "keywords": [
+        "daily",
+        "edit",
+        "history",
+        "record",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "SelectedTaskInfo": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 189,
+      "line_end": 193,
+      "read_hint": {
+        "offset": 184,
+        "limit": 19
+      },
+      "keywords": [
+        "daily",
+        "info",
+        "report.types",
+        "selected",
+        "task",
+        "types"
+      ],
+      "used_in": []
+    },
+    "TaskListItem": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 195,
+      "line_end": 199,
+      "read_hint": {
+        "offset": 190,
+        "limit": 19
+      },
+      "keywords": [
+        "daily",
+        "item",
+        "list",
+        "report.types",
+        "task",
+        "types"
+      ],
+      "used_in": []
+    },
+    "ModalAlertState": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 201,
+      "line_end": 206,
+      "read_hint": {
+        "offset": 196,
+        "limit": 20
+      },
+      "keywords": [
+        "alert",
+        "daily",
+        "modal",
+        "report.types",
+        "state",
+        "types"
+      ],
+      "used_in": []
+    },
+    "BatchConfig": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 208,
+      "line_end": 216,
+      "read_hint": {
+        "offset": 203,
+        "limit": 23
+      },
+      "keywords": [
+        "batch",
+        "config",
+        "daily",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "TimePickerTarget": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 218,
+      "line_end": 223,
+      "read_hint": {
+        "offset": 213,
+        "limit": 20
+      },
+      "keywords": [
+        "daily",
+        "picker",
+        "report.types",
+        "target",
+        "time",
+        "types"
+      ],
+      "used_in": []
+    },
+    "ModalTimeTarget": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 225,
+      "line_end": 229,
+      "read_hint": {
+        "offset": 220,
+        "limit": 19
+      },
+      "keywords": [
+        "daily",
+        "modal",
+        "report.types",
+        "target",
+        "time",
+        "types"
+      ],
+      "used_in": []
+    },
+    "AvailableItem": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 231,
+      "line_end": 237,
+      "read_hint": {
+        "offset": 226,
+        "limit": 21
+      },
+      "keywords": [
+        "available",
+        "daily",
+        "item",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "RealProject": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 239,
+      "line_end": 243,
+      "read_hint": {
+        "offset": 234,
+        "limit": 19
+      },
+      "keywords": [
+        "daily",
+        "project",
+        "real",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "RealContractor": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 245,
+      "line_end": 248,
+      "read_hint": {
+        "offset": 240,
+        "limit": 18
+      },
+      "keywords": [
+        "contractor",
+        "daily",
+        "real",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "DailyContractor": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 250,
+      "line_end": 256,
+      "read_hint": {
+        "offset": 245,
+        "limit": 21
+      },
+      "keywords": [
+        "contractor",
+        "daily",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "PendingDeliveryItem": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 258,
+      "line_end": 260,
+      "read_hint": {
+        "offset": 253,
+        "limit": 17
+      },
+      "keywords": [
+        "daily",
+        "delivery",
+        "item",
+        "pending",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "GroupData": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 262,
+      "line_end": 270,
+      "read_hint": {
+        "offset": 257,
+        "limit": 23
+      },
+      "keywords": [
+        "daily",
+        "data",
+        "group",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "SLACountdownProps": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 272,
+      "line_end": 279,
+      "read_hint": {
+        "offset": 267,
+        "limit": 22
+      },
+      "keywords": [
+        "countdown",
+        "daily",
+        "props",
+        "report.types",
+        "sla",
+        "types"
+      ],
+      "used_in": []
+    },
+    "GroupSLACountdownProps": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 281,
+      "line_end": 288,
+      "read_hint": {
+        "offset": 276,
+        "limit": 22
+      },
+      "keywords": [
+        "countdown",
+        "daily",
+        "group",
+        "props",
+        "report.types",
+        "sla",
+        "types"
+      ],
+      "used_in": []
+    },
+    "BatchAddModalProps": {
+      "type": "Interface",
+      "source": "src\\types\\dailyReport.types.ts",
+      "line": 290,
+      "line_end": 295,
+      "read_hint": {
+        "offset": 285,
+        "limit": 20
+      },
+      "keywords": [
+        "add",
+        "batch",
+        "daily",
+        "modal",
+        "props",
+        "report.types",
+        "types"
+      ],
+      "used_in": []
+    },
+    "TaskAssignee": {
+      "type": "Interface",
+      "source": "src\\types\\index.ts",
+      "line": 14,
+      "line_end": 19,
+      "read_hint": {
+        "offset": 9,
+        "limit": 20
+      },
+      "keywords": [
+        "assignee",
+        "index",
+        "task",
+        "types"
+      ],
+      "used_in": []
+    },
+    "formatDate": {
+      "type": "Function",
+      "source": "src\\utils\\date.ts",
+      "line": 5,
+      "line_end": 17,
+      "read_hint": {
+        "offset": 1,
+        "limit": 27
+      },
+      "keywords": [
+        "date",
+        "format",
+        "utils"
+      ],
+      "used_in": []
+    },
+    "formatDateTime": {
+      "type": "Function",
+      "source": "src\\utils\\date.ts",
+      "line": 23,
+      "line_end": 37,
+      "read_hint": {
+        "offset": 18,
+        "limit": 29
+      },
+      "keywords": [
+        "date",
+        "format",
+        "time",
+        "utils"
+      ],
+      "used_in": []
+    },
+    "deriveWoStatus": {
+      "type": "Function",
+      "source": "src\\utils\\deriveWoStatus.ts",
+      "line": 34,
+      "line_end": 71,
+      "read_hint": {
+        "offset": 29,
+        "limit": 52
+      },
+      "keywords": [
+        "derive",
+        "status",
+        "utils",
+        "wo"
+      ],
+      "used_in": []
+    },
+    "isWoaWop": {
+      "type": "Function",
+      "source": "src\\utils\\workOrder.ts",
+      "line": 13,
+      "line_end": 34,
+      "read_hint": {
+        "offset": 8,
+        "limit": 36
+      },
+      "keywords": [
+        "is",
+        "order",
+        "utils",
+        "woa",
+        "wop",
+        "work"
+      ],
+      "used_in": []
+    },
+    "getJobCode": {
+      "type": "Function",
+      "source": "src\\utils\\workOrder.ts",
+      "line": 17,
+      "line_end": 34,
+      "read_hint": {
+        "offset": 12,
+        "limit": 32
+      },
+      "keywords": [
+        "code",
+        "get",
+        "job",
+        "order",
+        "utils",
+        "work"
+      ],
+      "used_in": []
+    },
+    "RealtimeWorkOrders": {
+      "type": "Interface",
+      "source": "src\\hooks\\useRealtimeWorkOrders.ts",
+      "line": 28,
+      "line_end": 36,
+      "read_hint": {
+        "offset": 23,
+        "limit": 23
+      },
+      "keywords": [
+        "hooks",
+        "orders",
+        "realtime",
+        "use",
+        "work"
+      ],
+      "used_in": []
+    },
+    "useRealtimeWorkOrders": {
+      "type": "Hook",
+      "source": "src\\hooks\\useRealtimeWorkOrders.ts",
+      "line": 61,
+      "line_end": 124,
+      "read_hint": {
+        "offset": 56,
+        "limit": 78
+      },
+      "keywords": [
+        "hooks",
+        "orders",
+        "realtime",
+        "use",
+        "work"
+      ],
+      "used_in": []
+    },
+    "CacheLevel": {
+      "type": "Interface",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 18,
+      "line_end": 34,
+      "read_hint": {
+        "offset": 13,
+        "limit": 31
+      },
+      "keywords": [
+        "cache",
+        "level",
+        "order",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "CachedDoc": {
+      "type": "Interface",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 27,
+      "line_end": 34,
+      "read_hint": {
+        "offset": 22,
+        "limit": 22
+      },
+      "keywords": [
+        "cache",
+        "cached",
+        "doc",
+        "order",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "WorkOrderCache": {
+      "type": "Interface",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 37,
+      "line_end": 45,
+      "read_hint": {
+        "offset": 32,
+        "limit": 23
+      },
+      "keywords": [
+        "cache",
+        "order",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "createWorkOrderCache": {
+      "type": "Function",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 48,
+      "line_end": 58,
+      "read_hint": {
+        "offset": 43,
+        "limit": 25
+      },
+      "keywords": [
+        "cache",
+        "create",
+        "order",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "upsertDoc": {
+      "type": "Function",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 62,
+      "line_end": 64,
+      "read_hint": {
+        "offset": 57,
+        "limit": 17
+      },
+      "keywords": [
+        "cache",
+        "doc",
+        "order",
+        "store",
+        "upsert",
+        "work"
+      ],
+      "used_in": []
+    },
+    "removeDoc": {
+      "type": "Function",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 67,
+      "line_end": 69,
+      "read_hint": {
+        "offset": 62,
+        "limit": 17
+      },
+      "keywords": [
+        "cache",
+        "doc",
+        "order",
+        "remove",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "clearCache": {
+      "type": "Function",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 72,
+      "line_end": 80,
+      "read_hint": {
+        "offset": 67,
+        "limit": 23
+      },
+      "keywords": [
+        "cache",
+        "clear",
+        "order",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "parentPathOf": {
+      "type": "Function",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 87,
+      "line_end": 89,
+      "read_hint": {
+        "offset": 82,
+        "limit": 17
+      },
+      "keywords": [
+        "cache",
+        "of",
+        "order",
+        "parent",
+        "path",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "groupByParent": {
+      "type": "Function",
+      "source": "src\\store\\workOrderCacheStore.ts",
+      "line": 94,
+      "line_end": 103,
+      "read_hint": {
+        "offset": 89,
+        "limit": 24
+      },
+      "keywords": [
+        "by",
+        "cache",
+        "group",
+        "order",
+        "parent",
+        "store",
+        "work"
+      ],
+      "used_in": []
+    },
+    "assembleWorkOrders": {
+      "type": "Function",
+      "source": "src\\utils\\assembleWorkOrders.ts",
+      "line": 370,
+      "line_end": 376,
+      "read_hint": {
+        "offset": 365,
+        "limit": 21
+      },
+      "keywords": [
+        "assemble",
+        "orders",
+        "utils",
+        "work"
+      ],
+      "used_in": []
+    },
+    "ResolvedTaskRefs": {
+      "type": "Interface",
+      "source": "src\\utils\\workOrder.ts",
+      "line": 38,
+      "line_end": 47,
+      "read_hint": {
+        "offset": 33,
+        "limit": 24
+      },
+      "keywords": [
+        "refs",
+        "resolved",
+        "task"
+      ],
+      "used_in": []
+    },
+    "getSubtaskId": {
+      "type": "Function",
+      "source": "src\\utils\\workOrder.ts",
+      "line": 50,
+      "line_end": 51,
+      "read_hint": {
+        "offset": 45,
+        "limit": 16
+      },
+      "keywords": [
+        "get",
+        "id",
+        "subtask"
+      ],
+      "used_in": []
+    },
+    "resolveTaskRefs": {
+      "type": "Function",
+      "source": "src\\utils\\workOrder.ts",
+      "line": 63,
+      "line_end": 99,
+      "read_hint": {
+        "offset": 58,
+        "limit": 51
+      },
+      "keywords": [
+        "refs",
+        "resolve",
+        "task"
+      ],
+      "used_in": []
     }
   }
 }

@@ -59,7 +59,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const userRole = (user.role || '').toLowerCase();
             const userId = user.id;
-            const isAdminLike = userRole.includes('admin') || userRole.includes('manager') || userRole.includes('backoffice') || userRole.includes('approver');
+            const isAdminLike = userRole.includes('admin') || userRole.includes('manager') || userRole.includes('approver');
 
             let fetchedNotifications = snapshot.docs.map(doc => ({
                 id: doc.id,

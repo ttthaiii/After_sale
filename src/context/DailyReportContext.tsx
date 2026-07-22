@@ -8,6 +8,7 @@ import { useNotifications } from "./NotificationContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/imageCompression";
 import { formatDate } from "../utils/date";
+import { isWoaWop as isWoaWopType } from "../utils/workOrder";
 import { useNavigate, useLocation } from "react-router-dom";
 import { logService } from "../services/logService";
 import {
@@ -716,9 +717,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       const checkAndLoadDraft = async () => {
         try {
-          const isWoaWop =
-            selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
-            selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+          const isWoaWop = isWoaWopType(selectedTaskInfo.wo);
           const workOrderId = selectedTaskInfo.wo.id;
           const categoryId = selectedTaskInfo.categoryId;
           const taskId = selectedTaskInfo.task.id;
@@ -1013,7 +1012,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             } else {
               const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
               const activeTask =
-                globalTasks.find((t: any) => t.evaluationStatus === "Rejected") ||
+                globalTasks.find((t: any) => t.status === "Rejected") ||
                 globalTasks.find((t: any) => (t.dailyProgress || t.progress || 0) < 100) ||
                 globalTasks[0];
               if (activeTask) {
@@ -1728,9 +1727,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   ) => {
     try {
       const now = new Date().toISOString();
-      if (status === "Verified") {
+      if (status === "Complete") {
         await updateTask(woId, categoryId, taskId, {
-          status: "Verified",
+          status: "Complete",
           ownerName: updates.ownerName || "",
           notes: updates.notes || "",
           evaluationChecklist: updates.evaluationChecklist || {},
@@ -1749,7 +1748,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         });
       } else if (status === "Rejected") {
         await updateTask(woId, categoryId, taskId, {
-          status: "Rejected",
+          // customer reject → task re-enters evaluation (rework loop); WO derives to customer_reject
+          status: "Evaluating",
           revisionName: updates.rejectReason || "",
           revisionCreatedAt: now,
           currentRevision: updates.currentRevision || "rev01",
@@ -1792,7 +1792,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsSubmitting(true);
     try {
       await updateTask(workOrderId, categoryId, taskId, {
-        status: "Pending",
+        status: "Evaluating",
         slaCategory: null,
         responsibleStaffIds: [],
       });
@@ -2069,9 +2069,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         };
         updatedEditHistory = [...updatedEditHistory, editRecord];
       }
-      const isWoaWop =
-        selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
-        selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+      const isWoaWop = isWoaWopType(selectedTaskInfo.wo);
       const updateId = isWoaWop
         ? reportDate
         : isEditingExisting && existingHistory
@@ -2121,7 +2119,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setShowSummaryModal(false);
         // Save pending draft so form data persists while waiting for approval
         try {
-          const _isWoa = selectedTaskInfo.wo.id.toUpperCase().includes("WOA") || selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+          const _isWoa = isWoaWopType(selectedTaskInfo.wo);
           const _woId = selectedTaskInfo.wo.id;
           const _catId = selectedTaskInfo.categoryId;
           const _tId = selectedTaskInfo.task.id;
@@ -2161,9 +2159,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       // ลบแบบร่าง (Draft) ออกจากระบบเมื่อทำการส่งรายงานผลสำเร็จ
       try {
-        const isWoaWop =
-          selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
-          selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+        const isWoaWop = isWoaWopType(selectedTaskInfo.wo);
         const workOrderId = selectedTaskInfo.wo.id;
         const categoryId = selectedTaskInfo.categoryId;
         const taskId = selectedTaskInfo.task.id;
@@ -2235,9 +2231,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!selectedTaskInfo) return;
     setIsSubmitting(true);
     try {
-      const isWoaWop =
-        selectedTaskInfo.wo.id.toUpperCase().includes("WOA") ||
-        selectedTaskInfo.wo.id.toUpperCase().includes("WOP");
+      const isWoaWop = isWoaWopType(selectedTaskInfo.wo);
       const workOrderId = selectedTaskInfo.wo.id;
       const categoryId = selectedTaskInfo.categoryId;
       const taskId = selectedTaskInfo.task.id;

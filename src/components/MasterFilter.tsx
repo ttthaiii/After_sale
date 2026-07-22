@@ -11,6 +11,9 @@ interface MasterFilterProps {
     allowAllTime?: boolean;
     isAllTime?: boolean;
     setIsAllTime?: (val: boolean) => void;
+    // T-337: year dimension — only used/shown when isAllTime (all-work mode).
+    selectedYear?: number;
+    setSelectedYear?: (year: number) => void;
 }
 
 const MasterFilter: React.FC<MasterFilterProps> = ({ 
@@ -22,8 +25,11 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
     minimal = false,
     allowAllTime = false,
     isAllTime = false,
-    setIsAllTime
+    setIsAllTime,
+    selectedYear = new Date().getFullYear(),
+    setSelectedYear
 }) => {
+    const nowYear = new Date().getFullYear();
     const handleMonthChange = (delta: number) => {
         let year, month;
         if (selectedMonth === 'all') {
@@ -78,47 +84,55 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
                     justifyContent: 'space-between',
                     flex: 1
                 }}>
-                    <button 
-                        onClick={() => handleMonthChange(-1)} 
+                    <button
+                        onClick={() => isAllTime ? setSelectedYear && setSelectedYear(selectedYear - 1) : handleMonthChange(-1)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}
                     >
                         <ChevronLeft size={20} strokeWidth={3} />
                     </button>
                     <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', letterSpacing: '-0.01em', textAlign: 'center' }}>
-                        {monthName}
+                        {/* T-337: all-work mode shows a YEAR selector; month mode shows the month. */}
+                        {isAllTime ? `ทั้งปี ${selectedYear}` : monthName}
                     </div>
-                    <button 
-                        onClick={() => handleMonthChange(1)} 
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}
+                    <button
+                        onClick={() => isAllTime ? setSelectedYear && setSelectedYear(Math.min(nowYear, selectedYear + 1)) : handleMonthChange(1)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: isAllTime && selectedYear >= nowYear ? '#e2e8f0' : '#94a3b8', display: 'flex', alignItems: 'center' }}
                     >
                         <ChevronRight size={20} strokeWidth={3} />
                     </button>
                 </div>
 
+                {/* T-337: month vs year mode is a 2-tab segmented control (clearer than a single toggle). */}
                 {allowAllTime && setIsAllTime && (
-                    <button
-                        onClick={() => setIsAllTime(!isAllTime)}
-                        style={{
-                            background: isAllTime ? 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' : '#e2e8f0',
-                            color: isAllTime ? '#fff' : '#64748b',
-                            border: 'none',
-                            padding: '10px 16px',
-                            borderRadius: '16px',
-                            fontWeight: 800,
-                            fontSize: '0.9rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '100%',
-                            minHeight: '44px',
-                            transition: 'all 0.3s ease',
-                            boxShadow: isAllTime ? '0 4px 12px rgba(79, 70, 229, 0.3)' : 'none',
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        สรุปข้อมูลทั้งหมด
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px', background: '#e2e8f0', borderRadius: '18px', padding: '4px', height: '100%', minHeight: '44px' }}>
+                        {([['รายเดือน', false], ['รายปี', true]] as [string, boolean][]).map(([label, val]) => {
+                            const active = isAllTime === val;
+                            return (
+                                <button
+                                    key={label}
+                                    onClick={() => setIsAllTime(val)}
+                                    style={{
+                                        background: active ? 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' : 'transparent',
+                                        color: active ? '#fff' : '#64748b',
+                                        border: 'none',
+                                        padding: '8px 18px',
+                                        borderRadius: '14px',
+                                        fontWeight: 800,
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        transition: 'all 0.25s ease',
+                                        boxShadow: active ? '0 4px 12px rgba(79, 70, 229, 0.3)' : 'none',
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
 

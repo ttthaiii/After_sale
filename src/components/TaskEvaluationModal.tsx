@@ -30,12 +30,11 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                 const userData = docSnapshot.data();
                 const empId = docSnapshot.id;
                 
-                let role: 'Foreman' | 'Admin' | 'Manager' | 'BackOffice' | 'Approver' = 'Foreman';
-                if (userData.roleId === 'AM' || userData.roleId === 'PE' || empId === '100051' || empId === '101485') {
-                    role = 'Admin';
-                } else if (userData.roleId === 'FM' || userData.roleId === 'GOD' || empId === '101527') {
-                    role = 'Foreman';
-                }
+                const rawRole = userData.role;
+                const role: 'Foreman' | 'Admin' | 'Manager' | 'Approver' =
+                    (rawRole === 'Admin' || rawRole === 'Manager' || rawRole === 'Approver' || rawRole === 'Foreman')
+                        ? rawRole
+                        : (userData.roleId === 'AM' || userData.roleId === 'PE' ? 'Admin' : 'Foreman');
                 
                 return {
                     id: empId,
@@ -104,7 +103,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
         setIsSubmitting(true);
         try {
             // SLA always starts from 08:00 AM of the "Scheduled Start Date" selected by Admin
-            const slaStart = new Date(`${formData.startDate}T08:00:00`).toISOString();
+            const slaStart = new Date(`${formData.startDate}T08:00:00+07:00`).toISOString();
 
             const updates: Partial<MasterTask> = {
                 slaCategory: formData.sla as any,
@@ -417,7 +416,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                             >
                                 <option value="">-- เลือกผู้รับผิดชอบ --</option>
                                 {staffList
-                                    .filter(s => s.role === 'Foreman') // ✅ Only show Foremen for assignment
+                                    .filter(s => s.role === 'Foreman' && s.isActive !== false) // ✅ Only show active Foremen for assignment
                                     .map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)
                                 }
                             </select>

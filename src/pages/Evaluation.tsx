@@ -4,6 +4,7 @@ import WorkOrderCard from '../components/WorkOrderCard';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
 import { CheckSquare, Search, Calendar, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info, Users, History, Clock, UserCircle } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
+import { deriveWoStatus } from '../utils/deriveWoStatus';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
 import { useAuth } from '../context/AuthContext';
@@ -33,7 +34,7 @@ const Evaluation = () => {
     const [assigningTask, setAssigningTask] = useState<MasterTask | null>(null);
     const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-    const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Approved' | 'Assigned' | 'Rejected'>>({});
+    const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Assigned' | 'Rejected'>>({});
     const [modalAlert, setModalAlert] = useState<{
         isOpen: boolean;
         title: string;
@@ -68,7 +69,7 @@ const Evaluation = () => {
         if (workOrderId && workOrders.length > 0) {
             const wo = workOrders.find(w => w.id === workOrderId);
             if (wo) {
-                if (wo.status === 'Evaluating' || wo.status === 'Rejected') {
+                if (wo.status === 'Evaluating' || wo.status === 'Rejected' || wo.status === 'customer_reject') {
                     setHighlightedId(workOrderId);
                     setSelectedWorkOrder(wo);
                     setIsDetailModalOpen(true);
@@ -76,26 +77,20 @@ const Evaluation = () => {
                     // NOTE: do NOT call markWorkOrderAsReviewed here — opening to view must NOT unlock foremen
                 } else {
                     const statusThai: Record<string, string> = {
-                        'Approved': 'อนุมัติแล้ว',
+                        'Assigned': 'มอบหมายงานแล้ว',
                         'Partially Approved': 'อนุมัติบางส่วน',
                         'In Progress': 'กำลังดำเนินการ',
-                        'Completed': 'เสร็จสิ้น',
-                        'Verified': 'ตรวจสอบแล้ว'
+                        'For Checking': 'งานเสร็จ รอออก QR',
+                        'pending_delivery': 'รอลูกค้าประเมิน',
+                        'Complete': 'เสร็จสิ้น'
                     };
-                    
-                    if (['Approved', 'Partially Approved', 'In Progress', 'Completed', 'Verified'].includes(wo.status)) {
+
+                    if (['Assigned', 'Partially Approved', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'].includes(wo.status)) {
                         setModalAlert({
                             isOpen: true,
                             title: 'ประเมินใบสั่งงานเรียบร้อยแล้ว',
                             message: `ใบสั่งงานนี้ได้รับการประเมินและมอบหมายงานเรียบร้อยแล้ว (สถานะปัจจุบัน: ${statusThai[wo.status] || wo.status}) คุณสามารถทำงานอื่นในหน้านี้ต่อได้ทันที`,
                             type: 'success'
-                        });
-                    } else if (wo.status === 'Rejected') {
-                        setModalAlert({
-                            isOpen: true,
-                            title: 'ใบสั่งงานถูกส่งกลับแก้ไข',
-                            message: 'ใบสั่งงานนี้ถูกปฏิเสธการประเมินและถูกส่งกลับไปให้โฟร์แมนแก้ไขเรียบร้อยแล้ว',
-                            type: 'warning'
                         });
                     } else if (wo.status === 'Cancelled') {
                         setModalAlert({
@@ -143,12 +138,12 @@ const Evaluation = () => {
             const updatedWo = workOrders.find(w => w.id === selectedWorkOrder.id);
             if (updatedWo) {
                 setSelectedWorkOrder(updatedWo);
-                
+
                 // Sync taskDecisions with current Firestore statuses
-                const decisions: Record<string, 'Approved' | 'Assigned' | 'Rejected'> = {};
+                const decisions: Record<string, 'Assigned' | 'Rejected'> = {};
                 updatedWo.categories.flatMap(c => c.tasks).forEach(t => {
-                    if (t.status === 'Approved' || t.status === 'Assigned' || t.status === 'Rejected' || t.status === 'Verified') {
-                        decisions[t.id] = t.status === 'Verified' ? 'Approved' : t.status as any;
+                    if (t.status === 'Assigned' || t.status === 'Rejected') {
+                        decisions[t.id] = t.status;
                     }
                 });
                 setTaskDecisions(decisions);
@@ -158,11 +153,10 @@ const Evaluation = () => {
 
     const pendingWorkOrders = workOrders
         .filter(wo => {
-            const isPending = wo.status === 'Evaluating' ||
-                (wo.status === 'Rejected' && (
-                    wo.pendingAdminReassign === true ||
-                    (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
-                ));
+            // Route by TASK (Option A): any WO with a task awaiting admin evaluation shows here —
+            // covers first-round Evaluating and customer-rejected tasks sent back (also 'Evaluating').
+            const hasEvaluatingTask = (wo.categories || []).some(c => (c.tasks || []).some(t => t.status === 'Evaluating'));
+            const isPending = (wo.status === 'Evaluating' || hasEvaluatingTask) && !wo.isArchived;
             const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
@@ -189,7 +183,7 @@ const Evaluation = () => {
     const pendingHelperTasks = useMemo(() => {
         const tasksList: { task: MasterTask; wo: WorkOrder; categoryId: string }[] = [];
         workOrders.forEach(wo => {
-            if (['Cancelled', 'Draft', 'Completed', 'Verified'].includes(wo.status)) return;
+            if (['Cancelled', 'Draft', 'Complete'].includes(wo.status)) return;
             
             wo.categories.forEach(cat => {
                 cat.tasks.forEach(t => {
@@ -277,7 +271,7 @@ const Evaluation = () => {
     useEffect(() => {
         const phRejected = workOrders.filter((wo: any) =>
             wo.type === 'PreHandover' &&
-            wo.status === 'Rejected' &&
+            wo.status === 'customer_reject' &&
             (wo.pendingAdminReassign === true || wo.reviewedByAdmin === false)
         ).map((wo: any) => ({
             ...wo,
@@ -414,7 +408,7 @@ const Evaluation = () => {
     };
 
     const handleTaskReviewClick = (task: MasterTask) => {
-        if (selectedWorkOrder?.status === 'Rejected') {
+        if (selectedWorkOrder?.status === 'customer_reject') {
             setAssigningTask(task);
         } else {
             setCurrentTask(task);
@@ -425,7 +419,7 @@ const Evaluation = () => {
     const handleModalConfirm = async (updates: Partial<MasterTask>) => {
         if (!currentTask || !selectedWorkOrder) return;
 
-        const status = updates.status as 'Approved' | 'Assigned' | 'Rejected';
+        const status = updates.status as 'Assigned' | 'Rejected';
         setTaskDecisions(prev => ({ ...prev, [currentTask.id]: status }));
 
         // ✅ 1. Compute the updated categories array for the work order
@@ -434,32 +428,27 @@ const Evaluation = () => {
             tasks: cat.tasks.map(t => t.id === currentTask.id ? { ...t, ...updates } : t)
         }));
 
-        // ✅ 2. Compute final Work Order status
+        // ✅ 2. Compute final Work Order status (single source of truth — deriveWoStatus, same rules everywhere)
         const allTasks = updatedCategories.flatMap(c => c.tasks);
-        const pendingCount = allTasks.filter(t => t.status === 'Pending').length;
-        const approvedCount = allTasks.filter(t => t.status === 'Approved' || t.status === 'Assigned').length;
-        const totalCount = allTasks.length;
-
-        let finalWoStatus: 'Evaluating' | 'Approved' | 'Partially Approved' | 'Rejected' = 'Evaluating';
-
-        if (pendingCount > 0) {
-            // There are still undecided tasks! Keep it in 'Evaluating' so it stays in the queue
-            finalWoStatus = 'Evaluating';
-        } else {
-            // All tasks have been evaluated!
-            if (approvedCount === 0) {
-                finalWoStatus = 'Rejected';
-            } else if (approvedCount < totalCount) {
-                finalWoStatus = 'Partially Approved';
-            } else {
-                finalWoStatus = 'Approved';
-            }
-        }
+        const finalWoStatus = deriveWoStatus(allTasks);
+        // Count tasks still awaiting an admin decision (used below to auto-close the modal).
+        const pendingCount = allTasks.filter(t => t.status === 'Evaluating').length;
 
         // ✅ 3. Save directly to Firestore
         try {
             await saveEvaluation(selectedWorkOrder.id, finalWoStatus, updatedCategories);
-            
+
+            // Workstream C: audit the admin decision (approve/reject) for this task
+            logService.trackAction({
+                userId: user?.id || 'system',
+                userName: (user as any)?.name || 'Admin',
+                role: (user as any)?.role || 'Admin',
+                action: status === 'Rejected' ? 'REJECT' : 'APPROVE',
+                module: 'EVALUATION',
+                targetId: `${selectedWorkOrder.id}/${currentTask.id}`,
+                details: `${status === 'Rejected' ? 'ปฏิเสธ' : 'อนุมัติ'}งาน: ${currentTask.name} (สถานะ WO → ${finalWoStatus})`
+            });
+
             // If all tasks are decided, close the detail modal automatically
             if (pendingCount === 0) {
                 setIsDetailModalOpen(false);
@@ -589,7 +578,7 @@ const Evaluation = () => {
                             
                             const remainingRejected = selectedWorkOrder.categories
                                 .flatMap(c => c.tasks)
-                                .filter(t => t.id !== taskId && t.evaluationStatus === 'Rejected');
+                                .filter(t => t.id !== taskId && t.status === 'Rejected');
                                 
                             if (remainingRejected.length === 0) {
                                 setIsDetailModalOpen(false);
@@ -760,12 +749,9 @@ const Evaluation = () => {
                             {projects
                                 .filter(p => {
                                     if (activeTab === 'evaluation') {
-                                        return workOrders.some(wo => wo.projectId === p.id && (
+                                        return workOrders.some(wo => wo.projectId === p.id && !wo.isArchived && (
                                             wo.status === 'Evaluating' ||
-                                            (wo.status === 'Rejected' && (
-                                                wo.pendingAdminReassign === true ||
-                                                (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false)
-                                            ))
+                                            (wo.categories || []).some(c => (c.tasks || []).some(t => t.status === 'Evaluating'))
                                         ));
                                     } else {
                                         return workOrders.some(wo => wo.projectId === p.id && wo.categories.some(c => c.tasks.some(t => t.isSupportRequest === true && t.isPickedUpBySupport !== true)));

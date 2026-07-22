@@ -112,14 +112,14 @@ export default function CustomerInspectionMockup({
 
     // Filter tasks that are completed and eligible for customer review
     // 🛡️ CRITICAL RULE: Only exclude tasks when WO is still pending admin re-assignment
-    // evaluationStatus='Rejected' is NOT a blocker — task may have been re-worked after admin re-assigned
+    // a customer-rejected task (status='Evaluating', rev>00) is NOT a blocker — it may have been re-worked after admin re-assigned
     const isWoPendingReassign = 
         (workOrder as any).pendingAdminReassign === true ||
         ((workOrder as any).pendingAdminReassign === undefined && (workOrder as any).reviewedByAdmin === false && workOrder.status === 'Rejected');
     const eligibleTasks = workOrder.categories.flatMap(cat => 
         cat.tasks.filter(task => {
             const hasCompletedProgress = task.dailyProgress === 100;
-            const notYetVerified = task.status !== 'Verified' && task.status !== 'completed';
+            const notYetVerified = task.status !== 'Complete';
             const notStillRejectedByAdmin = task.status !== 'Rejected' && !isWoPendingReassign;
             return hasCompletedProgress && notYetVerified && notStillRejectedByAdmin;
         })

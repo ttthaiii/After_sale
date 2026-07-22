@@ -15,6 +15,9 @@ interface ForemanCalendarProps {
     highlightProjectId?: string | null;
     highlightedWOId?: string | null;
     selectedMonth?: string; // Format: YYYY-MM
+    // T-336: when set to a projectId, show ALL foremen's activity for that project
+    // (project-wide mode) instead of filtering to currentUserId.
+    allForemenForProject?: string | null;
 }
 
 // Helper to get leave hours from time range string
@@ -66,7 +69,7 @@ const getShiftHours = (timeRange: string, defaultHours: number): number => {
     }
 };
 
-const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUserId, projects, highlightProjectId, highlightedWOId, selectedMonth }) => {
+const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUserId, projects, highlightProjectId, highlightedWOId, selectedMonth, allForemenForProject }) => {
     const [currentDate] = useState(new Date());
     const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
 
@@ -84,6 +87,8 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
 
         workOrders.forEach(wo => {
             if (!wo.categories) return;
+            // T-336: project-wide mode → only this project's WOs; per-foreman mode → all (filtered by user below).
+            if (allForemenForProject && allForemenForProject !== '__ALL__' && wo.projectId !== allForemenForProject) return;
             const project = projects.find(p => p.id === wo.projectId);
             wo.categories.forEach(cat => {
                 cat.tasks.forEach(task => {
@@ -92,7 +97,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                         const sortedHistory = [...task.history].filter(h => h?.date).sort((a, b) => a.date.localeCompare(b.date));
                         sortedHistory.forEach((h, hIdx) => {
                             const isUserInLabor = h.labor?.some(l => l.staffId === currentUserId);
-                            if (isResponsible || isUserInLabor) {
+                            if (allForemenForProject || isResponsible || isUserInLabor) {
                                 const ds = new Date(h.date).toISOString().split('T')[0];
                                 if (!firstDayMap[task.id] || ds < firstDayMap[task.id]) {
                                     firstDayMap[task.id] = ds;
@@ -194,7 +199,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
         });
 
         return { dailyData: data, taskFirstDayMap: firstDayMap, taskLastDayMap: lastDayMap };
-    }, [workOrders, currentUserId, projects]);
+    }, [workOrders, currentUserId, projects, allForemenForProject]);
 
     const PALETTE = [
         { bg: '#eef2ff', border: '#6366f1', text: '#3730a3' },
@@ -212,6 +217,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
         const taskDetails: Record<string, { start: string, end: string, woId: string }> = {};
 
         workOrders.forEach(wo => {
+            if (allForemenForProject && allForemenForProject !== '__ALL__' && wo.projectId !== allForemenForProject) return;
             wo.categories?.forEach(cat => {
                 cat.tasks.forEach(task => {
                     const isResponsible = task.responsibleStaffIds?.includes(currentUserId);
@@ -219,13 +225,13 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                         h?.date?.startsWith(monthPrefix) && h.labor?.some(l => l.staffId === currentUserId)
                     );
 
-                    if (isResponsible || hasHistory) {
+                    if (allForemenForProject || isResponsible || hasHistory) {
                         const historyInMonth = (task.history || []).filter(h => h?.date?.startsWith(monthPrefix));
                         if (historyInMonth.length > 0) {
                             const sortedH = [...historyInMonth].sort((a, b) => a.date.localeCompare(b.date));
                             const start = sortedH[0].date.split('T')[0];
                             const actualEnd = sortedH[sortedH.length - 1].date.split('T')[0];
-                            const isCompleted = task.status === 'Completed' || task.status === 'Rejected';
+                            const isCompleted = ['For Checking', 'pending_delivery', 'Complete', 'Rejected'].includes(task.status);
 
                             taskDetails[task.id] = { start, end: isCompleted ? actualEnd : '9999-12-31', woId: wo.id };
                         }
@@ -253,7 +259,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
         });
 
         return { taskRowMap: rowMap, woColorMap: woColorMapTable, monthTasks: sortedTasks, maxRows: Math.max(slotEndDates.length, 1) };
-    }, [workOrders, currentUserId, year, month]);
+    }, [workOrders, currentUserId, year, month, allForemenForProject]);
 
     const dayNames = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
     const calendarCells = [];

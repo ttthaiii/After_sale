@@ -18,7 +18,7 @@ const Sidebar = () => {
             label: 'ภาพรวมระบบ',
             path: '/dashboard',
             icon: <LayoutDashboard size={20} />,
-            roles: ['Foreman', 'BackOffice', 'Approver', 'Admin', 'Manager']
+            roles: ['Foreman', 'Approver', 'Admin', 'Manager']
         },
         {
             label: 'ใบงานและติดตามผล',
@@ -36,19 +36,19 @@ const Sidebar = () => {
             label: 'ตรวจสอบ/อนุมัติ',
             path: '/evaluation',
             icon: <CheckCircle2 size={20} />,
-            roles: ['BackOffice', 'Admin', 'Manager', 'Approver']
+            roles: ['Admin', 'Manager', 'Approver']
         },
         {
             label: 'ติดตามสถานะ',
             path: '/sla-monitor',
             icon: <Clock size={20} />,
-            roles: ['BackOffice', 'Approver', 'Admin', 'Manager']
+            roles: ['Approver', 'Admin', 'Manager']
         },
         {
             label: 'ประวัติงาน',
             path: '/history',
             icon: <Archive size={20} />,
-            roles: ['Foreman', 'BackOffice', 'Approver', 'Admin', 'Manager']
+            roles: ['Foreman', 'Approver', 'Admin', 'Manager']
         },
         {
             label: 'จัดการข้อมูล',

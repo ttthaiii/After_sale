@@ -25,7 +25,7 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
 
     // Filter to only Foremen and search match
     const foremen = staffList
-        .filter(s => s.role === 'Foreman' && s.systemCode === 'AS')
+        .filter(s => s.role === 'Foreman' && s.systemCode === 'AS' && s.isActive !== false)
         .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                      (s.affiliation || '').toLowerCase().includes(searchTerm.toLowerCase()));
 

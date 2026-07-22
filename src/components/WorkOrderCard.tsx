@@ -13,7 +13,7 @@ interface WorkOrderCardProps {
     variant?: 'default' | 'compact';
     onClick?: () => void;
     initialExpanded?: boolean;
-    taskDecisions?: Record<string, 'Approved' | 'Assigned' | 'Rejected'>;
+    taskDecisions?: Record<string, 'Assigned' | 'Rejected'>;
     style?: React.CSSProperties;
 }
 
@@ -41,28 +41,34 @@ const WorkOrderCard = ({
 
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'Pending': return '#f59e0b'; // Amber
-            case 'Approved': return '#10b981'; // Emerald
+            case 'Draft': return '#94a3b8'; // Slate
+            case 'Evaluating': return '#f59e0b'; // Amber
+            case 'Assigned': return '#6366f1'; // Indigo
             case 'Partially Approved': return '#84cc16'; // Lime
             case 'Rejected': return '#ef4444'; // Red
             case 'In Progress': return '#3b82f6'; // Blue
-            case 'Completed': return '#8b5cf6'; // Violet
-            case 'Verified': return '#06b6d4'; // Cyan
-            case 'Assigned': return '#f59e0b'; // Amber
+            case 'For Checking': return '#0891b2'; // Cyan
+            case 'pending_delivery': return '#d97706'; // Amber-dark
+            case 'customer_reject': return '#ef4444'; // Red
+            case 'Complete': return '#059669'; // Green
+            case 'Cancelled': return '#64748b'; // Gray
             default: return '#6b7280';
         }
     };
 
     const getStatusLabel = (status: string) => {
         switch (status) {
-            case 'Pending': return 'รอตรวจสอบ';
-            case 'Approved': return 'อนุมัติแล้ว';
+            case 'Draft': return 'ร่าง';
+            case 'Evaluating': return 'รอประเมิน';
+            case 'Assigned': return 'มอบหมายแล้ว';
             case 'Partially Approved': return 'อนุมัติบางส่วน';
             case 'Rejected': return 'ไม่อนุมัติ';
             case 'In Progress': return 'กำลังดำเนินการ';
-            case 'Completed': return 'เสร็จสมบูรณ์';
-            case 'Verified': return 'ตรวจสอบแล้ว';
-            case 'Assigned': return 'มอบหมายแล้ว';
+            case 'For Checking': return 'งานเสร็จ · รอออก QR';
+            case 'pending_delivery': return 'รอลูกค้าประเมิน';
+            case 'customer_reject': return 'ลูกค้าตีกลับ';
+            case 'Complete': return 'เสร็จสมบูรณ์';
+            case 'Cancelled': return 'ยกเลิก';
             default: return status;
         }
     };
@@ -416,7 +422,7 @@ const WorkOrderCard = ({
 
                                     {isExpanded && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0' }}>
-                                            {wo.status === 'Evaluating' || wo.status === 'Rejected' || cat.tasks.some(t => t.status === 'Pending') ? (
+                                            {wo.status === 'Evaluating' || wo.status === 'Rejected' || cat.tasks.some(t => t.status === 'Evaluating') ? (
                                                 /* TABLE VIEW FOR INSPECTION (PENDING) */
                                                 <div style={{
                                                     background: '#ffffff',
@@ -446,8 +452,8 @@ const WorkOrderCard = ({
                                                                     ((task as any).images && (task as any).images.length > 0 && (task as any).images[0]) ||
                                                                     task.beforePhotoUrl;
                                                                 const currentStatus = taskDecisions?.[task.id] || task.status;
-                                                                const isDecided = currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Rejected' || currentStatus === 'Verified';
-                                                                const trBgColor = (currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Verified')
+                                                                const isDecided = currentStatus === 'Assigned' || currentStatus === 'Rejected' || currentStatus === 'Complete';
+                                                                const trBgColor = (currentStatus === 'Assigned' || currentStatus === 'Complete')
                                                                     ? 'rgba(16, 185, 129, 0.03)'
                                                                     : currentStatus === 'Rejected'
                                                                         ? 'rgba(239, 68, 68, 0.03)'
@@ -481,7 +487,7 @@ const WorkOrderCard = ({
                                                                                 )}
                                                                             </div>
                                                                             {task.position && <div style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>จุดที่พบ: {task.position}</div>}
-                                                                            {task.currentRevision && task.currentRevision !== 'rev00' && (task.status === 'Rejected' || (task.status === 'in-progress' && task.evaluationStatus === 'Rejected')) && (
+                                                                            {task.currentRevision && task.currentRevision !== 'rev00' && (task.status === 'Rejected' || task.status === 'Evaluating') && (
                                                                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.72rem', color: '#be123c', background: '#fff1f2', padding: '8px 12px', borderRadius: '8px', marginTop: '6px', border: '1px solid #ffe4e6', width: 'fit-content' }}>
                                                                                      <div><strong>เหตุผลการตีกลับ:</strong> {task.rejectReason || task.revisionName || 'ไม่ระบุสาเหตุ'}</div>
                                                                                      {(task.contactName || task.contactPhone) && (
@@ -526,7 +532,7 @@ const WorkOrderCard = ({
                                                                             </div>
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'center' }}>
-                                                                            {currentStatus === 'Approved' || currentStatus === 'Assigned' || currentStatus === 'Verified' ? (
+                                                                            {currentStatus === 'Assigned' || currentStatus === 'Complete' ? (
                                                                                 <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                                     <CheckCircle2 size={24} />
                                                                                 </div>
@@ -539,7 +545,7 @@ const WorkOrderCard = ({
                                                                             )}
                                                                         </td>
                                                                         <td style={{ padding: '20px', textAlign: 'right' }}>
-                                                                             {wo.status === 'Rejected' && task.evaluationStatus === 'Rejected' ? (
+                                                                             {wo.status === 'Rejected' && task.status === 'Rejected' ? (
                                                                                  <button
                                                                                      onClick={(e) => {
                                                                                          e.stopPropagation();

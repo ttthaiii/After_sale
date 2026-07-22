@@ -18,7 +18,7 @@ interface PreHandoverAssignModalProps {
 const SLA_OPTIONS = ['7-14d', '14-30d', '30-60d', '60d+'];
 
 const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: PreHandoverAssignModalProps) => {
-    const foremanList = staffList.filter(s => s.role === 'Foreman');
+    const foremanList = staffList.filter(s => s.role === 'Foreman' && s.isActive !== false);
 
     const [confirmedSla, setConfirmedSla] = useState((wo as any).phEstimatedSla || '14-30d');
     const [assignments, setAssignments] = useState<Record<string, Assignment>>({});

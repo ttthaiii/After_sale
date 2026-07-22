@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Download, Camera, User, UserCheck, CheckCircle, Clock, Activity, ChevronDown, Printer, Star, RotateCcw } from 'lucide-react';
 import { WorkOrder, MasterTask, Project, Staff, Contractor } from '../types';
 import { formatDate, formatDateTime } from '../utils/date';
+import { getSatisfactionAverage } from '../utils/satisfaction';
 import { db } from '../lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 
@@ -135,14 +136,14 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
         return !isAdminOrFakeReject;
     });
     const totalCount = validTasks.length > 0 ? validTasks.length : allTasks.length;
-    const completedCount = validTasks.filter(t => t && t.status === 'Completed').length;
+    const completedCount = validTasks.filter(t => t && t.status === 'Complete').length;
     const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
     if (clickedTask?.status === 'Rejected' || workOrder.status === 'Rejected') {
         endDateStr = 'ปฏิเสธงาน';
     } else if ((clickedTask?.status as string) === 'Cancelled' || workOrder.status === 'Cancelled') {
         endDateStr = 'ยกเลิก';
-    } else if (workOrder.status === 'Completed' || percentage === 100) {
+    } else if (workOrder.status === 'Complete' || percentage === 100) {
         let latestDate = new Date(workOrder.createdAt).getTime();
         if (workOrder.submittedAt) {
             latestDate = new Date(workOrder.submittedAt).getTime();
@@ -186,9 +187,9 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
 
         const sortedRevDates = revReports.map((r: any) => r.date).filter(Boolean).sort();
 
-        const completionDate = task.status === 'Completed' && sortedRevDates.length > 0
+        const completionDate = task.status === 'Complete' && sortedRevDates.length > 0
             ? new Date(sortedRevDates[sortedRevDates.length - 1])
-            : task.status === 'Completed' && task.history && task.history.length > 0
+            : task.status === 'Complete' && task.history && task.history.length > 0
                 ? new Date(task.history[task.history.length - 1].date)
                 : new Date();
 
@@ -353,8 +354,8 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                     </span>
                 );
             }
-            if (targetStatus === 'Completed' || targetStatus === 'Verified') {
-                if (targetStatus === 'Verified') {
+            if (targetStatus === 'For Checking' || targetStatus === 'pending_delivery' || targetStatus === 'Complete') {
+                if (targetStatus === 'Complete') {
                     return (
                         <span style={{
                             fontSize: '0.8rem',
@@ -473,8 +474,8 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                 </span>
             );
         }
-        if (targetStatus === 'Completed' || targetStatus === 'Verified' || percentage === 100) {
-            if (targetStatus === 'Verified') {
+        if (targetStatus === 'For Checking' || targetStatus === 'pending_delivery' || targetStatus === 'Complete' || percentage === 100) {
+            if (targetStatus === 'Complete') {
                 return (
                     <span style={{
                         fontSize: '0.8rem',
@@ -893,7 +894,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                 const latestRevId = taskRevisions[task.id]?.[0]?.id || task.currentRevision || 'rev00';
                                 const isSelectedRevRejected = selectedRevId !== latestRevId && (taskRevisions[task.id]?.length ?? 0) > 1;
                                 const revRejectReason = (currentRevObj as any).rejectReason || task.rejectReason;
-                                const isCompleted = task.status === 'Completed' || task.status === 'completed' || task.dailyProgress === 100;
+                                const isCompleted = task.status === 'Complete' || task.dailyProgress === 100;
                                 const isUserContributor = currentUserId && (
                                     (task.responsibleStaffIds && task.responsibleStaffIds.includes(currentUserId)) ||
                                     (task.history && task.history.some(h =>
@@ -1394,11 +1395,11 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         {/* Left Side: Rating & Evaluation Checklist */}
                         <div>
                             <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>คะแนนประเมินโดยลูกค้า</div>
-                            {workOrder.status === 'Verified' ? (
+                            {workOrder.status === 'Complete' ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <span style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a' }}>
-                                            {((workOrder as any).overallSatisfaction || '5.0')}
+                                            {getSatisfactionAverage((workOrder as any).satisfactionSurvey) || '-'}
                                         </span>
                                         <div style={{ display: 'flex', color: '#f59e0b' }}>
                                             <Star size={20} fill="#f59e0b" style={{ stroke: 'none' }} />

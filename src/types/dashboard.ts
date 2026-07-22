@@ -47,6 +47,7 @@ export interface DashboardStats {
     total: number;
     closed: number;
     open: number;
+    totalTasksInScope: number;
     evaluating: number;
     slaScore: number;
     highRisk: number;

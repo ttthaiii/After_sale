@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loader2, FileText, Paperclip } from 'lucide-react';
+import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loader2, FileText, Paperclip, Ban } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -9,6 +9,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
 import { logService } from '../services/logService';
 import { Project, WorkOrder, Category, WorkOrderType, MasterTask } from '../types';
+import { deriveWoStatus } from '../utils/deriveWoStatus';
 import LoadingOverlay from './LoadingOverlay';
 import CustomDateInput from './CustomDateInput';
 
@@ -32,14 +33,31 @@ const CATEGORIES_LIST = [
     'งานพื้น/พื้นไม้ลามิเนต',
 ];
 
+// A task is "decided" (locked from foreman edits) once it has moved past evaluation
+const DECIDED_STATUSES = ['Assigned', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'];
+const isItemDecided = (item: any) => DECIDED_STATUSES.includes(item.status);
+
 const checkGroupHasReadOnlyItems = (group: { items: any[] }) => {
-    return group.items.some(item => 
-        item.evaluationStatus === 'Approved' || 
-        item.evaluationStatus === 'Assigned' || 
-        item.status === 'completed' || 
-        item.status === 'in-progress' || 
-        item.status === 'for-checking'
-    );
+    return group.items.some(isItemDecided);
+};
+
+// Cancelling a Rejected task must preserve history (audit trail + SLA reporting) instead of
+// deleting it outright — see .sessions/ discussion on WOA reject flow (2026-07-15).
+// Rejected+archived tasks are excluded from deriveWoStatus's rollup (see utils/deriveWoStatus.ts).
+const archiveRejectedItem = (item: any) => {
+    const { id: itemId, detail, position, amount, unit, images, ...rest } = item;
+    return {
+        ...rest,
+        id: itemId,
+        name: detail || item.name || 'No Detail',
+        status: 'Rejected',
+        taskArchived: true,
+        position,
+        amount,
+        unit,
+        images: Array.from(new Set(images || [])),
+        description: detail,
+    };
 };
 
 interface ForemanReportModalProps {
@@ -51,7 +69,7 @@ interface ForemanReportModalProps {
 }
 
 const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkType = 'AfterSale', editWorkOrder }: ForemanReportModalProps) => {
-    const { addWorkOrder } = useWorkOrders();
+    const { addWorkOrder, cancelRejectedTask } = useWorkOrders();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
     const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -66,7 +84,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     }, [isOpen]);
 
     // ✅ Filter projects based on user assignment
-    const projects = user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'BackOffice'
+    const projects = user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'Approver'
         ? allProjects
         : allProjects.filter(p => user?.assignedProjects?.includes(p.code));
 
@@ -141,6 +159,11 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         }
     ]);
 
+    // Rejected tasks the FM cancelled (taskArchived=true) — kept out of `groups` so they no longer
+    // render in the form, but re-merged into their category's tasks on save so history is preserved.
+    // Keyed by category id, since a category can be fully cancelled (all items archived) and disappear from `groups`.
+    const [archivedTasks, setArchivedTasks] = useState<Record<string, { categoryName: string; tasks: any[] }>>({});
+
     // PreHandover: PDF documents + WO-level SLA
     const [phDocuments, setPhDocuments] = useState<{ name: string; url: string; size: number }[]>([]);
     const [phSla, setPhSla] = useState('14-30d');
@@ -206,10 +229,11 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         : [{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [], defectCount: 0 }]);
                 } else {
                     // AfterSale: Map Categories → Groups with photo fallback chain
+                    // Cancelled (taskArchived) tasks are hidden from the form — kept in archivedTasks instead.
                     setGroups(cats.map(cat => ({
                         id: cat.id,
                         category: cat.name,
-                        items: (cat.tasks || []).map(task => ({
+                        items: (cat.tasks || []).filter(task => !task.taskArchived).map(task => ({
                             ...task,
                             id: task.id,
                             position: task.position || '',
@@ -228,6 +252,14 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             ).filter(url => url && typeof url === 'string') as string[]))
                         }))
                     })));
+                    const nextArchived: Record<string, { categoryName: string; tasks: any[] }> = {};
+                    cats.forEach(cat => {
+                        const archived = (cat.tasks || []).filter(task => task.taskArchived);
+                        if (archived.length > 0) {
+                            nextArchived[cat.id] = { categoryName: cat.name, tasks: archived };
+                        }
+                    });
+                    setArchivedTasks(nextArchived);
                 }
             }
             // else: same WO already loaded with data → don't overwrite user's in-progress edits
@@ -245,6 +277,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             }));
             setPhDocuments([]);
             setPhSla('14-30d');
+            setArchivedTasks({});
             if (initialWorkType === 'PreHandover') {
                 setGroups([{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [], defectCount: 0 }]);
             } else {
@@ -268,10 +301,30 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         setGroups(groups.map(g => g.id === groupId ? { ...g, defectCount: count } : g));
     };
 
-    const removeGroup = (groupId: string) => {
-        if (groups.length > 1) {
-            setGroups(groups.filter(g => g.id !== groupId));
+    const removeGroup = async (groupId: string) => {
+        if (groups.length <= 1) return;
+        const group = groups.find(g => g.id === groupId);
+        const rejectedItems = group?.items.filter(i => i.status === 'Rejected') || [];
+        if (rejectedItems.length > 0 && editWorkOrder) {
+            // Cancelling a Rejected task persists immediately — no separate Submit step needed.
+            setIsSubmitting(true);
+            try {
+                for (const item of rejectedItems) {
+                    await cancelRejectedTask(editWorkOrder.id, groupId, item.id);
+                }
+            } catch (err) {
+                console.error('Failed to cancel rejected task(s):', err);
+                alert('ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (err instanceof Error ? err.message : String(err)) + ')');
+                setIsSubmitting(false);
+                return;
+            }
+            setIsSubmitting(false);
+            setArchivedTasks(prev => {
+                const bucket = prev[groupId] || { categoryName: group!.category, tasks: [] };
+                return { ...prev, [groupId]: { categoryName: bucket.categoryName, tasks: [...bucket.tasks, ...rejectedItems.map(archiveRejectedItem)] } };
+            });
         }
+        setGroups(groups.filter(g => g.id !== groupId));
     };
 
     const updateGroupCategory = (groupId: string, newCategory: string) => {
@@ -290,7 +343,26 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         }));
     };
 
-    const removeItemFromGroup = (groupId: string, itemId: string) => {
+    const removeItemFromGroup = async (groupId: string, itemId: string) => {
+        const group = groups.find(g => g.id === groupId);
+        const item = group?.items.find(i => i.id === itemId);
+        if (item && item.status === 'Rejected' && editWorkOrder) {
+            // Cancelling a Rejected task persists immediately — no separate Submit step needed.
+            setIsSubmitting(true);
+            try {
+                await cancelRejectedTask(editWorkOrder.id, groupId, itemId);
+            } catch (err) {
+                console.error('Failed to cancel rejected task:', err);
+                alert('ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (err instanceof Error ? err.message : String(err)) + ')');
+                setIsSubmitting(false);
+                return;
+            }
+            setIsSubmitting(false);
+            setArchivedTasks(prev => {
+                const bucket = prev[groupId] || { categoryName: group!.category, tasks: [] };
+                return { ...prev, [groupId]: { categoryName: bucket.categoryName, tasks: [...bucket.tasks, archiveRejectedItem(item)] } };
+            });
+        }
         setGroups(groups.map(g => {
             if (g.id === groupId) {
                 return {
@@ -518,14 +590,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 name: group.category,
                 tasks: group.items.map(item => {
                     const { id: itemId, detail, position, amount, unit, images, ...rest } = item;
-                    const isItemReadOnly =
-                        item.evaluationStatus === 'Approved' ||
-                        item.evaluationStatus === 'Assigned' ||
-                        item.status === 'completed' ||
-                        item.status === 'in-progress' ||
-                        item.status === 'for-checking';
+                    const isItemReadOnly = isItemDecided(item);
 
-                    const finalStatus = isItemReadOnly ? (item.status || 'Pending') : (isDraft ? (item.status || 'Pending') : 'Pending');
+                    const finalStatus = isItemReadOnly ? (item.status || 'Evaluating') : (isDraft ? (item.status || 'Draft') : 'Evaluating');
                     const finalRootCause = isItemReadOnly ? (item.rootCause || '') : (isDraft ? (item.rootCause || '') : '');
 
                     return {
@@ -548,6 +615,25 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                     } as any;
                 })
             })).filter(c => c.tasks.length > 0);
+
+            // Re-merge cancelled (taskArchived) tasks the FM removed from the live form —
+            // preserves their Rejected history/audit trail instead of deleting them (see archiveRejectedItem).
+            Object.entries(archivedTasks).forEach(([catId, bucket]) => {
+                if (!bucket.tasks || bucket.tasks.length === 0) return;
+                const existingCat = categories.find(c => c.id === catId);
+                if (existingCat) {
+                    existingCat.tasks = [...existingCat.tasks, ...bucket.tasks];
+                } else {
+                    categories.push({ id: catId, name: bucket.categoryName, tasks: bucket.tasks } as Category);
+                }
+            });
+
+            // Status is derived from the final task set, not hardcoded — e.g. cancelling the only
+            // Rejected task while a sibling is already Assigned must NOT bounce the WO back to
+            // 'Evaluating' (nothing is actually pending admin review in that case).
+            if (!isDraft) {
+                newWorkOrder.status = deriveWoStatus(categories.flatMap(c => c.tasks) as MasterTask[]);
+            }
         }
 
         newWorkOrder.categories = categories;
@@ -564,6 +650,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
         if (isDraft) {
             onClose();
+        } else if (newWorkOrder.status !== 'Evaluating') {
+            // Nothing actually needs admin review (e.g. FM only cancelled a Rejected task while
+            // other tasks stayed Assigned/etc.) — skip the "รอประเมิน" notification entirely.
+            setStep('success');
         } else {
             // ✅ Send Notification to all Admins/Managers
             try {
@@ -612,6 +702,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     };
 
     const isAfterSale = formState.type === 'AfterSale';
+
+    // Cancelling a Rejected task now persists immediately (see removeItemFromGroup/removeGroup) —
+    // once every remaining task is decided/locked, there's nothing left to Submit/Save Draft.
+    const hasEditableTask = !isAfterSale || groups.some(g => g.items.some(item => !isItemDecided(item)));
 
     if (!isOpen) return null;
 
@@ -1139,7 +1233,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                         onClick={() => removeGroup(group.id)}
                                                         style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 500 }}
                                                     >
-                                                        <Trash2 size={16} /> ลบหมวด
+                                                        {group.items.some(i => i.status === 'Rejected')
+                                                            ? <><Ban size={16} /> ยกเลิกงานนี้</>
+                                                            : <><Trash2 size={16} /> ลบหมวด</>}
                                                     </button>
                                                 )}
                                             </div>
@@ -1147,12 +1243,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             {/* Items Container */}
                                             <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
                                                 {group.items.map((item, idx) => {
-                                                    const isItemReadOnly = 
-                                                        item.evaluationStatus === 'Approved' || 
-                                                        item.evaluationStatus === 'Assigned' || 
-                                                        item.status === 'completed' || 
-                                                        item.status === 'in-progress' || 
-                                                        item.status === 'for-checking';
+                                                    const isItemReadOnly = isItemDecided(item);
                                                     return (
                                                         <div key={item.id} style={{
                                                             position: 'relative',
@@ -1164,8 +1255,8 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     position: 'absolute',
                                                                     top: '0',
                                                                     right: '0',
-                                                                    background: item.evaluationStatus === 'Approved' ? '#dcfce7' : '#e0e7ff',
-                                                                    color: item.evaluationStatus === 'Approved' ? '#166534' : '#3730a3',
+                                                                    background: item.status === 'Complete' ? '#dcfce7' : '#e0e7ff',
+                                                                    color: item.status === 'Complete' ? '#166534' : '#3730a3',
                                                                     fontSize: '0.75rem',
                                                                     fontWeight: 700,
                                                                     padding: '6px 12px',
@@ -1177,30 +1268,55 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                     zIndex: 10
                                                                 }}>
                                                                     <ClipboardCheck size={14} /> 
-                                                                    {item.evaluationStatus === 'Approved' ? 'อนุมัติแล้ว' : 'มอบหมายงานแล้ว'}
+                                                                    {item.status === 'Complete' ? 'เสร็จแล้ว' : 'มอบหมายงานแล้ว'}
                                                                 </div>
                                                             )}
-                                                            {group.items.length > 1 && !isItemReadOnly && (
-                                                                <button
-                                                                    onClick={() => removeItemFromGroup(group.id, item.id)}
-                                                                    style={{ 
-                                                                        position: 'absolute', 
-                                                                        top: '0', 
-                                                                        right: '0', 
-                                                                        color: '#ef4444', 
-                                                                        background: 'none', 
-                                                                        border: 'none', 
-                                                                        cursor: 'pointer', 
-                                                                        display: 'flex', 
-                                                                        alignItems: 'center', 
-                                                                        justifyContent: 'center',
-                                                                        padding: '4px',
-                                                                        zIndex: 10
-                                                                    }}
-                                                                    title="ลบรายการ"
-                                                                >
-                                                                    <Trash2 size={18} />
-                                                                </button>
+                                                            {!isItemReadOnly && (
+                                                                item.status === 'Rejected' ? (
+                                                                    <button
+                                                                        onClick={() => removeItemFromGroup(group.id, item.id)}
+                                                                        style={{
+                                                                            position: 'absolute',
+                                                                            top: '0',
+                                                                            right: '0',
+                                                                            color: '#ef4444',
+                                                                            background: '#fef2f2',
+                                                                            border: '1px solid #fecaca',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                            padding: '5px 10px',
+                                                                            borderRadius: '8px',
+                                                                            fontSize: '0.75rem',
+                                                                            fontWeight: 600,
+                                                                            zIndex: 10
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 size={14} /> ยกเลิกงานนี้
+                                                                    </button>
+                                                                ) : group.items.length > 1 && (
+                                                                    <button
+                                                                        onClick={() => removeItemFromGroup(group.id, item.id)}
+                                                                        style={{
+                                                                            position: 'absolute',
+                                                                            top: '0',
+                                                                            right: '0',
+                                                                            color: '#ef4444',
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            padding: '4px',
+                                                                            zIndex: 10
+                                                                        }}
+                                                                        title="ลบรายการ"
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                )
                                                             )}
                                                             {/* SYMMETRICAL GRID: Updated for 5 columns */}
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr', gap: '16px', marginBottom: '20px' }}>
@@ -1430,45 +1546,51 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         {/* Footer */}
                         <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
                             <button
-                                onClick={handleClose}
+                                // Nothing left to edit once every task is decided/cancelled — everything is
+                                // already persisted, so closing has nothing unsaved to warn about.
+                                onClick={hasEditableTask ? handleClose : onClose}
                                 style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, transition: 'all 0.2s' }}
                                 onMouseOver={(e) => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.borderColor = '#9ca3af'; }}
                                 onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#d1d5db'; }}
                             >
-                                Cancel
+                                {hasEditableTask ? 'Cancel' : 'ปิด'}
                             </button>
-                            <button
-                                onClick={() => {
-                                    if (!formState.projectId) {
-                                        setShowProjectError(true);
-                                        alert('กรุณาเลือกโครงการ (Please select a project)');
-                                        return;
-                                    }
-                                    setIsPreviewDraft(true);
-                                    setStep('preview');
-                                }}
-                                style={{ padding: '10px 24px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}
-                                onMouseOver={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#94a3b8'; }}
-                                onMouseOut={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
-                            >
-                                บันทึกแบบร่าง (Save Draft)
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!formState.projectId) {
-                                        setShowProjectError(true);
-                                        alert('กรุณาเลือกโครงการ (Please select a project)');
-                                        return;
-                                    }
-                                    setIsPreviewDraft(false);
-                                    setStep('preview');
-                                }}
-                                style={{ padding: '10px 32px', background: '#4f46e5', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
-                                onMouseOver={(e) => e.currentTarget.style.background = '#4338ca'}
-                                onMouseOut={(e) => e.currentTarget.style.background = '#4f46e5'}
-                            >
-                                <Save size={20} /> ส่งข้อมูล (Submit Job)
-                            </button>
+                            {hasEditableTask && (
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            if (!formState.projectId) {
+                                                setShowProjectError(true);
+                                                alert('กรุณาเลือกโครงการ (Please select a project)');
+                                                return;
+                                            }
+                                            setIsPreviewDraft(true);
+                                            setStep('preview');
+                                        }}
+                                        style={{ padding: '10px 24px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                        onMouseOver={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#94a3b8'; }}
+                                        onMouseOut={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                                    >
+                                        บันทึกแบบร่าง (Save Draft)
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (!formState.projectId) {
+                                                setShowProjectError(true);
+                                                alert('กรุณาเลือกโครงการ (Please select a project)');
+                                                return;
+                                            }
+                                            setIsPreviewDraft(false);
+                                            setStep('preview');
+                                        }}
+                                        style={{ padding: '10px 32px', background: '#4f46e5', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
+                                        onMouseOver={(e) => e.currentTarget.style.background = '#4338ca'}
+                                        onMouseOut={(e) => e.currentTarget.style.background = '#4f46e5'}
+                                    >
+                                        <Save size={20} /> ส่งข้อมูล (Submit Job)
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </>
                 )}

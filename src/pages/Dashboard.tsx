@@ -21,6 +21,8 @@ import {
     UserCheck
 } from 'lucide-react';
 import { formatDate, formatDateTime } from '../utils/date';
+import { isWoaWop } from '../utils/workOrder';
+import { computeJobSLA, getCountedSubtasks } from '../utils/jobSla';
 import {
     XAxis,
     YAxis,
@@ -28,7 +30,6 @@ import {
     Tooltip,
     Legend,
     ResponsiveContainer,
-    BarChart,
     Bar,
     Cell,
     ReferenceLine,
@@ -900,11 +901,81 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
     );
 };
 
+// ── Central SLA model (T-343) ────────────────────────────────────────────────
+// Single source of truth for the dashboard's SLA on-time / late calculation.
+// User-locked model (supersedes T-342):
+//   • eligible    = foreman work finished (dailyProgress===100) — NOT status 'Complete'
+//   • start       = task.startDate@08:00 → slaStartTime → wo.createdAt
+//   • end         = task.completedAt (the progress-100 date) → earliest history progress===100
+//                   → last history date. NEVER `now` (customer-wait must not count vs the foreman).
+//   • duration    = max(calendarHours, workHours) — waiting-for-materials counts against SLA
+//   • onTime      = duration <= slaLimit
+//   • completedMs = end (used for completion-month windowing of SLA-performance cards)
+// Pure function — no component state, no side effects.
+const SLA_HOURS_MAP: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+
+interface TaskSLA {
+    eligible: boolean;
+    startMs: number;
+    endMs: number | null;
+    calHours: number;
+    workHours: number;
+    duration: number;
+    limit: number;
+    onTime: boolean;
+    deviation: number;
+    completedMs: number | null;
+}
+
+const computeTaskSLA = (t: any, wo: any): TaskSLA => {
+    const limit = SLA_HOURS_MAP[t.slaCategory || '24h'] || 24;
+    const startMs = t.startDate
+        ? new Date(`${t.startDate.split('T')[0]}T08:00:00+07:00`).getTime()
+        : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
+
+    const history = [...(t.history || [])].sort(
+        (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const firstP100 = history.find((h: any) => Number(h.progress) === 100);
+    const lastHist = history[history.length - 1];
+    const endMs =
+        t.completedAt ? new Date(t.completedAt).getTime() :
+        firstP100 ? new Date(firstP100.date).getTime() :
+        lastHist ? new Date(lastHist.date).getTime() :
+        null;
+
+    const workHours = history.reduce((acc: number, h: any) => {
+        let hTotal = 0;
+        (h.labor || []).forEach((lab: any) => {
+            const hrs = lab.shifts
+                ? (lab.shifts.normal ? 8 : 0) + (lab.shifts.otMorning ? 2 : 0) + (lab.shifts.otNoon ? 1 : 0) + (lab.shifts.otEvening ? 3 : 0)
+                : (lab.timeType === 'Normal' ? 8 : 2);
+            hTotal += hrs * (lab.amount || 1);
+        });
+        return acc + hTotal;
+    }, 0);
+
+    // Gate: foreman work finished AND a usable, non-inverted end timestamp.
+    const workDone = (t.dailyProgress ?? t.progress ?? 0) === 100;
+    const validEnd = endMs !== null && endMs >= startMs;
+    const eligible = workDone && validEnd;
+
+    const calHours = validEnd ? (endMs! - startMs) / 3600000 : 0;
+    const duration = Math.max(calHours, workHours);
+    const onTime = eligible && duration <= limit;
+    const deviation = 100 - (duration / limit * 100);
+
+    return { eligible, startMs, endMs, calHours, workHours, duration, limit, onTime, deviation, completedMs: endMs };
+};
+
 const Dashboard = () => {
-    const { workOrders, projects, staff, loading } = useWorkOrders();
+    const { workOrders: allWorkOrders, projects, staff, loading } = useWorkOrders();
+    // Shared collection also holds a separate "labor" system's records. Keep only
+    // this system's after-sale work (WOA = 'AfterSale', WOP = 'PreHandover').
+    const workOrders = useMemo(() => allWorkOrders.filter(isWoaWop), [allWorkOrders]);
     const { user } = useAuth();
     const navigate = useNavigate();
-    const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver' || (user?.role as any) === 'BackOffice';
+    const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver';
     const isForeman = user?.role === 'Foreman';
 
     const [adminActiveTab] = useState<'overview' | 'comparison'>(() => {
@@ -920,6 +991,10 @@ const Dashboard = () => {
         return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
     });
     const [selectedWeek, setSelectedWeek] = useState(0);
+    // T-337: admin dashboard defaults to ALL work orders (month filter stays available but secondary).
+    const [isAllTime, setIsAllTime] = useState<boolean>(isAdminOrManager);
+    // T-337: year dimension — all-work mode is scoped to a selected YEAR (default current year).
+    const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
     const [selectedBarWOs, setSelectedBarWOs] = useState<any>(null);
     const [statusFilters] = useState<string[]>([]);
     const [viewMode, setViewMode] = useState(isAdminOrManager ? 'insights' : 'operations');
@@ -927,31 +1002,54 @@ const Dashboard = () => {
     const [taskCatFilter, setTaskCatFilter] = useState<string>('');
     const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
     const [taskWoTypeFilter, setTaskWoTypeFilter] = useState<string>('');
+    const [taskSlaOutcomeFilter, setTaskSlaOutcomeFilter] = useState<'' | 'onTime' | 'late'>('');
+    // T-336: declared before activeForemen (which reads it for the project→foreman cascade) to avoid a TDZ error.
+    const [selectedSCurveProject, setSelectedSCurveProject] = useState<string>('');
 
     const activeForemen = useMemo(() => {
         const foremanIdsWithWork = new Set<string>();
-        workOrders.forEach((wo: any) => {
+        // T-336: bidirectional cascade — when a project is selected, list only its foremen.
+        const scope = selectedSCurveProject
+            ? workOrders.filter((wo: any) => wo.projectId === selectedSCurveProject)
+            : workOrders;
+        // T-336: collect ALL owner fields (matches the broadened owner-match) so a foreman who
+        // only works as subtaskOperator/helper still appears in the list.
+        scope.forEach((wo: any) => {
             if (wo.reporterId) foremanIdsWithWork.add(wo.reporterId);
-            wo.categories?.forEach((c: any) => c.tasks.forEach((t: any) => {
-                t.responsibleStaffIds?.forEach((id: string) => foremanIdsWithWork.add(id));
-            }));
+            if (wo.woOwnerId) foremanIdsWithWork.add(wo.woOwnerId);
+            wo.categories?.forEach((c: any) => {
+                if (c.assignedForemanId) foremanIdsWithWork.add(c.assignedForemanId);
+                c.tasks?.forEach((t: any) => {
+                    t.responsibleStaffIds?.forEach((id: string) => foremanIdsWithWork.add(id));
+                    if (t.subtaskOperatorId) foremanIdsWithWork.add(t.subtaskOperatorId);
+                    t.helperForemanIds?.forEach((id: string) => foremanIdsWithWork.add(id));
+                    if (t.assignedForeman) foremanIdsWithWork.add(t.assignedForeman);
+                });
+            });
         });
-        
+
         // ✅ ปรับให้หาเจอทั้งจาก ID เดิม และ Employee ID ใหม่
         return staff.filter((s: any) => {
             if (s.role !== 'Foreman') return false;
             return foremanIdsWithWork.has(s.id) || (s.employeeId && foremanIdsWithWork.has(s.employeeId));
         });
-    }, [staff, workOrders]);
+    }, [staff, workOrders, selectedSCurveProject]);
+
+    // T-336: keep the cascade consistent — if the selected foreman is no longer part of the
+    // selected project, clear it (mirrors the project-validity effect below).
+    useEffect(() => {
+        if (!selectedForemanId) return;
+        if (!activeForemen.some((s: any) => s.id === selectedForemanId)) {
+            setSelectedForemanId(null);
+        }
+    }, [activeForemen, selectedForemanId]);
 
     const [selectedViewWO, setSelectedViewWO] = useState<any>(null);
     const [selectedHistoryWO, setSelectedHistoryWO] = useState<any>(null);
     const [lastBarContext, setLastBarContext] = useState<any>(null);
-    const [activeProgressIndex, setActiveProgressIndex] = useState<any>(null);
     const [selectedLaborDetail, setSelectedLaborDetail] = useState<any>(null);
     const [highlightedSection] = useState<string | null>(null);
     const [drillDownProject, setDrillDownProject] = useState<string | null>(null);
-    const [selectedSCurveProject, setSelectedSCurveProject] = useState<string>('');
     const [highlightedWOId, setHighlightedWOId] = useState<string | null>(null);
     const [selectedTaskHistory, setSelectedTaskHistory] = useState<any>(null);
     const [selectedComparisonCategory, setSelectedComparisonCategory] = useState<string | null>(null);
@@ -964,10 +1062,12 @@ const Dashboard = () => {
     const getProjectName = (id: string) => projects.find((p: any) => p.id === id)?.name || id;
 
     const isWorkOrderCompleted = (wo: any) => {
-        if (wo.status === 'Completed' || wo.status === 'Verified') return true;
+        if (wo.status === 'Complete') return true;
         let totalP = 0, tCount = 0;
         wo.categories?.forEach((c: any) => c.tasks.forEach((t: any) => {
-            if (t.status !== 'Rejected') {
+            // Cancelled/archived tasks never happened — exclude from the average entirely,
+            // same as still-undecided Rejected tasks (confirmed with product owner).
+            if (t.status !== 'Rejected' && t.status !== 'Cancelled') {
                 totalP += t.dailyProgress || 0;
                 tCount++;
             }
@@ -975,6 +1075,8 @@ const Dashboard = () => {
         return tCount > 0 && Math.round(totalP / tCount) === 100;
     };
 
+    // T-347: job-level (per ใบงาน) — delegates to the central computeJobSLA helper so every
+    // subtask in the same WO shares one status, with the 7-day-remaining fixed threshold.
     const getSLATimeStatus = (wo: any) => {
         const now = Date.now();
         // 1. Separate Logic for "Evaluating" (Site Survey) status
@@ -994,78 +1096,85 @@ const Dashboard = () => {
             return null;
         }
 
-        // 2. Normal Logic for Active tasks (Approved/In Progress)
-        const slaHoursMap: any = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
-        let minHoursLeft = Infinity;
-        let isOverdue = false;
-        let mostUrgentLimit = 24;
-        let urgentTaskName = '';
-        let urgentCategoryName = '';
+        // 2. Job-level SLA (max-SLA-among-subtasks, 7-day fixed warning window)
+        const sla = computeJobSLA(wo);
+        if (!sla.isEligible || sla.phase !== 'in-progress' || sla.deadlineMs === null) return null;
 
-        wo.categories?.forEach((c: any) => {
-            c.tasks.forEach((t: any) => {
-                if (t.status === 'Completed' || t.status === 'Verified' || t.status === 'Rejected') return;
-                const limit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                const start = t.startDate
-                    ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
-                    : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
-                const hoursLeft = limit - (now - start) / (3600 * 1000);
-                if (hoursLeft < minHoursLeft) {
-                    minHoursLeft = hoursLeft;
-                    mostUrgentLimit = limit;
-                    urgentTaskName = t.name;
-                    urgentCategoryName = c.name;
-                }
-                if (hoursLeft < 0) isOverdue = true;
-            });
-        });
-        if (minHoursLeft === Infinity) return null;
-        const warningThreshold = mostUrgentLimit * 0.3;
-        if (isOverdue) {
-            const absHours = Math.abs(minHoursLeft);
+        if (sla.status === 'overdue') {
+            const absHours = Math.abs(now - sla.deadlineMs) / 3600000;
             const days = Math.floor(absHours / 24);
             const hours = Math.floor(absHours % 24);
             const minutes = Math.floor(absHours * 60 % 60);
             const timeStr = days > 0 ? `${days}ว ${hours}ชม.` : `${hours}ชม. ${minutes}น.`;
-            return { text: `เกินกำหนด ${timeStr}`, color: '#ef4444', bg: '#fee2e2', level: 'critical', taskName: urgentTaskName, categoryName: urgentCategoryName };
+            return { text: `เกินกำหนด ${timeStr}`, color: '#ef4444', bg: '#fee2e2', level: 'critical', hoursLeft: -absHours };
         } else {
-            const days = Math.floor(minHoursLeft / 24);
-            const hours = Math.floor(minHoursLeft % 24);
-            const isWarning = minHoursLeft < warningThreshold;
+            const hoursLeft = (sla.deadlineMs - now) / 3600000;
+            const days = Math.floor(hoursLeft / 24);
+            const hours = Math.floor(hoursLeft % 24);
+            const isWarning = sla.status === 'critical'; // ≤7 days left
             const color = isWarning ? '#f59e0b' : '#3b82f6';
             const bg = isWarning ? '#fef3c7' : '#eff6ff';
             return {
                 text: `เหลือ ${days > 0 ? `${days}ว ` : ''}${hours}ชม.`,
                 color, bg,
                 level: isWarning ? 'warning' : 'normal',
-                hoursLeft: minHoursLeft,
-                taskName: urgentTaskName,
-                categoryName: urgentCategoryName
+                hoursLeft,
             };
         }
     };
 
+    // T-336: the admin's selected foreman resolved to BOTH ids (staff.id + employeeId),
+    // because WOs store ownership under either one.
+    const selectedForemanIds = useMemo(() => {
+        if (!selectedForemanId) return null;
+        const ids = new Set<string>([selectedForemanId]);
+        const s = staff.find((x: any) => x.id === selectedForemanId);
+        if (s?.employeeId) ids.add(s.employeeId);
+        return ids;
+    }, [selectedForemanId, staff]);
+
+    // T-336: single owner definition matching /daily-report (DailyReportContext.tsx:825-841).
+    // Previously the admin view only checked reporterId + responsibleStaffIds, so a WO where the
+    // foreman is the actual worker (subtaskOperatorId) or a helper — e.g. project WH — was hidden.
+    const taskOwnedByForeman = (t: any, wo: any, ids: Set<string> | null) => {
+        if (!ids) return false;
+        const inSet = (v: any) => v != null && ids.has(v);
+        return (
+            (t.responsibleStaffIds || []).some((id: string) => ids.has(id)) ||
+            inSet(t.subtaskOperatorId) ||
+            (t.helperForemanIds || []).some((id: string) => ids.has(id)) ||
+            inSet(t.assignedForeman)
+        );
+    };
+    const foremanOwnsWO = (wo: any, ids: Set<string> | null) => {
+        if (!ids) return false;
+        const inSet = (v: any) => v != null && ids.has(v);
+        if (inSet(wo.reporterId) || inSet(wo.woOwnerId)) return true;
+        return (wo.categories || []).some((c: any) =>
+            inSet(c.assignedForemanId) ||
+            (c.tasks || []).some((t: any) => taskOwnedByForeman(t, wo, ids))
+        );
+    };
+    // T-336: task-level attribution for the admin's selected foreman (charts/hours), with the
+    // legacy reporter-fallback: an unassigned task counts if the foreman opened the WO.
+    const adminOwnsTask = (t: any, wo: any) => {
+        // T-336: no foreman picked → count all (data is already scoped by the project filter upstream).
+        if (!selectedForemanId) return true;
+        if (taskOwnedByForeman(t, wo, selectedForemanIds)) return true;
+        if ((t.responsibleStaffIds || []).length) return false;
+        return !!selectedForemanIds && (selectedForemanIds.has(wo.reporterId) || selectedForemanIds.has(wo.woOwnerId));
+    };
     const baseAccessibleWOs = useMemo(() => {
         if (!user) return [];
 
-        // Refined guard for Admin/Manager: 
-        // 1. In Overview mode: Show data if either a specific Foreman OR a Project filter is applied
-        // 2. In Comparison mode: ALWAYS show data (global view)
-        const hasAdminFilter = selectedForemanId || selectedSCurveProject;
-        const isComparisonMode = adminActiveTab === 'comparison';
-
-        if (isAdminOrManager && !hasAdminFilter && !isComparisonMode) return [];
-
-        if (isAdminOrManager && (hasAdminFilter || isComparisonMode)) {
+        // T-337: admin/manager always sees data by default (every accessible WO for the period),
+        // then foreman/project become OPTIONAL drill-down filters. The old "overview stays empty
+        // until a filter is set" gate is removed so month mode matches year mode (show everything).
+        if (isAdminOrManager) {
             return workOrders.filter((wo: any) => {
                 if (wo.isArchived || wo.status === 'Cancelled') return false;
-                
-                // ✅ Check both IDs for foreman matching
-                const matchesForeman = !selectedForemanId || (
-                    wo.reporterId === selectedForemanId || 
-                    wo.categories.some((c: any) => c.tasks.some((t: any) => t.responsibleStaffIds?.includes(selectedForemanId)))
-                );
-                
+                // ✅ T-336: broadened owner-match (subtaskOperator/helper/assigned) — matches /daily-report
+                const matchesForeman = !selectedForemanId || foremanOwnsWO(wo, selectedForemanIds);
                 const matchesProject = !selectedSCurveProject || wo.projectId === selectedSCurveProject;
                 return matchesForeman && matchesProject;
             });
@@ -1082,41 +1191,58 @@ const Dashboard = () => {
             })
             : workOrders;
         return base.filter((wo: any) => !wo.isArchived && wo.status !== 'Cancelled');
-    }, [workOrders, user, isAdminOrManager, selectedForemanId, selectedSCurveProject]);
+    }, [workOrders, user, isAdminOrManager, selectedForemanId, selectedForemanIds, selectedSCurveProject, isAllTime]);
 
     const availableProjectsThisMonth = useMemo(() => {
         if (!selectedMonth) return [];
         const [year, monthNum] = selectedMonth.split('-').map(Number);
         const startOfMonthTime = new Date(year, monthNum - 1, 1).getTime();
         const endOfMonthTime = new Date(year, monthNum, 0, 23, 59, 59).getTime();
+        // T-337: all-work mode marks a project active if it has work within the selected YEAR.
+        const yearStart = new Date(selectedYear, 0, 1).getTime();
+        const yearEnd = new Date(selectedYear, 11, 31, 23, 59, 59, 999).getTime();
         const statsMap: any = {};
 
-        const SKIP_STATUSES = ['Draft', 'Pending', 'Cancelled', 'Evaluating'];
+        const SKIP_STATUSES = ['Draft', 'Cancelled', 'Evaluating'];
         const matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
-        const viewingAs = isAdminOrManager ? selectedForemanId : null;
-        const hasOwnerTask = (wo: any) =>
-            (wo.categories || []).some((c: any) =>
+        // T-336: admin — no foreman picked → list ALL projects (enables picking a project first);
+        // foreman picked → narrow to that foreman (broadened owner-match). Foreman self-view unchanged.
+        const hasOwnerTask = (wo: any) => {
+            if (isAdminOrManager) {
+                if (!selectedForemanId) return true;
+                return foremanOwnsWO(wo, selectedForemanIds);
+            }
+            return (wo.categories || []).some((c: any) =>
                 (c.tasks || []).some((t: any) => {
                     const owners: string[] = t.responsibleStaffIds || [];
-                    if (viewingAs) return owners.includes(viewingAs) || (!owners.length && wo.reporterId === viewingAs);
                     return owners.some((id: string) => matchUid(id)) || (!owners.length && matchUid(wo.reporterId || ''));
                 })
             );
+        };
 
-        // Use baseAccessibleWOs so the project list doesn't shrink when one is selected
-        baseAccessibleWOs.forEach((wo: any) => {
+        // T-336: for admin, draw from ALL active WOs (not the gated baseAccessibleWOs which is empty
+        // until a filter is set) so the project dropdown is populated even before any selection, and
+        // does not shrink when a project is chosen. Foreman keeps their own accessible scope.
+        const source = isAdminOrManager
+            ? workOrders.filter((wo: any) => !wo.isArchived && wo.status !== 'Cancelled')
+            : baseAccessibleWOs;
+        source.forEach((wo: any) => {
             if (SKIP_STATUSES.includes(wo.status)) return;
             if (!hasOwnerTask(wo)) return;
             const created = new Date(wo.createdAt).getTime();
             const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
-            const isActive = created <= endOfMonthTime && (!completed || completed >= startOfMonthTime);
+            // T-345: an open WO is active only up to `now` → exclude it from a future window (start > now).
+            const nowMs = Date.now();
+            const isActive = isAllTime
+                ? (created <= yearEnd && (completed ? completed >= yearStart : nowMs >= yearStart))
+                : (created <= endOfMonthTime && (completed ? completed >= startOfMonthTime : nowMs >= startOfMonthTime));
             if (isActive) {
                 statsMap[wo.projectId] = true;
             }
         });
 
         return projects.filter((p: any) => statsMap[p.id]);
-    }, [baseAccessibleWOs, projects, selectedMonth, user, isAdminOrManager, selectedForemanId]);
+    }, [baseAccessibleWOs, workOrders, projects, selectedMonth, user, isAdminOrManager, selectedForemanId, selectedForemanIds, isAllTime, selectedYear]);
 
     const selectableProjects = useMemo(() => {
         if (!user || user.role !== 'Foreman') return projects;
@@ -1144,16 +1270,22 @@ const Dashboard = () => {
 
     const filteredData = useMemo(() => {
         let base = [...allAccessibleWOs];
-        const [year, month] = selectedMonth.split('-').map(Number);
-        const startOfMonth = new Date(year, month - 1, 1).getTime();
-        const endOfMonth = new Date(year, month, 0, 23, 59, 59).getTime();
-        base = base.filter((wo: any) => {
-            const created = new Date(wo.createdAt).getTime();
-            const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
-            // Original Strict Logic: Created or Completed in this month
-            return (created >= startOfMonth && created <= endOfMonth) || (completed && completed >= startOfMonth && completed <= endOfMonth);
-        });
-        if (selectedWeek > 0) {
+        // T-337: all-work mode windows by the selected YEAR; month mode windows by selectedMonth.
+        {
+            const [mY, mM] = selectedMonth.split('-').map(Number);
+            const startOfWin = isAllTime ? new Date(selectedYear, 0, 1).getTime() : new Date(mY, mM - 1, 1).getTime();
+            const endOfWin = isAllTime ? new Date(selectedYear, 11, 31, 23, 59, 59, 999).getTime() : new Date(mY, mM, 0, 23, 59, 59).getTime();
+            const nowMs = Date.now();
+            base = base.filter((wo: any) => {
+                const created = new Date(wo.createdAt).getTime();
+                const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
+                // T-336: "active in window" — opened on/before window-end AND (still open OR completed on/after window-start).
+                // Carried-over WOs stay visible so a project doesn't vanish. Matches availableProjectsThisMonth's predicate.
+                // T-345: an open WO is active only up to `now` → in a future window (start > now) it must NOT show.
+                return created <= endOfWin && (completed ? completed >= startOfWin : nowMs >= startOfWin);
+            });
+        }
+        if (!isAllTime && selectedWeek > 0) {
             base = base.filter((wo: any) => {
                 const day = new Date(wo.createdAt).getDate();
                 const actualW = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
@@ -1165,7 +1297,7 @@ const Dashboard = () => {
                 const isCompleted = isWorkOrderCompleted(wo);
                 let show = false;
                 if (statusFilters.includes('completed') && isCompleted) show = true;
-                if (statusFilters.includes('ongoing') && !isCompleted && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) show = true;
+                if (statusFilters.includes('ongoing') && !isCompleted && ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status)) show = true;
                 if (statusFilters.includes('evaluating') && wo.status === 'Evaluating') show = true;
                 return show;
             });
@@ -1173,12 +1305,12 @@ const Dashboard = () => {
         if (taskWoTypeFilter === 'wop') base = base.filter((wo: any) => wo.workOrderCode === 'WOP' || (wo as any).type === 'PreHandover');
         if (taskWoTypeFilter === 'woa') base = base.filter((wo: any) => wo.workOrderCode !== 'WOP' && (wo as any).type !== 'PreHandover');
         return base;
-    }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters, taskWoTypeFilter]);
+    }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters, taskWoTypeFilter, isAllTime, selectedYear]);
 
     // ✅ Phase 1: Flat-map tasks for Task-Centric Dashboard
     const flatTasks = useMemo(() => {
         const tasks: any[] = [];
-        const _isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver' || (user?.role as any) === 'BackOffice';
+        const _isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver';
         const matchesUser = (id: string) => {
             if (!user) return false;
             // Admin viewing a specific foreman → match selected foreman's ID
@@ -1220,9 +1352,9 @@ const Dashboard = () => {
     }, [filteredData, user, projects, selectedForemanId]);
 
     const getTaskDisplayStatus = (t: any): string => {
-        if (t.status === 'Completed' && t.evaluationStatus === 'Assigned') return 'รอลูกค้าประเมิน';
-        const p = t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0);
-        if (p === 100 || t.status === 'Completed' || t.status === 'Verified') return 'เสร็จสมบูรณ์';
+        if (t.status === 'For Checking' || t.status === 'pending_delivery') return 'รอลูกค้าประเมิน';
+        const p = t.dailyProgress ?? t.progress ?? (t.status === 'Complete' ? 100 : 0);
+        if (p === 100 || t.status === 'Complete') return 'เสร็จสมบูรณ์';
         if (p > 0) return 'กำลังดำเนินการ';
         return 'ยังไม่เริ่ม';
     };
@@ -1238,8 +1370,15 @@ const Dashboard = () => {
         if (highlightedWOId && t.woId !== highlightedWOId) return false;
         if (taskCatFilter && t.categoryName !== taskCatFilter) return false;
         if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
+        if (taskSlaOutcomeFilter) {
+            // เสร็จทัน/เลย SLA cards count job-level (per ใบงาน) outcomes — only completed jobs qualify.
+            const jobSla = computeJobSLA(t.parentWO);
+            if (!jobSla.isEligible || jobSla.phase !== 'done') return false;
+            if (taskSlaOutcomeFilter === 'onTime' && jobSla.status !== 'on-time') return false;
+            if (taskSlaOutcomeFilter === 'late' && jobSla.status !== 'late') return false;
+        }
         return true;
-    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter]);
+    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter, taskSlaOutcomeFilter]);
 
     // Comparison Dashboard specific broad filtering
     const comparisonFilteredData = useMemo(() => {
@@ -1256,12 +1395,13 @@ const Dashboard = () => {
     }, [allAccessibleWOs, selectedMonth]);
 
     const getDashboardStats = useCallback((filteredWOs: any[]) => {
-        const [year, month] = selectedMonth.split('-').map(Number);
-        const startOfMonth = new Date(year, month - 1, 1).getTime();
-        const endOfMonth = new Date(year, month, 0, 23, 59, 59).getTime();
+        // T-337: all-work mode windows by the selected YEAR; month mode by selectedMonth.
+        const [year, month] = isAllTime ? [selectedYear, 12] : selectedMonth.split('-').map(Number);
+        const startOfMonth = isAllTime ? new Date(selectedYear, 0, 1).getTime() : new Date(year, month - 1, 1).getTime();
+        const endOfMonth = isAllTime ? new Date(selectedYear, 11, 31, 23, 59, 59, 999).getTime() : new Date(year, month, 0, 23, 59, 59).getTime();
 
         const nowMs = Date.now();
-        const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver' || (user?.role as any) === 'BackOffice';
+        const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver';
 
         // Monthly Cutoff Logic: If looking at a past month, 'now' should be the end of that month.
         const effectiveNow = nowMs > endOfMonth ? endOfMonth : nowMs;
@@ -1270,63 +1410,76 @@ const Dashboard = () => {
 
         // Ownership helpers — defined early so WO-level filters can use them
         const _matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
-        const _viewingAs = isAdminOrManager ? selectedForemanId : null;
-        const _hasOwnerTask = (wo: any) =>
-            (wo.categories || []).some((c: any) =>
+        // T-336: admin uses the broadened WO-level owner-match; foreman self-view unchanged.
+        const _hasOwnerTask = (wo: any) => {
+            if (isAdminOrManager) {
+                if (!selectedForemanId) return true; // project-only view: count all in-scope WOs
+                return foremanOwnsWO(wo, selectedForemanIds);
+            }
+            return (wo.categories || []).some((c: any) =>
                 (c.tasks || []).some((t: any) => {
                     const owners: string[] = t.responsibleStaffIds || [];
-                    if (_viewingAs) return owners.includes(_viewingAs) || (!owners.length && wo.reporterId === _viewingAs);
                     return owners.some((id: string) => _matchUid(id)) || (!owners.length && _matchUid(wo.reporterId || ''));
                 })
             );
+        };
 
-        const EXCLUDED_STATUSES = ['Draft', 'Pending', 'Cancelled', 'Evaluating'];
+        // T-340: a WO counts once >=1 subtask is admin-approved. An 'Evaluating' WO (a sibling subtask
+        // still pending) stays in scope IF it already has an approved subtask; a fully-pending WO
+        // (every subtask still Evaluating) remains excluded, as do Draft/Cancelled.
+        const APPROVED_TASK_STATUSES = ['Assigned', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'];
+        const hasApprovedTask = (wo: any) =>
+            (wo.categories || []).some((c: any) => (c.tasks || []).some((t: any) => APPROVED_TASK_STATUSES.includes(t.status)));
+        const isWoOutOfScope = (wo: any) =>
+            wo.status === 'Draft' || wo.status === 'Cancelled' || (wo.status === 'Evaluating' && !hasApprovedTask(wo));
 
         const newThisMonthData = allAccessibleWOs.filter((wo: any) => {
-            if (EXCLUDED_STATUSES.includes(wo.status)) return false;
+            if (isWoOutOfScope(wo)) return false;
             const created = new Date(wo.createdAt).getTime();
             return created >= startOfMonth && created <= endOfMonth && _hasOwnerTask(wo);
         });
 
         const carriedOverData = allAccessibleWOs.filter((wo: any) => {
-            if (EXCLUDED_STATUSES.includes(wo.status)) return false;
+            if (isWoOutOfScope(wo)) return false;
             const created = new Date(wo.createdAt).getTime();
             const completed = wo.completedAt ? new Date(wo.completedAt).getTime() : null;
             if (created >= startOfMonth) return false;
-            return (!isWorkOrderCompleted(wo) || (completed && completed >= startOfMonth)) && _hasOwnerTask(wo);
+            // T-345: an OPEN (never-completed) WO is active only up to `now`, so it must NOT count in a
+            // window that has not started yet (future month) — bound the open branch with nowMs >= startOfMonth.
+            return (((!isWorkOrderCompleted(wo) && nowMs >= startOfMonth) || (completed && completed >= startOfMonth))) && _hasOwnerTask(wo);
         });
 
         const newThisMonth = newThisMonthData.length;
         const carriedOver = carriedOverData.length;
         const totalInMonth = newThisMonth + carriedOver;
-        const closedWOsInScope = [...newThisMonthData, ...carriedOverData].filter((wo: any) => wo.status === 'Completed' || wo.status === 'Verified').length;
+        const closedWOsInScope = [...newThisMonthData, ...carriedOverData].filter((wo: any) => wo.status === 'Complete').length;
         const total = allAccessibleWOs.length;
         const totalAssignments = filteredWOs.length;
 
         const pendingAdminEval = allAccessibleWOs.filter((wo: any) =>
-            ['Pending', 'Evaluating'].includes(wo.status) ||
-            (wo.status === 'Rejected' && wo.pendingAdminReassign === true)
+            wo.status === 'Evaluating' ||
+            (wo.status === 'customer_reject' && wo.pendingAdminReassign === true)
         ).length;
 
         let closed = 0;
         let open = 0;
+        let totalTasksInScope = 0; // T-338: grand total of in-scope tasks (excl Draft/Cancelled) for the "ทำทั้งหมด" card number
         let evaluating = 0;
         let highRisk = 0, slaMetCount = 0, totalTaskCount = 0;
 
         // ✅ Count tasks instead of Work Orders for core metrics
         // "evaluating" = Foreman done, waiting for customer on-site — NOT yet Completed/Verified by customer
         const isForCustomerEval = (wo: any) => {
-            if (['Completed', 'Verified'].includes(wo.status)) return false;
+            if (wo.status === 'Complete') return false;
             if (wo.status === 'pending_delivery') return true;
             const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
             return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
         };
         // Filter to tasks the current foreman is responsible for
         const matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
-        const viewingAs = isAdminOrManager ? selectedForemanId : null;
         const isOwnerTask = (t: any, wo: any) => {
+            if (isAdminOrManager) return adminOwnsTask(t, wo);
             const owners: string[] = t.responsibleStaffIds || [];
-            if (viewingAs) return owners.includes(viewingAs) || (!owners.length && wo.reporterId === viewingAs);
             return owners.some((id: string) => matchUid(id)) || (!owners.length && matchUid(wo.reporterId || ''));
         };
         // Count evaluating at WO level only (for the "evaluating" stat card)
@@ -1335,64 +1488,36 @@ const Dashboard = () => {
         const inScopeWOs = [...newThisMonthData, ...carriedOverData];
         inScopeWOs.forEach((wo: any) => {
             if (['Draft', 'Cancelled'].includes(wo.status)) return;
+            // T-346: Executive Summary SLA is JOB-level (per ใบงาน) — one count per WO via the
+            // central helper, graded in the completion month. Keeps it identical to the gauge/cards.
+            const jobSla = computeJobSLA(wo);
+            if (jobSla.isEligible && jobSla.phase === 'done' && jobSla.completedMs !== null
+                && jobSla.completedMs >= startOfMonth && jobSla.completedMs <= endOfMonth) {
+                totalTaskCount++;
+                if (jobSla.status === 'on-time') slaMetCount++;
+            }
             (wo.categories || []).forEach((c: any) => {
                 (c.tasks || []).forEach((t: any) => {
                     if (!isOwnerTask(t, wo)) return;
-                    const tStatus = (t.status || '').toLowerCase();
-                    const isWaitingCustomerEval = tStatus === 'completed' && t.evaluationStatus === 'Assigned';
-                    const isCompleted = !isWaitingCustomerEval && (tStatus === 'completed' || tStatus === 'verified');
-                    // งานถึง 100% แล้ว (รวม for-checking) = นับ SLA ฝั่งช่าง
-                    const isWorkDone = isCompleted || tStatus === 'for-checking' || isWaitingCustomerEval || (t.dailyProgress ?? t.progress ?? 0) === 100;
+                    // T-340: count only admin-approved subtasks — excludes Evaluating (pending admin) and Rejected (declined)
+                    if (APPROVED_TASK_STATUSES.includes(t.status)) totalTasksInScope++;
+                    const isWaitingCustomerEval = t.status === 'For Checking' || t.status === 'pending_delivery';
+                    const isCompleted = t.status === 'Complete';
+                    // งานถึง 100% แล้ว = นับ SLA ฝั่งช่าง
+                    const isWorkDone = isCompleted || isWaitingCustomerEval || (t.dailyProgress ?? t.progress ?? 0) === 100;
                     if (isCompleted) closed++;
                     else if (!isWorkDone) open++;
-                    if (isWorkDone) {
-                        // SLA counting — work is done when progress hits 100%, customer eval time not counted
-                        const slaLimit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                        const slaStart = t.slaStartTime
-                            ? new Date(t.slaStartTime).getTime()
-                            : (t.startDate
-                                ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
-                                : new Date(wo.createdAt).getTime());
-                        // slaEnd: completedAt → max(history dates) → updatedAt → skip
-                        // qrGeneratedAt excluded: generated same day as start (not work completion)
-                        // wo.completedAt excluded: customer acceptance date, not work completion
-                        const _histMsArr = (t.history || []).map((h: any) => new Date(h.date).getTime()).filter(Number.isFinite);
-                        const _maxHistMs = _histMsArr.length ? Math.max(..._histMsArr) : null;
-                        const slaEnd =
-                            t.completedAt ? new Date(t.completedAt).getTime() :
-                            _maxHistMs !== null ? _maxHistMs :
-                            t.updatedAt ? new Date(t.updatedAt).getTime() :
-                            null;
-                        if (slaEnd !== null && slaEnd >= slaStart) {
-                            totalTaskCount++;
-                            if ((slaEnd - slaStart) / (1000 * 3600) <= slaLimit) {
-                                slaMetCount++;
-                            }
-                        }
-                    }
                 });
             });
         });
 
         filteredWOs.forEach((wo: any) => {
             const isFocusMatch = !highlightedWOId || wo.id?.toString().trim() === highlightedWOId?.toString().trim();
-            (wo.categories || []).forEach((c: any) => {
-                (c.tasks || []).forEach((t: any) => {
-                    const limit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                    const start = t.startDate
-                    ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
-                    : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
-
-                    if (!(t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified')) {
-                        if (t.status !== 'Rejected') {
-                            const hoursLeft = limit - (now - start) / (1000 * 3600);
-                            if (hoursLeft < limit * 0.3) {
-                                if (isFocusMatch) highRisk++;
-                            }
-                        }
-                    }
-                });
-            });
+            // T-346: "at-risk" is JOB-level — an in-progress job that is critical (<24h left) or overdue.
+            const sla = computeJobSLA(wo);
+            if (sla.isEligible && sla.phase === 'in-progress' && (sla.status === 'critical' || sla.status === 'overdue')) {
+                if (isFocusMatch) highRisk++;
+            }
         });
 
         const slaScore = totalTaskCount > 0 ? Math.round(slaMetCount / totalTaskCount * 100) : null;
@@ -1420,13 +1545,11 @@ const Dashboard = () => {
                     const currentSlaType = t.slaCategory || '24h';
                     const limit = slaHoursMap[currentSlaType] || 24;
                     const start = t.startDate
-                        ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
+                        ? new Date(`${t.startDate.split('T')[0]}T08:00:00+07:00`).getTime()
                         : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woSlaStart);
                     let isSlaMet = false;
                     let duration = 0;
-                    const tStatus = (t.status || '').toLowerCase();
-                    const isWaitingEval = tStatus === 'completed' && t.evaluationStatus === 'Assigned';
-                    const isFullyDone = !isWaitingEval && (tStatus === 'completed' || tStatus === 'verified');
+                    const isFullyDone = t.status === 'Complete';
                     if (isFullyDone) {
                         const lastUpdate = history[history.length - 1];
                         // Never use `now` — would count customer wait time against foreman
@@ -1553,7 +1676,7 @@ const Dashboard = () => {
         });
 
         const stalledCases = filteredWOs.filter((wo: any) => {
-            if (wo.status === 'Completed' || wo.status === 'Cancelled' || wo.status === 'Rejected') return false;
+            if (wo.status === 'Complete' || wo.status === 'Cancelled' || wo.status === 'Rejected') return false;
             let lastUpdateTime = new Date(wo.createdAt).getTime();
             (wo.categories || []).forEach((c: any) => c.tasks.forEach((t: any) => (t.history || []).forEach((h: any) => {
                 const dt = new Date(h.date).getTime();
@@ -1619,7 +1742,7 @@ const Dashboard = () => {
                     const isMineTask = isAdminOrManager || tResponsible.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
                     if (!isMineTask) return;
                     projectsMap[pId].total++;
-                    const isTaskCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
+                    const isTaskCompleted = t.dailyProgress === 100 || t.status === 'Complete';
                     if (isTaskCompleted) {
                         projectsMap[pId].completed++;
                     } else {
@@ -1635,7 +1758,7 @@ const Dashboard = () => {
                 });
                 if (!projectsMap[pId].categories[c.name]) projectsMap[pId].categories[c.name] = { name: c.name, total: 0, completed: 0, slaMet: 0, stalled: 0 };
                 projectsMap[pId].categories[c.name].total += myTasks.length;
-                projectsMap[pId].categories[c.name].completed += myTasks.filter((t: any) => t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified').length;
+                projectsMap[pId].categories[c.name].completed += myTasks.filter((t: any) => t.dailyProgress === 100 || t.status === 'Complete').length;
             });
 
             const isWOCompleted = isWorkOrderCompleted(wo);
@@ -1663,7 +1786,7 @@ const Dashboard = () => {
 
             if (highlightedWOId && isFocusMatch) {
                 closed = isWorkOrderCompleted(wo) ? 1 : 0;
-                open = (!isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status)) ? 1 : 0;
+                open = (!isWorkOrderCompleted(wo) && ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status)) ? 1 : 0;
                 evaluating = isForCustomerEval(wo) ? 1 : 0;
             }
 
@@ -1763,7 +1886,7 @@ const Dashboard = () => {
         }, {})).sort((a: any, b: any) => b.count - a.count).slice(0, 5).map((item: any) => ({ ...item, action: 'ตรวจสอบแผนปฏิบัติงานรายวัน' }));
 
         return {
-            total, closed, open, evaluating, highRisk, totalHours, totalBudget, totalActualCost,
+            total, closed, open, totalTasksInScope, evaluating, highRisk, totalHours, totalBudget, totalActualCost,
             internalCount, outsourceCount, slaScore, slaMetCount, totalTaskCount,
             projectStats: Object.values(projectsMap).sort((a: any, b: any) => b.total - a.total),
             stalledCases, chronicIssues, budgetPerformance: [], laborByProject: laborByProjectArray, totalAssignments,
@@ -1778,7 +1901,7 @@ const Dashboard = () => {
                 return { ...f, name: s ? s.name : `โฟร์แมน ${f.id.slice(-4)}`, slaScore: f.taskCount > 0 ? Math.round((f.slaMet / f.taskCount) * 100) : 100, avgResolution: f.taskCount > 0 ? (f.totalDuration / f.taskCount).toFixed(1) : '0' };
             }).sort((a: any, b: any) => b.slaScore !== a.slaScore ? b.slaScore - a.slaScore : b.totalJobs - a.totalJobs),
         };
-    }, [selectedMonth, allAccessibleWOs, isWorkOrderCompleted, highlightedWOId, getProjectName, isAdminOrManager, staff, user, selectedForemanId]);
+    }, [selectedMonth, allAccessibleWOs, isWorkOrderCompleted, highlightedWOId, getProjectName, isAdminOrManager, staff, user, selectedForemanId, isAllTime, selectedYear]);
 
     const stats = useMemo<DashboardStats>(() => getDashboardStats(filteredData), [getDashboardStats, filteredData]);
     const comparisonStats = useMemo<DashboardStats>(() => getDashboardStats(comparisonFilteredData), [getDashboardStats, comparisonFilteredData]);
@@ -1786,66 +1909,43 @@ const Dashboard = () => {
     // Health cards use baseAccessibleWOs so ALL projects remain visible when a project filter is active
     const healthCardProjects = useMemo(() => {
         const [year, month] = selectedMonth.split('-').map(Number);
-        const startOfMonth = new Date(year, month - 1, 1).getTime();
-        const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).getTime();
-        const slaHoursMap: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
-        const now = Date.now();
+        // T-337: all-work mode aggregates SLA across the selected YEAR; month mode by selectedMonth.
+        const startOfMonth = isAllTime ? new Date(selectedYear, 0, 1).getTime() : new Date(year, month - 1, 1).getTime();
+        const endOfMonth = isAllTime ? new Date(selectedYear, 11, 31, 23, 59, 59, 999).getTime() : new Date(year, month, 0, 23, 59, 59, 999).getTime();
         const projectAgg: Record<string, { id: string; name: string; cases: any[] }> = {};
 
         baseAccessibleWOs
-            .filter((wo: any) => {
-                const created = new Date(wo.createdAt).getTime();
-                return created >= startOfMonth && created <= endOfMonth;
-            })
             .forEach((wo: any) => {
                 const pId = wo.projectId;
                 if (!pId) return;
+                // Job-level SLA (per ใบงาน): one case per WO via the central helper. Gate on the
+                // whole job being done + graded in the month it completed (completion-month window).
+                const sla = computeJobSLA(wo);
+                if (!sla.isEligible || sla.phase !== 'done' || sla.completedMs === null) return;
+                if (sla.completedMs < startOfMonth || sla.completedMs > endOfMonth) return;
+                // Access: admin/manager see all; a foreman sees jobs they have a counted subtask in.
+                const counted = getCountedSubtasks(wo);
+                const isCurrentUserJob = isAdminOrManager || counted.some((t: any) =>
+                    (t.responsibleStaffIds || [wo.reporterId].filter(Boolean)).some((id: string) =>
+                        id === user?.id || (user?.employeeId && id === user.employeeId)));
+                if (!isCurrentUserJob) return;
                 if (!projectAgg[pId]) projectAgg[pId] = { id: pId, name: getProjectName(pId), cases: [] };
-                const woSlaStart = wo.createdAt ? new Date(wo.createdAt).getTime() : now;
-                (wo.categories || []).forEach((c: any) => {
-                    (c.tasks || []).forEach((t: any) => {
-                        const isCompleted = t.dailyProgress === 100 || t.status === 'Completed' || t.status === 'Verified';
-                        if (!isCompleted) return;
-                        const limit = slaHoursMap[t.slaCategory || '24h'] || 24;
-                        const start = t.startDate
-                            ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
-                            : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woSlaStart);
-                        const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                        const lastUpdate = history[history.length - 1];
-                        const end = lastUpdate ? new Date(lastUpdate.date).getTime() : now;
-                        const workHours = history.reduce((acc: number, h: any) => {
-                            let hTotal = 0;
-                            (h.labor || []).forEach((lab: any) => {
-                                let hrs = lab.shifts
-                                    ? (lab.shifts.normal ? 8 : 0) + (lab.shifts.otMorning ? 2 : 0) + (lab.shifts.otNoon ? 1 : 0) + (lab.shifts.otEvening ? 3 : 0)
-                                    : (lab.timeType === 'Normal' ? 8 : 2);
-                                hTotal += hrs * (lab.amount || 1);
-                            });
-                            return acc + hTotal;
-                        }, 0);
-                        const calendarHours = (end - start) / 3600000;
-                        const duration = Math.max(calendarHours, workHours);
-                        const foremanIds = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
-                        const isCurrentUserTask = isAdminOrManager
-                            ? true
-                            : foremanIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
-                        if (!isCurrentUserTask) return;
-                        const workDays = new Set(history.map((h: any) => h.date.split('T')[0])).size;
-                        projectAgg[pId].cases.push({
-                            id: wo.id.slice(-6), fullId: wo.id,
-                            label: `${wo.id.slice(-6)} · ${(t.name || c.name || '').slice(0, 12)}`,
-                            total: duration, calendarDays: calendarHours / 24, targetDays: limit / 24,
-                            workDays, ratio: duration / limit * 100, deviation: 100 - (duration / limit * 100),
-                        });
-                    });
+                // Distinct workdays across ALL counted subtasks of the job.
+                const workDaySet = new Set<string>();
+                counted.forEach((t: any) => (t.history || []).forEach((h: any) => { if (h?.date) workDaySet.add(String(h.date).split('T')[0]); }));
+                const usedHours = (sla.completedMs - (sla.startMs as number)) / 3600000;
+                projectAgg[pId].cases.push({
+                    id: wo.id.slice(-6), fullId: wo.id,
+                    label: `${wo.id.slice(-6)} · ${(wo.locationName || counted[0]?.name || '').slice(0, 12)}`,
+                    total: usedHours, calendarDays: usedHours / 24, targetDays: sla.limitHours / 24,
+                    workDays: workDaySet.size, ratio: 100 - sla.deviationPct, deviation: sla.deviationPct,
                 });
             });
 
         return Object.values(projectAgg).filter((p: any) => p.cases.length > 0);
-    }, [baseAccessibleWOs, selectedMonth, getProjectName, isAdminOrManager, user]);
+    }, [baseAccessibleWOs, selectedMonth, getProjectName, isAdminOrManager, user, isAllTime, selectedYear]);
 
     const projectTrend = useMemo(() => {
-        const SLA_MAP: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
         const [selYear, selMonth] = selectedMonth.split('-').map(Number);
         const months: string[] = [];
         for (let i = 3; i >= 0; i--) {
@@ -1858,33 +1958,19 @@ const Dashboard = () => {
 
         allAccessibleWOs.forEach((wo: any) => {
             const pId = wo.projectId || 'unknown';
-            const woStart = wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now();
-            (wo.categories || []).forEach((c: any) => {
-                (c.tasks || []).forEach((t: any) => {
-                    const foremanIds: string[] = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
-                    const isMyTask = isAdminOrManager || foremanIds.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
-                    if (!isMyTask) return;
-                    const tStatusLower = (t.status || '').toLowerCase();
-                    const isDone = tStatusLower === 'completed' || tStatusLower === 'verified';
-                    const isWaiting = tStatusLower === 'completed' && t.evaluationStatus === 'Assigned';
-                    if (!isDone || isWaiting) return;
-                    const history = [...(t.history || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                    const last = history[history.length - 1];
-                    if (!last) return;
-                    const endMs = new Date(last.date).getTime();
-                    const taskMonth = `${new Date(endMs).getFullYear()}-${String(new Date(endMs).getMonth() + 1).padStart(2, '0')}`;
-                    if (!byMonth[taskMonth]) return;
-                    const limit = SLA_MAP[t.slaCategory || '24h'] || 24;
-                    const startMs = t.startDate
-                        ? new Date(`${t.startDate.split('T')[0]}T08:00:00`).getTime()
-                        : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : woStart);
-                    const calHours = (endMs - startMs) / 3600000;
-                    const isSlaMet = calHours <= limit;
-                    if (!byMonth[taskMonth][pId]) byMonth[taskMonth][pId] = { met: 0, total: 0 };
-                    byMonth[taskMonth][pId].total++;
-                    if (isSlaMet) byMonth[taskMonth][pId].met++;
-                });
-            });
+            const counted = getCountedSubtasks(wo);
+            const isMyJob = isAdminOrManager || counted.some((t: any) =>
+                (t.responsibleStaffIds || [wo.reporterId].filter(Boolean)).some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId)));
+            if (!isMyJob) return;
+            // T-346: job-level SLA (per ใบงาน), graded in the completion month, via the central helper.
+            const sla = computeJobSLA(wo);
+            if (!sla.isEligible || sla.phase !== 'done' || sla.completedMs === null) return;
+            const endMs = sla.completedMs;
+            const jobMonth = `${new Date(endMs).getFullYear()}-${String(new Date(endMs).getMonth() + 1).padStart(2, '0')}`;
+            if (!byMonth[jobMonth]) return;
+            if (!byMonth[jobMonth][pId]) byMonth[jobMonth][pId] = { met: 0, total: 0 };
+            byMonth[jobMonth][pId].total++;
+            if (sla.status === 'on-time') byMonth[jobMonth][pId].met++;
         });
 
         const trend: Record<string, number[]> = {};
@@ -1910,7 +1996,7 @@ const Dashboard = () => {
             return;
         }
         const hasInProgress = allAccessibleWOs.some((wo: any) =>
-            !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Rejected'].includes(wo.status)
+            !isWorkOrderCompleted(wo) && ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status)
         );
         if (hasInProgress) { setSelectedOpCategory('inProgress'); return; }
         if ((stats.evaluating || 0) > 0) { setSelectedOpCategory('evaluating'); return; }
@@ -1925,7 +2011,6 @@ const Dashboard = () => {
         const project = projects.find((p: any) => p.id === projectId);
         if (!project || !dateStr) return;
         const _matchUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
-        const _viewingForeman = isAdminOrManager ? selectedForemanId : null;
         const woGroups: any[] = [];
         const projectWOs = workOrders.filter((wo: any) => wo.projectId === projectId);
         projectWOs.forEach((wo: any) => {
@@ -1935,8 +2020,8 @@ const Dashboard = () => {
             wo.categories?.forEach((cat: any) => {
                 cat.tasks.forEach((task: any) => {
                     const _owners: string[] = task.responsibleStaffIds || [];
-                    const _isOwner = _viewingForeman
-                        ? _owners.includes(_viewingForeman) || (!_owners.length && wo.reporterId === _viewingForeman)
+                    const _isOwner = isAdminOrManager
+                        ? adminOwnsTask(task, wo)
                         : _owners.some((id: string) => _matchUid(id)) || (!_owners.length && _matchUid(wo.reporterId || ''));
                     if (!_isOwner) return;
                     totalTasksInWO++;
@@ -1990,8 +2075,8 @@ const Dashboard = () => {
                     const tResp = t.responsibleStaffIds || [wo.reporterId].filter(Boolean);
                     const isMine = isAdminOrManager || tResp.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
                     if (!isMine) return;
-                    const isWaitingEval = t.status === 'Completed' && t.evaluationStatus === 'Assigned';
-                    const isDone = !isWaitingEval && (t.status === 'Completed' || t.status === 'Verified' || t.dailyProgress === 100);
+                    const isWaitingEval = t.status === 'For Checking' || t.status === 'pending_delivery';
+                    const isDone = !isWaitingEval && (t.status === 'Complete' || t.dailyProgress === 100);
                     if (!isDone) return;
                     if (!map[name]) map[name] = { count: 0, totalDays: 0, completedCount: 0, totalRev: 0 };
                     map[name].count++;
@@ -2025,69 +2110,15 @@ const Dashboard = () => {
     }, [filteredData, catSort, isAdminOrManager, user]);
 
 
-    const timelineData = useMemo(() => {
-        const [year, monthNum] = selectedMonth.split('-').map(Number);
-        let startDay = 1;
-        let endDay = new Date(year, monthNum, 0).getDate();
-        if (selectedWeek > 0) {
-            startDay = (selectedWeek - 1) * 7 + 1;
-            if (selectedWeek < 4) endDay = startDay + 6;
-            else if (selectedWeek === 4) endDay = 28;
-        }
-        const dataPoints = [];
-        for (let d = startDay; d <= endDay; d++) {
-            const dateStr = `${year}-${monthNum.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-            
-            let openedTasksCount = 0;
-            let closedTasksCount = 0;
-            let isRelatedDay = false;
-
-            allAccessibleWOs.forEach((wo: any) => {
-                let woCreatedDate = '';
-                if (wo.createdAt) {
-                    const parsed = new Date(wo.createdAt);
-                    if (!isNaN(parsed.getTime())) {
-                        woCreatedDate = parsed.toISOString().split('T')[0];
-                    }
-                }
-                const isWOCreatedToday = woCreatedDate === dateStr;
-                const isTargetWO = wo.id?.toString().trim() === highlightedWOId?.toString().trim();
-
-                (wo.categories || []).forEach((c: any) => {
-                    (c.tasks || []).forEach((t: any) => {
-                        // Task "opened" when WO is created
-                        if (isWOCreatedToday) {
-                            openedTasksCount++;
-                            if (isTargetWO) isRelatedDay = true;
-                        }
-
-                        // Task "closed" when it reaches 100% progress
-                        const history = t.history || [];
-                        const completionUpdate = history.find((h: any) => h.progress === 100 && h.date.startsWith(dateStr));
-                        if (completionUpdate) {
-                            closedTasksCount++;
-                            if (isTargetWO) isRelatedDay = true;
-                        }
-                    });
-                });
-            });
-
-            dataPoints.push({ 
-                day: d, 
-                name: `${String(d).padStart(2, '0')}/${String(monthNum).padStart(2, '0')}`, 
-                openedCount: openedTasksCount, 
-                closedCount: closedTasksCount,
-                isHighlighted: isRelatedDay 
-            });
-        }
-        return dataPoints;
-    }, [allAccessibleWOs, selectedMonth, selectedWeek, highlightedWOId]);
+    
 
     const sCurveData = useMemo(() => {
         const [year, monthNum] = selectedMonth.split('-').map(Number);
         const daysInMonth = new Date(year, monthNum, 0).getDate();
         const mkSkeleton = () => Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, manpower: null as any, slaOk: null as any, slaRisk: null as any, slaBreach: null as any, hasHighlight: false }));
-        if (!selectedSCurveProject || !selectedMonth || allAccessibleWOs.length === 0) return mkSkeleton();
+        // T-337: no project selected → aggregate ALL accessible projects (allAccessibleWOs is already
+        // project-scoped upstream, so with none selected it holds every project).
+        if (!selectedMonth || allAccessibleWOs.length === 0) return mkSkeleton();
         const startOfMonthTime = new Date(year, monthNum - 1, 1).getTime();
         const endOfMonthTime = new Date(year, monthNum, 0, 23, 59, 59).getTime();
 
@@ -2101,22 +2132,25 @@ const Dashboard = () => {
 
         if (projectWOs.length === 0) return mkSkeleton();
 
-        const slaHours: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
+        const NEAR_DUE_MS = 7 * 24 * 3600000;
         const matchesUid = (id: string) => id === user?.id || (user?.employeeId && id === user?.employeeId);
-        const viewingForeman = isAdminOrManager ? selectedForemanId : null;
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${monthNum.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
             const endOfDayTime = new Date(year, monthNum - 1, d, 23, 59, 59).getTime();
             let dailyLabor = 0, slaOk = 0, slaRisk = 0, slaBreach = 0, hasHighlightActivity = false;
             const taskDetails: any[] = [];
             projectWOs.forEach((wo: any) => {
-                const woStart = wo.createdAt ? new Date(wo.createdAt).getTime() : endOfDayTime;
+                // T-347: job-level (per ใบงาน) — computed once per WO; every subtask of the same WO
+                // shares this WO's deadline (max-SLA-among-subtasks), not its own per-task limit.
+                const jobSla = computeJobSLA(wo);
+                const jobDeadlineMs = jobSla.isEligible ? jobSla.deadlineMs : null;
+                const jobStartMs = jobSla.isEligible ? jobSla.startMs : null;
                 (wo.categories || []).forEach((cat: any) => {
                     cat.tasks.forEach((task: any) => {
                         if (task.status === 'Cancelled' || task.status === 'Rejected') return;
                         const taskOwners: string[] = task.responsibleStaffIds || [];
-                        const isUserTask = viewingForeman
-                            ? taskOwners.includes(viewingForeman) || (!taskOwners.length && wo.reporterId === viewingForeman)
+                        const isUserTask = isAdminOrManager
+                            ? adminOwnsTask(task, wo)
                             : taskOwners.some((id: string) => matchesUid(id)) || (!taskOwners.length && matchesUid(wo.reporterId || ''));
                         if (!isUserTask) return;
                         const history = task.history || [];
@@ -2130,15 +2164,10 @@ const Dashboard = () => {
                                 .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
                             const progFrom = prevLog?.progress ?? 0;
                             const progTo = logToday.progress ?? progFrom;
-                            const tLimit = slaHours[task.slaCategory || '24h'] || 24;
-                            const tStart = task.startDate
-                                ? new Date(`${task.startDate.split('T')[0]}T08:00:00`).getTime()
-                                : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : woStart);
                             let slaStatus: 'ok' | 'risk' | 'breach' = 'ok';
-                            if (tStart <= endOfDayTime) {
-                                const elapsed = (endOfDayTime - tStart) / 3600000;
-                                if (elapsed > tLimit) slaStatus = 'breach';
-                                else if (elapsed > tLimit * 0.7) slaStatus = 'risk';
+                            if (jobDeadlineMs !== null && jobStartMs !== null && jobStartMs <= endOfDayTime) {
+                                if (endOfDayTime > jobDeadlineMs) slaStatus = 'breach';
+                                else if (jobDeadlineMs - endOfDayTime <= NEAR_DUE_MS) slaStatus = 'risk';
                             }
                             if (todayLabor > 0) taskDetails.push({ taskName: task.name || '—', woName: wo.locationName || `#${wo.id}`, progFrom, progTo, slaStatus, labor: todayLabor });
                         }
@@ -2147,14 +2176,9 @@ const Dashboard = () => {
                             .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
                         const isDoneByDay = (latestLogByDay?.progress ?? 0) >= 100;
                         if (isDoneByDay) return;
-                        const limit = slaHours[task.slaCategory || '24h'] || 24;
-                        const start = task.startDate
-                            ? new Date(`${task.startDate.split('T')[0]}T08:00:00`).getTime()
-                            : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : woStart);
-                        if (start > endOfDayTime) return;
-                        const elapsedHours = (endOfDayTime - start) / 3600000;
-                        if (elapsedHours > limit) slaBreach++;
-                        else if (elapsedHours > limit * 0.7) slaRisk++;
+                        if (jobDeadlineMs === null || jobStartMs === null || jobStartMs > endOfDayTime) return;
+                        if (endOfDayTime > jobDeadlineMs) slaBreach++;
+                        else if (jobDeadlineMs - endOfDayTime <= NEAR_DUE_MS) slaRisk++;
                         else slaOk++;
                     });
                 });
@@ -2183,9 +2207,9 @@ const Dashboard = () => {
                 return myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
             })
         );
-        const getProg = (t: any) => t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0);
+        const getProg = (t: any) => t.dailyProgress ?? t.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(t.status) ? 100 : 0);
         const donutData = [
-            { key: 'notStarted', name: 'ยังไม่เริ่ม', value: allMySubtasks.filter((t: any) => getProg(t) === 0 && !['Completed', 'Verified'].includes(t.status)).length, color: '#E24B4A', range: '0%' },
+            { key: 'notStarted', name: 'ยังไม่เริ่ม', value: allMySubtasks.filter((t: any) => getProg(t) === 0 && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status)).length, color: '#E24B4A', range: '0%' },
             { key: 'inProgress', name: 'กำลังทำ', value: allMySubtasks.filter((t: any) => { const p = getProg(t); return p >= 1 && p <= 70; }).length, color: '#378ADD', range: '1–70%' },
             { key: 'nearDone', name: 'ใกล้เสร็จ', value: allMySubtasks.filter((t: any) => { const p = getProg(t); return p >= 71 && p < 100; }).length, color: '#1D9E75', range: '71–99%' },
         ];
@@ -2422,7 +2446,7 @@ const Dashboard = () => {
                             ))}
                         </div>
                     )}
-                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} style={{ height: '128px', padding: '24px' }} />
+                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} allowAllTime={isAdminOrManager} isAllTime={isAllTime} setIsAllTime={setIsAllTime} selectedYear={selectedYear} setSelectedYear={setSelectedYear} style={{ height: '128px', padding: '24px' }} />
                     <div style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -2554,7 +2578,7 @@ const Dashboard = () => {
                             {/* Stat Cards — all clickable, drill-down to list below */}
                             {(() => {
                                 const _isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
-                                const isIncomplete = (t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified';
+                                const isIncomplete = (t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status);
                                 const countTasks = (wos: any[]) => wos.flatMap((wo: any) => (wo.categories || []).flatMap((cat: any) => {
                                     const catTasks: any[] = cat.tasks || [];
                                     const myCat = catTasks.filter(_isMySubtask);
@@ -2567,8 +2591,8 @@ const Dashboard = () => {
                                     allAccessibleWOs.filter((wo: any) =>
                                         !isWorkOrderCompleted(wo) &&
                                         !urgentWOIds.has(String(wo.id)) &&
-                                        ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status) &&
-                                        !(wo.status === 'Rejected' && wo.pendingAdminReassign === true)
+                                        ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status) &&
+                                        !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true)
                                     )
                                 );
                                 const selectAndScroll = (cat: string) => {
@@ -2594,7 +2618,7 @@ const Dashboard = () => {
                                             gradient={selectedOpCategory === 'urgent' ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : undefined}
                                             style={activeStyle('urgent', '#ef4444', '239,68,68')}
                                             onClick={() => selectAndScroll('urgent')}
-                                            subtext="งานย่อยที่เลยหรือใกล้ครบกำหนด"
+                                            subtext="เฉพาะงานด่วน (เลย/ใกล้ครบกำหนด SLA) — ไม่ใช่งานทั้งหมดในรายงานประจำวัน"
                                         />
                                         <StatCard
                                             title="ปกติ"
@@ -2643,11 +2667,11 @@ const Dashboard = () => {
                                             const isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
 
                                             const SubtaskCard = ({ task, wo, categoryName, sla, isEval = false }: any) => {
-                                                const prog = task.dailyProgress ?? task.progress ?? (['Completed', 'Verified'].includes(task.status) ? 100 : 0);
+                                                const prog = task.dailyProgress ?? task.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(task.status) ? 100 : 0);
                                                 const name = task.name || task.taskName || task.subtaskName || task.description || '—';
                                                 const rawId = task.subtaskId || task.id || '';
                                                 const shortId = rawId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
-                                                const isDone = prog >= 100 || task.status === 'Completed' || task.status === 'Verified';
+                                                const isDone = prog >= 100 || task.status === 'Complete';
                                                 const progColor = prog >= 80 ? '#10b981' : prog >= 40 ? '#0ea5e9' : '#f59e0b';
                                                 const revNum = task.currentRevision ? parseInt(task.currentRevision.replace('rev', '')) : null;
                                                 const bg = isDone ? '#f0fdf4' : '#f0f9ff';
@@ -2691,7 +2715,7 @@ const Dashboard = () => {
                                                 const allSubtasks = wo.categories?.flatMap((c: any) => c.tasks || []) || [];
                                                 const mySubtasks = allSubtasks.filter(isMySubtask);
                                                 const relevantTasks = mySubtasks.length > 0 ? mySubtasks : allSubtasks;
-                                                const getAvgProg = (tasks: any[]) => tasks.length > 0 ? Math.round(tasks.reduce((s: number, t: any) => s + (t.dailyProgress ?? t.progress ?? (['Completed', 'Verified'].includes(t.status) ? 100 : 0)), 0) / tasks.length) : null;
+                                                const getAvgProg = (tasks: any[]) => tasks.length > 0 ? Math.round(tasks.reduce((s: number, t: any) => s + (t.dailyProgress ?? t.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(t.status) ? 100 : 0)), 0) / tasks.length) : null;
                                                 const prog = getAvgProg(relevantTasks);
                                                 const overallProg = mySubtasks.length > 0 && mySubtasks.length < allSubtasks.length ? getAvgProg(allSubtasks) : null;
                                                 return (
@@ -2760,7 +2784,7 @@ const Dashboard = () => {
                                                         const myCat = catTasks.filter(isMySubtask);
                                                         const show = myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
                                                         return show
-                                                            .filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Completed' && t.status !== 'Verified')
+                                                            .filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status))
                                                             .map((t: any) => ({ task: t, wo, categoryName: cat.name, sla }));
                                                     });
                                                 });
@@ -2770,7 +2794,7 @@ const Dashboard = () => {
                                                 ));
                                             } else if (selectedOpCategory === 'evaluating') {
                                                 const isForCustomerEvalLocal = (wo: any) => {
-                                                    if (['Completed', 'Verified'].includes(wo.status)) return false;
+                                                    if (wo.status === 'Complete') return false;
                                                     if (wo.status === 'pending_delivery') return true;
                                                     const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
                                                     return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
@@ -2789,7 +2813,7 @@ const Dashboard = () => {
                                                 )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
                                             } else if (selectedOpCategory === 'inProgress') {
                                                 const _urgentWOIds = new Set((stats.urgentTasks || []).map((wo: any) => String(wo.id)));
-                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !_urgentWOIds.has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status) && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true));
+                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !_urgentWOIds.has(String(wo.id)) && ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status) && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true));
                                                 const progFilter = (p: number) => {
                                                     if (!donutFilter) return p < 100;
                                                     if (donutFilter === 'notStarted') return p === 0;
@@ -2803,7 +2827,7 @@ const Dashboard = () => {
                                                         const myCatTasks = catTasks.filter(isMySubtask);
                                                         const show = myCatTasks.length > 0 ? myCatTasks : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
                                                         return show
-                                                            .filter((t: any) => progFilter(t.dailyProgress ?? t.progress ?? 0) && t.status !== 'Completed' && t.status !== 'Verified')
+                                                            .filter((t: any) => progFilter(t.dailyProgress ?? t.progress ?? 0) && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status))
                                                             .map((t: any) => ({ task: t, wo, categoryName: cat.name }));
                                                     })
                                                 );
@@ -2823,13 +2847,13 @@ const Dashboard = () => {
                                                 );
                                             } else if (selectedOpCategory === 'pendingAdmin') {
                                                 const pendingWOs = allAccessibleWOs.filter((wo: any) =>
-                                                    ['Pending', 'Evaluating'].includes(wo.status) ||
-                                                    (wo.status === 'Rejected' && wo.pendingAdminReassign === true)
+                                                    wo.status === 'Evaluating' ||
+                                                    (wo.status === 'customer_reject' && wo.pendingAdminReassign === true)
                                                 );
                                                 if (pendingWOs.length === 0) return <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีใบงานรอแอดมินในขณะนี้ 🎉</div>;
                                                 return pendingWOs.map((wo: any, idx: number) => {
-                                                    const statusLabel = wo.status === 'Pending' ? 'รอประเมิน' : wo.status === 'Rejected' ? 'ถูกปฏิเสธ' : 'กำลังประเมิน';
-                                                    const statusColor = wo.status === 'Pending' ? '#6366f1' : wo.status === 'Rejected' ? '#dc2626' : '#8b5cf6';
+                                                    const statusLabel = wo.status === 'Rejected' ? 'ถูกปฏิเสธ' : 'รอประเมิน';
+                                                    const statusColor = wo.status === 'Rejected' ? '#dc2626' : '#6366f1';
                                                     const taskCount = (wo.categories || []).reduce((s: number, c: any) => s + (c.tasks || []).length, 0);
                                                     return (
                                                         <div key={`pa-${idx}`} onClick={() => navigate(`/work-orders?highlight=${wo.id}`)}
@@ -2884,7 +2908,7 @@ const Dashboard = () => {
                                     <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                         {(() => {
                                             const isForCustomerEvalLocal = (wo: any) => {
-                                                if (['Completed', 'Verified'].includes(wo.status)) return false;
+                                                if (wo.status === 'Complete') return false;
                                                 if (wo.status === 'pending_delivery') return true;
                                                 const allTasks = (wo.categories || []).flatMap((c: any) => c.tasks || []);
                                                 return allTasks.length > 0 && allTasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
@@ -2892,7 +2916,7 @@ const Dashboard = () => {
                                             const donutWOs =
                                                 selectedOpCategory === 'urgent' ? (stats.urgentTasks || []) :
                                                 selectedOpCategory === 'evaluating' ? allAccessibleWOs.filter(isForCustomerEvalLocal) :
-                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !new Set((stats.urgentTasks || []).map((u: any) => String(u.id))).has(String(wo.id)) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status) && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true)) :
+                                                selectedOpCategory === 'inProgress' ? allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo) && !new Set((stats.urgentTasks || []).map((u: any) => String(u.id))).has(String(wo.id)) && ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status) && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true)) :
                                                 selectedOpCategory === 'pendingAdmin' ? [] :
                                                 allAccessibleWOs;
                                             return <ProgressDonutChart allWOs={donutWOs} currentUser={user} />;
@@ -2906,8 +2930,8 @@ const Dashboard = () => {
                     ) : (
                         /* Insights Mode */
                         <>
-                            {/* Performance Hero Card — Foreman only */}
-                            {isForeman ? (() => {
+                            {/* Performance Hero Card — all roles (insights) */}
+                            {(() => {
                                 // derive from healthCardProjects — same source as Project Health Pulse
                                 const relevantProjects = selectedSCurveProject
                                     ? healthCardProjects.filter((p: any) => p.id === selectedSCurveProject)
@@ -2960,7 +2984,7 @@ const Dashboard = () => {
                                             {statusLabel}
                                         </div>
                                         {lateCount > 0 && (
-                                            <div style={{ fontSize: '11px', color: '#A32D2D', textAlign: 'center', lineHeight: 1.6 }}>มีงาน late {lateCount} รายการ</div>
+                                            <div style={{ fontSize: '11px', color: '#A32D2D', textAlign: 'center', lineHeight: 1.6 }}>งานค้างเกินกำหนด {lateCount} รายการ</div>
                                         )}
                                     </div>
 
@@ -2968,7 +2992,7 @@ const Dashboard = () => {
                                     {(() => {
                                         const closedWOs = stats.closedWOsInScope ?? 0;
                                         const pendingWOs = stats.totalInMonth - closedWOs;
-                                        const totalTasks = stats.closed + stats.open;
+                                        const totalTasks = stats.totalTasksInScope ?? 0; // T-338: grand total in-scope (was closed+open, which dropped 100%-awaiting-customer tasks)
                                         const woRate = stats.totalInMonth > 0 ? Math.round(closedWOs / stats.totalInMonth * 100) : 0;
                                         const taskRate = totalTasks > 0 ? Math.round(stats.closed / totalTasks * 100) : 0;
                                         return (
@@ -3022,31 +3046,31 @@ const Dashboard = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            {/* On-time SLA card */}
-                                            <div onClick={() => document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' })} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
+                                            {/* On-time SLA card — click filters Task Performance Details to completed+on-time jobs */}
+                                            <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'onTime' ? '' : 'onTime'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'onTime' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'late' ? 0.55 : 1 }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><Zap size={120} /></div>
                                                 <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><Zap size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
                                                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เสร็จทัน SLA</div>
                                                     <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaOnTime}</div>
-                                                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>จาก {stats.closed} รายการที่เสร็จ →</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'onTime' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : `จาก ${slaOnTime + slaLate} รายการที่เสร็จ →`}</div>
                                                 </div>
                                             </div>
-                                            {/* Late SLA card */}
-                                            <div onClick={() => document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' })} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: slaLate > 0 ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
+                                            {/* Late SLA card — click filters Task Performance Details to completed+late jobs */}
+                                            <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'late' ? '' : 'late'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: slaLate > 0 ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'late' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'onTime' ? 0.55 : 1 }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><AlertTriangle size={120} /></div>
                                                 <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><AlertTriangle size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
                                                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เลย SLA</div>
                                                     <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaLate}</div>
-                                                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{slaLate > 0 ? 'รายการเกินกำหนด → ดูรายละเอียด' : 'ทุกงานทันกำหนด 🎉'}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'late' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : slaLate > 0 ? 'รายการเกินกำหนด → ดูรายละเอียด' : 'ทุกงานทันกำหนด 🎉'}</div>
                                                 </div>
                                             </div>
                                         </div>
                                             );
                                         })()}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
-                                            <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>ความคืบหน้าเดือนนี้</span>
+                                            <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{isAllTime ? `ความคืบหน้าปี ${selectedYear}` : 'ความคืบหน้าเดือนนี้'}</span>
                                             <div style={{ flex: 1, background: '#e2e8f0', borderRadius: '99px', height: '6px', overflow: 'hidden' }}>
                                                 <div style={{ width: `${Math.min(closeRate, 100)}%`, height: '100%', background: slaColor, borderRadius: '99px', transition: 'width 1s ease' }} />
                                             </div>
@@ -3060,141 +3084,29 @@ const Dashboard = () => {
 
                                 </div>
                                 );
-                            })() : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-                                    <StatCard title="งานทั้งหมดที่ดูแล" value={stats.totalInMonth} icon={<Activity size={24} />} color="#3b82f6" gradient="linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)" subtext={<span>ใหม่ <b>{stats.newThisMonth}</b> / ค้าง <b>{stats.carriedOver}</b> (รวมทั้งฟิลเตอร์)</span>} />
-                                    <StatCard title="งานที่ปิดจบสำเร็จ" value={stats.closed} icon={<CheckCircle2 size={24} />} color="#10b981" gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)" subtext="ความสำเร็จรวมที่ส่งมอบเดือนนี้" />
-                                    <StatCard title="ประสิทธิภาพ SLA เฉลี่ย" value={stats.slaScore !== null && stats.slaScore !== undefined ? `${stats.slaScore}%` : 'N/A'} icon={<TrendingUp size={24} />} color="#4f46e5" gradient="linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" subtext={stats.slaScore != null && stats.slaScore > 80 ? 'อยู่ในเกณฑ์ดีเยี่ยม' : stats.slaScore != null ? 'ควรปรับปรุงความเร็ว' : 'ยังไม่มีงานที่วัดได้'} />
-                                    <StatCard title="ชั่วโมงการทำงานรวม" value={`${stats.totalHours.toLocaleString()} ชม.`} icon={<Activity size={24} />} color="#8b5cf6" gradient="linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)" subtext="ลงแรงงานจริงสะสมรายเดือน" />
-                                </div>
-                            )}
+                            })()}
 
-                            {/* Activity Calendar Section */}
-                            {(isForeman || isAdminOrManager) && (
+                            {/* Activity Calendar Section — T-337: hidden in all-time mode (month-anchored) */}
+                            {(isForeman || isAdminOrManager) && !isAllTime && (
                                 <div id="activity-calendar-section" className={highlightedSection === 'activity-calendar-section' ? 'section-highlight' : ''} style={{ marginBottom: '2rem', transition: 'all 0.5s', borderRadius: '32px' }}>
-                                    {(!isForeman && !selectedForemanId) ? (
-                                        <div style={{ background: '#ffffff', borderRadius: '24px', border: '1px solid #e2e8f0', padding: '4rem 2rem', textAlign: 'center', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                                            <div style={{ background: '#f5f3ff', width: '80px', height: '80px', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6', margin: '0 auto 1.5rem auto' }}>
-                                                <Clock size={40} />
-                                            </div>
-                                            <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b', marginBottom: '12px' }}>ปฏิทินกิจกรรมการทำงาน</h3>
-                                            <p style={{ color: '#64748b', fontWeight: 600, maxWidth: '500px', margin: '0 auto', fontSize: '1rem', lineHeight: 1.6 }}>
-                                                กรุณาเลือก <span style={{ color: '#4f46e5', fontWeight: 800 }}>"รายชื่อพนักงาน"</span> จากตัวกรองด้านบน <br />
-                                                เพื่อดูปฏิทินงานรายวัน ตรวจสอบรายชื่อคนงาน และบันทึกรายละเอียด
-                                            </p>
-                                            <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                                                <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <Users size={16} /> ตรวจสอบรายชื่อคนงานรายวัน
-                                                </div>
-                                                <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <TrendingUp size={16} /> คลิกวันเพื่อแก้ไขข้อมูล
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <ForemanCalendar
-                                            workOrders={workOrders}
-                                            currentUserId={isForeman ? (user?.id || '') : (selectedForemanId || '')}
-                                            projects={selectableProjects}
-                                            highlightProjectId={selectedSCurveProject || null}
-                                            highlightedWOId={highlightedWOId}
-                                            selectedMonth={selectedMonth}
-                                        />
-                                    )}
+                                    {/* T-337: admin always sees the calendar — no foreman & no project → all foremen,
+                                        all projects ('__ALL__'); project picked → that project's foremen; foreman picked → that foreman. */}
+                                    <ForemanCalendar
+                                        workOrders={workOrders}
+                                        currentUserId={isForeman ? (user?.id || '') : (selectedForemanId || '')}
+                                        projects={selectableProjects}
+                                        highlightProjectId={selectedSCurveProject || null}
+                                        allForemenForProject={isForeman ? null : (selectedForemanId ? null : (selectedSCurveProject || '__ALL__'))}
+                                        highlightedWOId={highlightedWOId}
+                                        selectedMonth={selectedMonth}
+                                    />
                                 </div>
                             )}
 
-                            {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', marginBottom: '2.5rem' }}>
-                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-                                    <SectionHeader
-                                        title="สถิติการเปิด-ปิดรายการงาน (Task Statistics)"
-                                        icon={<TrendingUp size={22} />}
-                                        subtitle={`สรุปจำนวนรายการงานที่เปิดใหม่และทำเสร็จสำเร็จราย${selectedWeek === 0 ? 'เดือน' : `สัปดาห์ที่ ${selectedWeek}`}`}
-                                        actions={
-                                            <div style={{ padding: '6px 14px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
-                                                <span style={{ color: '#f59e0b' }}>เปิด {timelineData.reduce((acc, d) => acc + d.openedCount, 0)}</span>
-                                                <span style={{ color: '#94a3b8', margin: '0 8px' }}>|</span>
-                                                <span style={{ color: '#8b5cf6' }}>ปิด {timelineData.reduce((acc, d) => acc + d.closedCount, 0)}</span>
-                                            </div>
-                                        }
-                                    />
-                                    <div style={{ height: '320px', width: '100%' }}>
-                                        <ResponsiveContainer>
-                                            <BarChart
-                                                key={`timeline-${highlightedWOId || 'none'}`}
-                                                data={timelineData}
-                                                onMouseMove={(state) => { if (state && state.activeLabel !== undefined) setActiveProgressIndex(state.activeLabel); else setActiveProgressIndex(null); }}
-                                                onMouseLeave={() => setActiveProgressIndex(null)}
-                                                onClick={(state: any) => {
-                                                    if (state && state.activeLabel !== undefined) {
-                                                        const dataPoint = timelineData.find(d => d.day === state.activeLabel);
-                                                        if (dataPoint && (dataPoint.openedCount > 0 || dataPoint.closedCount > 0)) {
-                                                            setSelectedBarWOs(dataPoint);
-                                                        }
-                                                    }
-                                                }}
-                                                style={{ cursor: 'pointer' }}
-                                            >
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                                <Tooltip
-                                                    cursor={{ fill: '#f8fafc' }}
-                                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                                    labelFormatter={(value) => {
-                                                        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-                                                        const [yr, mn] = selectedMonth.split('-');
-                                                        return `${value} ${monthNames[parseInt(mn) - 1]} ${yr}`;
-                                                    }}
-                                                />
-                                                <Legend verticalAlign="top" align="right" />
-                                                <Bar dataKey="openedCount" name="เปิดงานใหม่" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20}>
-                                                    {timelineData.map((item, index) => <Cell key={`cell-opened-${index}`} fillOpacity={highlightedWOId ? (item.isHighlighted ? 1 : 0.25) : (activeProgressIndex === null || activeProgressIndex === item.day ? 1 : 0.3)} stroke={highlightedWOId && item.isHighlighted ? '#b45309' : 'none'} strokeWidth={2} />)}
-                                                </Bar>
-                                                <Bar dataKey="closedCount" name="ปิดงานสำเร็จ" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20}>
-                                                    {timelineData.map((item, index) => <Cell key={`cell-closed-${index}`} fillOpacity={highlightedWOId ? (item.isHighlighted ? 1 : 0.25) : (activeProgressIndex === null || activeProgressIndex === item.day ? 1 : 0.3)} stroke={highlightedWOId && item.isHighlighted ? '#5b21b6' : 'none'} strokeWidth={2} />)}
-                                                </Bar>
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
+                            
 
-                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
-                                    <SectionHeader title="สัดส่วนการใช้แรงงาน (Efficiency)" icon={<Users size={20} />} subtitle="ชั่วโมงงานภายใน vs ผู้รับเหมา" />
-                                    <div style={{ height: '320px', position: 'relative' }}>
-                                        {/* Centered Summary Total */}
-                                        <div style={{
-                                            position: 'absolute',
-                                            top: '45%',
-                                            left: '50%',
-                                            transform: 'translate(-50%, -50%)',
-                                            textAlign: 'center',
-                                            pointerEvents: 'none',
-                                            zIndex: 10
-                                        }}>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '-5px' }}>
-                                                {highlightedWOId ? 'ใบงานที่เน้น' : 'ชั่วโมงรวม'}
-                                            </div>
-                                            <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#1e293b', lineHeight: 1.1 }}>
-                                                {((stats.internalHours || 0) + (stats.outsourceHours || 0)).toLocaleString()}
-                                            </div>
-                                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#4f46e5' }}>ชม. งาน</div>
-                                        </div>
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart key={`pie-${highlightedWOId || 'none'}`}>
-                                                <Pie data={stats.laborStats} cx="50%" cy="45%" innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
-                                                    {stats.laborStats.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                                                </Pie>
-                                                <Tooltip />
-                                                <Legend verticalAlign="bottom" />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            </div>}
-
-                            {/* S-Curve Chart */}
-                            <div style={{ gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
+                            {/* S-Curve Chart — T-337: hidden in all-time mode (month-anchored) */}
+                            <div style={{ display: isAllTime ? 'none' : undefined, gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                         <div style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', padding: '14px', borderRadius: '18px', color: '#fff' }}>
@@ -3228,8 +3140,8 @@ const Dashboard = () => {
                                             </defs>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                             <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700, dy: 5 }} label={{ value: 'วันที่ในเดือน', position: 'insideBottom', offset: -15, fill: '#94a3b8', fontSize: 11, fontWeight: 800 }} />
-                                            <YAxis yAxisId="left" hide={!selectedSCurveProject} axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }} label={{ value: 'งานที่ทำ (ใบ)', angle: -90, position: 'insideLeft', offset: 15, fill: '#64748b', fontSize: 11, fontWeight: 800 }} />
-                                            <YAxis yAxisId="right" orientation="right" hide={!selectedSCurveProject} axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#2563eb', fontSize: 12, fontWeight: 700 }} label={{ value: 'คนงาน (แรง)', angle: 90, position: 'insideRight', offset: 15, fill: '#2563eb', fontSize: 11, fontWeight: 800 }} />
+                                            <YAxis yAxisId="left" hide={false} axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }} label={{ value: 'งานที่ทำ (ใบ)', angle: -90, position: 'insideLeft', offset: 15, fill: '#64748b', fontSize: 11, fontWeight: 800 }} />
+                                            <YAxis yAxisId="right" orientation="right" hide={false} axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: '#2563eb', fontSize: 12, fontWeight: 700 }} label={{ value: 'คนงาน (แรง)', angle: 90, position: 'insideRight', offset: 15, fill: '#2563eb', fontSize: 11, fontWeight: 800 }} />
                                             <Tooltip
                                                 content={(props: any) => {
                                                     if (!props.active || !props.payload?.length) return null;
@@ -3288,7 +3200,7 @@ const Dashboard = () => {
                                                 }
                                                 return null;
                                             })()}
-                                            {selectedSCurveProject && (
+                                            {(
                                                 <Bar yAxisId="left" dataKey="totalWorkedTasks" name="งานที่ทำวันนี้"
                                                     shape={(props: any) => {
                                                         const { x, y, width, height, payload } = props;
@@ -3318,17 +3230,9 @@ const Dashboard = () => {
                                                     }}
                                                 />
                                             )}
-                                            {selectedSCurveProject && <Line yAxisId="right" type="monotone" dataKey="manpower" stroke="#2563eb" strokeWidth={2} connectNulls={false} dot={(props: any) => { const { cx, cy, payload } = props; return <circle cx={cx} cy={cy} r={payload.hasHighlight ? 6 : 3} fill="#2563eb" stroke={payload.hasHighlight ? '#fff' : 'none'} strokeWidth={2} />; }} activeDot={{ r: 8 }} name="manpower" />}
+                                            {<Line yAxisId="right" type="monotone" dataKey="manpower" stroke="#2563eb" strokeWidth={2} connectNulls={false} dot={(props: any) => { const { cx, cy, payload } = props; return <circle cx={cx} cy={cy} r={payload.hasHighlight ? 6 : 3} fill="#2563eb" stroke={payload.hasHighlight ? '#fff' : 'none'} strokeWidth={2} />; }} activeDot={{ r: 8 }} name="manpower" />}
                                         </ComposedChart>
                                     </ResponsiveContainer>
-                                    {!selectedSCurveProject && (
-                                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                                            <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.88)', padding: '1rem 2rem', borderRadius: '16px', border: '1px solid #e2e8f0', backdropFilter: 'blur(4px)' }}>
-                                                <p style={{ margin: 0, color: '#64748b', fontWeight: 700, fontSize: '0.95rem' }}>เลือกโปรเจกต์จากการ์ด SLA ด้านล่างเพื่อดูกราฟ</p>
-                                                <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>โครงสร้างเดือน {selectedMonth} แสดงตามแกนเวลา</p>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
@@ -3348,9 +3252,10 @@ const Dashboard = () => {
                                         {healthCardProjects.map((p: any) => {
                                             const cases = p.cases ?? [];
                                             const caseTotal = cases.length;
+                                            // T-347: Health Pulse only shows COMPLETED jobs — "near-late" cannot apply
+                                            // to a finished job, so this is a 2-way on-time/late split (no "เกือบช้า").
                                             const onTime  = cases.filter((c: any) => c.deviation >= 0).length;
-                                            const atRisk  = cases.filter((c: any) => c.deviation < 0 && c.deviation >= -30).length;
-                                            const late    = cases.filter((c: any) => c.deviation < -30).length;
+                                            const late    = cases.filter((c: any) => c.deviation < 0).length;
                                             const sla = caseTotal > 0 ? Math.round(onTime / caseTotal * 100) : 100;
                                             const accentColor = sla >= 80 ? '#10b981' : sla >= 50 ? '#f59e0b' : '#ef4444';
                                             const verdictBg   = sla >= 80 ? '#ecfdf5' : sla >= 50 ? '#fffbeb' : '#fef2f2';
@@ -3382,12 +3287,11 @@ const Dashboard = () => {
                                                     </div>
                                                     <div style={{ display: 'flex', height: '5px', borderRadius: '99px', overflow: 'hidden', gap: '2px', margin: '0 0 8px' }}>
                                                         {onTime > 0  && <div style={{ flex: onTime,  background: '#10b981', borderRadius: '99px' }} />}
-                                                        {atRisk > 0  && <div style={{ flex: atRisk,  background: '#f59e0b', borderRadius: '99px' }} />}
                                                         {late > 0    && <div style={{ flex: late,    background: '#ef4444', borderRadius: '99px' }} />}
                                                         {caseTotal === 0 && <div style={{ flex: 1, background: '#e2e8f0', borderRadius: '99px' }} />}
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                                                        {([['#10b981', `ทันกำหนด ${onTime}`], ['#f59e0b', `เกือบช้า ${atRisk}`], ['#ef4444', `ล่าช้า ${late}`]] as [string, string][]).map(([color, label]) => (
+                                                        {([['#10b981', `ทันกำหนด ${onTime}`], ['#ef4444', `ล่าช้า ${late}`]] as [string, string][]).map(([color, label]) => (
                                                             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem', color: '#64748b' }}>
                                                                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: color, flexShrink: 0 }} />
                                                                 {label}
@@ -3514,6 +3418,12 @@ const Dashboard = () => {
                                                     <button onClick={() => setHighlightedWOId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
                                                 </div>
                                             )}
+                                            {taskSlaOutcomeFilter && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: taskSlaOutcomeFilter === 'onTime' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${taskSlaOutcomeFilter === 'onTime' ? '#bbf7d0' : '#fecaca'}`, borderRadius: '10px', padding: '5px 10px' }}>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: taskSlaOutcomeFilter === 'onTime' ? '#15803d' : '#b91c1c' }}>{taskSlaOutcomeFilter === 'onTime' ? 'เสร็จทัน SLA' : 'เลย SLA'}</span>
+                                                    <button onClick={() => setTaskSlaOutcomeFilter('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: taskSlaOutcomeFilter === 'onTime' ? '#86efac' : '#fca5a5', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
+                                                </div>
+                                            )}
                                             <select value={taskWoTypeFilter} onChange={e => setTaskWoTypeFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskWoTypeFilter ? '#fef3c7' : '#f8fafc', color: taskWoTypeFilter ? '#b45309' : '#64748b', cursor: 'pointer', outline: 'none' }}>
                                                 <option value="">ประเภท: ทั้งหมด</option>
                                                 <option value="woa">หลังขาย (WOA)</option>
@@ -3527,8 +3437,8 @@ const Dashboard = () => {
                                                 <option value="">สถานะ: ทั้งหมด</option>
                                                 {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
-                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId) && (
-                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
+                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId || taskSlaOutcomeFilter) && (
+                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); setTaskSlaOutcomeFilter(''); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
                                             )}
                                         </div>
                                     </div>
@@ -3589,18 +3499,15 @@ const Dashboard = () => {
                                                         const p = task.dailyProgress || 0;
                                                         const isCancelled = task.woStatus === 'Cancelled' || task.woStatus === 'Rejected';
                                                         const woStatusMap: Record<string, { label: string; color: string }> = {
-                                                            'Pending':           { label: 'รอประเมิน',          color: '#94a3b8' },
+                                                            'Draft':             { label: 'ร่าง',              color: '#94a3b8' },
                                                             'Evaluating':        { label: 'รอประเมิน',          color: '#94a3b8' },
                                                             'Assigned':          { label: 'มอบหมายแล้ว',        color: '#6366f1' },
-                                                            'Approved':          { label: 'มอบหมายแล้ว',        color: '#6366f1' },
                                                             'Partially Approved':{ label: 'มอบหมายบางส่วน',    color: '#a78bfa' },
                                                             'In Progress':       { label: 'กำลังดำเนินการ',     color: '#3b82f6' },
-                                                            'in-progress':       { label: 'กำลังดำเนินการ',     color: '#3b82f6' },
+                                                            'For Checking':      { label: 'งานเสร็จ · รอออก QR', color: '#0891b2' },
                                                             'pending_delivery':  { label: 'รอลูกค้าประเมิน',   color: '#d97706' },
-                                                            'for-checking':      { label: 'รอลูกค้าประเมิน',   color: '#d97706' },
-                                                            'Completed':         { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
-                                                            'completed':         { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
-                                                            'Verified':          { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
+                                                            'customer_reject':   { label: 'ลูกค้าตีกลับ',       color: '#ef4444' },
+                                                            'Complete':          { label: 'สำเร็จสมบูรณ์',     color: '#059669' },
                                                             'Rejected':          { label: 'ส่งคืนแก้ไข',       color: '#ef4444' },
                                                             'Cancelled':         { label: 'ยกเลิก',             color: '#64748b' },
                                                         };
@@ -3614,16 +3521,16 @@ const Dashboard = () => {
                                                         const _slaHrs: Record<string,number> = {'Immediately':4,'24h':24,'1-3d':72,'3-7d':168,'7-14d':336,'14-30d':720};
                                                         const _slaLabel: Record<string,string> = {'Immediately':'ด่วน','24h':'1วัน','1-3d':'3วัน','3-7d':'7วัน','7-14d':'14วัน','14-30d':'30วัน'};
                                                         const wo = task.parentWO;
-                                                        const isWoCompleted = task.woStatus === 'Completed' || task.woStatus === 'completed' || task.woStatus === 'Verified';
+                                                        const isWoCompleted = task.woStatus === 'Complete';
 
                                                         // Task deadline — WOP: use wo.scheduledDate / wo.phActualSla when task fields absent
                                                         const isWop = !!(task as any).isPreHandover;
                                                         const rawStartStr = task.startDate || (isWop ? wo?.scheduledDate : null);
-                                                        const taskStartDate = rawStartStr ? new Date(rawStartStr.split('T')[0] + 'T08:00:00') : null;
+                                                        const taskStartDate = rawStartStr ? new Date(rawStartStr.split('T')[0] + 'T08:00:00+07:00') : null;
                                                         const tSlaKey = task.slaCategory || (isWop ? (wo?.phActualSla || '24h') : '24h');
                                                         const tSlaHrs = _slaHrs[tSlaKey] || 24;
                                                         const tStartMs = rawStartStr
-                                                            ? new Date(rawStartStr.split('T')[0] + 'T08:00:00').getTime()
+                                                            ? new Date(rawStartStr.split('T')[0] + 'T08:00:00+07:00').getTime()
                                                             : (task.slaStartTime ? new Date(task.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
                                                         const tDeadlineMs = tStartMs + tSlaHrs * 3600000;
                                                         const tDeadlineDate = new Date(tDeadlineMs);
@@ -3637,7 +3544,7 @@ const Dashboard = () => {
                                                             const d = new Date(h.date).getTime();
                                                             if (!isNaN(d) && d > latestHistMs) latestHistMs = d;
                                                         });
-                                                        const isTaskDone = task.dailyProgress >= 100 || task.status === 'Completed' || task.status === 'Verified' || isWoCompleted;
+                                                        const isTaskDone = task.dailyProgress >= 100 || task.status === 'Complete' || isWoCompleted;
                                                         const taskCompletedAt = task.completedAt
                                                             ? new Date(task.completedAt)
                                                             : (isTaskDone && latestHistMs > 0)
@@ -3645,7 +3552,7 @@ const Dashboard = () => {
                                                             : (isTaskDone && isWoCompleted && woCompletedAt ? woCompletedAt : null);
 
                                                         // Calendar days from startDate to completion
-                                                        const tStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00') : null;
+                                                        const tStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00+07:00') : null;
                                                         const calDaysUsed = (tStartDate && taskCompletedAt)
                                                             ? Math.max(1, Math.ceil((taskCompletedAt.getTime() - tStartDate.getTime()) / 86400000)) : null;
 
@@ -3856,7 +3763,7 @@ const Dashboard = () => {
                                                                     </td>
 
                                                                     <td style={{ padding: '0 4px', textAlign: 'center' }}>
-                                                                        {task.status === 'Completed' && task.evaluationStatus === 'Assigned' ? (
+                                                                        {(task.status === 'For Checking' || task.status === 'pending_delivery') ? (
                                                                             <span style={{
                                                                                 padding: '2px 7px',
                                                                                 background: '#fff7ed',

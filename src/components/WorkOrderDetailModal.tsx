@@ -10,7 +10,7 @@ interface WorkOrderDetailModalProps {
     onClose: () => void;
     wo: WorkOrder;
     onTaskClick: (task: MasterTask, categoryId: string, workOrderId: string, categoryName?: string) => void;
-    taskDecisions?: Record<string, 'Approved' | 'Assigned' | 'Rejected'>;
+    taskDecisions?: Record<string, 'Assigned' | 'Rejected'>;
     onPreHandoverAssign?: () => void;
 }
 
@@ -296,7 +296,7 @@ const WorkOrderDetailModal = ({
                                 categories: wo.categories
                                     .map(cat => ({
                                         ...cat,
-                                        tasks: cat.tasks.filter((t: any) => t.evaluationStatus === 'Rejected' || t.status === 'Rejected' || (t.status === 'in-progress' && t.evaluationStatus === 'Rejected'))
+                                        tasks: cat.tasks.filter((t: any) => t.status === 'Rejected')
                                     }))
                                     .filter(cat => cat.tasks.length > 0)
                               }

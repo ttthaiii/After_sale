@@ -57,7 +57,7 @@ const MyTracking = () => {
 
             if (!matchesProject) return false;
 
-            const isCompleted = wo.status === 'Completed' || (allTasks.length > 0 && allTasks.every(t => t.status === 'Rejected' || (t.dailyProgress || 0) === 100));
+            const isCompleted = wo.status === 'Complete' || (allTasks.length > 0 && allTasks.every(t => t.status === 'Rejected' || (t.dailyProgress || 0) === 100));
             const isArchived = wo.isArchived === true;
             const isInHistory = isCompleted || isArchived;
 
@@ -87,12 +87,17 @@ const MyTracking = () => {
 
     const getStatusInfo = (status: string) => {
         switch (status) {
+            case 'Draft': return { label: 'ร่าง', color: '#94a3b8', icon: <Clock size={16} /> };
             case 'Evaluating': return { label: 'รอประเมิน', color: '#6366f1', icon: <Package size={16} /> };
-            case 'Approved': return { label: 'อนุมัติแล้ว', color: '#10b981', icon: <CheckCircle2 size={16} /> };
+            case 'Assigned': return { label: 'มอบหมายแล้ว', color: '#10b981', icon: <CheckCircle2 size={16} /> };
             case 'Partially Approved': return { label: 'อนุมัติบางส่วน', color: '#f59e0b', icon: <CheckCircle2 size={16} /> };
             case 'Rejected': return { label: 'ถูกปฏิเสธ', color: '#ef4444', icon: <XCircle size={16} /> };
-            case 'Pending':
-            case 'In Progress': return { label: 'มอบหมายแล้ว/กำลังดำเนินการ', color: '#3b82f6', icon: <UserCheck size={16} /> };
+            case 'In Progress': return { label: 'กำลังดำเนินการ', color: '#3b82f6', icon: <UserCheck size={16} /> };
+            case 'For Checking': return { label: 'งานเสร็จ · รอออก QR', color: '#0891b2', icon: <Clock size={16} /> };
+            case 'pending_delivery': return { label: 'รอลูกค้าประเมิน', color: '#d97706', icon: <Clock size={16} /> };
+            case 'customer_reject': return { label: 'ลูกค้าตีกลับ', color: '#ef4444', icon: <XCircle size={16} /> };
+            case 'Complete': return { label: 'เสร็จสมบูรณ์', color: '#059669', icon: <CheckCircle2 size={16} /> };
+            case 'Cancelled': return { label: 'ยกเลิก', color: '#64748b', icon: <XCircle size={16} /> };
             default: return { label: status, color: '#94a3b8', icon: <Clock size={16} /> };
         }
     };
@@ -118,7 +123,7 @@ const MyTracking = () => {
     const StatusTimeline = ({ wo }: { wo: WorkOrder }) => {
         const status = wo.status;
         const allTasks = wo.categories.flatMap(c => c.tasks);
-        const hasStarted = allTasks.some(t => (t.dailyProgress || 0) > 0 || ['In Progress', 'Completed', 'Verified'].includes(t.status));
+        const hasStarted = allTasks.some(t => (t.dailyProgress || 0) > 0 || ['In Progress', 'For Checking', 'pending_delivery', 'Complete'].includes(t.status));
 
         const stages = [
             { id: 'Evaluating', label: 'ส่งเรื่อง', active: true },

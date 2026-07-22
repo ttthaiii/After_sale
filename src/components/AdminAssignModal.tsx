@@ -44,7 +44,6 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                 slaCategory: slaCategory as any,
                 startDate: new Date(startDate).toISOString(),
                 status: 'Assigned',
-                evaluationStatus: 'Assigned',
             };
 
             // Only reset SLA timer if it's a new assignment OR the user changed the category
@@ -186,7 +185,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                             <User size={18} color="#10b981" /> เลือกเจ้าหน้าที่ (Internal Staff)
                         </label>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', padding: '4px' }}>
-                            {staffList.filter(s => s.role === 'Foreman').map(s => (
+                            {staffList.filter(s => s.role === 'Foreman' && s.isActive !== false).map(s => (
                                 <div
                                     key={s.id}
                                     onClick={() => toggleStaff(s.id)}
@@ -222,7 +221,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                             style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b' }}
                         >
                             <option value="">-- ไม่ระบุ --</option>
-                            {contractors.map(c => (
+                            {contractors.filter(c => c.isActive !== false).map(c => (
                                 <option key={c.id} value={c.id}>{c.name} ({Array.isArray(c.specialty) ? c.specialty[0] : c.specialty})</option>
                             ))}
                         </select>

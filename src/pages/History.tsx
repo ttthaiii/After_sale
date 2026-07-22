@@ -7,6 +7,7 @@ import { Archive, Search, Building2, User2, RotateCcw, ChevronRight, FileSpreads
 import { WorkOrder, MasterTask } from '../types';
 import { logService } from '../services/logService';
 import { formatDate } from '../utils/date';
+import { getSatisfactionAverage } from '../utils/satisfaction';
 
 const History = () => {
     const { workOrders, projects, staff, contractors } = useWorkOrders();
@@ -38,7 +39,7 @@ const History = () => {
     // Base history work orders (before applying search/dropdown filters)
     const baseHistoryWorkOrders = useMemo(() => {
         return workOrders.filter(wo => {
-            const isOfficiallyFinished = wo.status === 'Completed' || wo.status === 'Verified' || wo.status === 'Rejected' || wo.status === 'Cancelled' || wo.isArchived;
+            const isOfficiallyFinished = wo.status === 'Complete' || wo.status === 'Rejected' || wo.status === 'Cancelled' || wo.isArchived;
             // PreHandover WOs: show if any category has been worked on (dailyProgress > 0) or WO finished
             if ((wo as any).type === 'PreHandover') {
                 const hasProgress = wo.categories.some((c: any) => (c.dailyProgress || 0) > 0);
@@ -58,16 +59,23 @@ const History = () => {
                     )
                 );
                 const isReporter = matchesUser(wo.reporterId || '');
+                // FM who owns the WO (submitted it) must still see it once a task is cancelled —
+                // a Rejected-then-archived task never gets responsibleStaffIds, so hasTaskAssigned
+                // alone drops it, and reporterId is the customer, not the owning FM.
+                const isWoOwner = matchesUser(wo.woOwnerId || '');
 
-                return isOfficiallyFinished || hasTaskAssigned || isReporter;
+                return isOfficiallyFinished || hasTaskAssigned || isReporter || isWoOwner;
             } else {
                 // Admin/Approver: show finished WOs + in-progress WOs that have at least one foreman assigned
+                // + WOs holding an FM-cancelled (taskArchived) task, so cancelled history stays visible even
+                // when no other task in the WO ever got a foreman assigned.
                 const hasAssignedForeman = wo.categories.some(cat =>
                     cat.tasks.some(task =>
                         task.responsibleStaffIds && task.responsibleStaffIds.length > 0
                     )
                 );
-                return isOfficiallyFinished || hasAssignedForeman;
+                const hasArchivedTask = wo.categories.some(cat => cat.tasks.some(task => (task as any).taskArchived));
+                return isOfficiallyFinished || hasAssignedForeman || hasArchivedTask;
             }
         });
     }, [workOrders, currentRole, CURRENT_USER_ID, user?.employeeId]);
@@ -100,11 +108,15 @@ const History = () => {
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
             
             const targetStaff = effectiveStaffId ? staff.find(s => s.id === effectiveStaffId) : null;
+            // WO owner must be able to see the WO even when the only task in it never got
+            // a foreman assigned (e.g. rejected-then-archived before assignment).
+            const isWoOwnerMatch = wo.woOwnerId === effectiveStaffId || (targetStaff && wo.woOwnerId === targetStaff.employeeId);
             const matchesStaff = effectiveStaffId ? (
                 wo.reporterId === effectiveStaffId ||
                 (targetStaff && wo.reporterId === targetStaff.employeeId) ||
+                isWoOwnerMatch ||
                 wo.categories.some(cat =>
-                    cat.tasks.some(task => 
+                    cat.tasks.some(task =>
                         task.responsibleStaffIds?.includes(effectiveStaffId) ||
                         (targetStaff && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
                         (targetStaff && targetStaff.id && task.responsibleStaffIds?.includes(targetStaff.id))
@@ -169,7 +181,11 @@ const History = () => {
                         const isAssigned = task.responsibleStaffIds?.includes(effectiveStaffId) ||
                             (targetStaff && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
                             (targetStaff && targetStaff.id && task.responsibleStaffIds?.includes(targetStaff.id));
-                        if (!isAssigned) return;
+                        // A task rejected/archived before ever being assigned has no responsibleStaffIds —
+                        // still show it to the WO owner, or it silently disappears from their history.
+                        const isOwnerOfUnassignedTask = (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0) &&
+                            (wo.woOwnerId === effectiveStaffId || (targetStaff && wo.woOwnerId === targetStaff.employeeId));
+                        if (!isAssigned && !isOwnerOfUnassignedTask) return;
                     }
                     
                     list.push({ 
@@ -187,76 +203,58 @@ const History = () => {
 
     // Check if the work order is fully completed and evaluated (all tasks are finished/closed)
     const isWorkOrderFullyCompleted = (wo: WorkOrder) => {
-        if (wo.status === 'Verified' || wo.status === 'Completed') return true;
+        if (wo.status === 'Complete') return true;
         
         const allTasks = wo.categories.flatMap(cat => cat.tasks || []);
         const activeTasks = allTasks.filter(t => {
             if (!t) return false;
-            // Filter out fake/placeholder rejected tasks
-            const isFakeReject = t.status === 'Rejected' && 
+            // Filter out fake/placeholder rejected tasks and ones the FM archived
+            const isFakeReject = t.status === 'Rejected' &&
                 (!t.responsibleStaffIds || t.responsibleStaffIds.length === 0) &&
                 (!t.rootCause || t.rootCause.trim() === '');
-            return !isFakeReject;
+            const isArchivedReject = t.status === 'Rejected' && (t as any).taskArchived === true;
+            return !isFakeReject && !isArchivedReject;
         });
-        
+
         if (activeTasks.length === 0) return false;
-        
-        return activeTasks.every(t => 
-            t.status === 'Verified' || 
-            t.status === 'completed' || 
-            t.status === 'Approved' || 
+
+        return activeTasks.every(t =>
+            t.status === 'Complete' ||
             t.status === 'Cancelled'
+        );
+    };
+
+    // A task is "closed" (belongs in Archived, not Active) once nothing further can
+    // happen to it: it finished, its WO finished/was cancelled outright, it's a
+    // placeholder Rejected task with no staff ever assigned, or the FM archived it
+    // (taskArchived) — this last case is the only one that used to be missed here,
+    // which kept FM-cancelled tasks stuck in "Active" forever.
+    const isTaskClosed = (item: { wo: WorkOrder; task: MasterTask }) => {
+        const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
+        const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
+        return (
+            (item.task.status as string) === 'Complete' ||
+            (item.task.status as string) === 'Cancelled' ||
+            (item.task as any).taskArchived === true ||
+            item.wo.status === 'Complete' ||
+            item.wo.status === 'Cancelled' ||
+            ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
+            (item.wo.status === 'Rejected' && !foremanId)
         );
     };
 
     // Calculate accurate Task counts for each sub-tab
     const activeTasksCount = useMemo(() => {
-        return allHistoryTasks.filter(item => {
-            const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
-            const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
-            const isTaskClosed = 
-                (item.task.status as string) === 'Verified' || 
-                (item.task.status as string) === 'completed' || 
-                item.wo.status === 'Verified' || 
-                item.wo.status === 'Completed' || 
-                item.wo.status === 'Cancelled' || 
-                ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
-                (item.wo.status === 'Rejected' && !foremanId);
-            return !isTaskClosed;
-        }).length;
+        return allHistoryTasks.filter(item => !isTaskClosed(item)).length;
     }, [allHistoryTasks]);
 
     const archivedTasksCount = useMemo(() => {
-        return allHistoryTasks.filter(item => {
-            const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
-            const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
-            const isTaskClosed = 
-                (item.task.status as string) === 'Verified' || 
-                (item.task.status as string) === 'completed' || 
-                item.wo.status === 'Verified' || 
-                item.wo.status === 'Completed' || 
-                item.wo.status === 'Cancelled' || 
-                ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
-                (item.wo.status === 'Rejected' && !foremanId);
-            return isTaskClosed;
-        }).length;
+        return allHistoryTasks.filter(item => isTaskClosed(item)).length;
     }, [allHistoryTasks]);
 
     // Choose which list to render in the table based on selected sub-tab
     const displayedTasks = useMemo(() => {
-        return allHistoryTasks.filter(item => {
-            const foremanId = item.wo.categories.flatMap(cat => cat.tasks || []).find(t => t && t.responsibleStaffIds && t.responsibleStaffIds.length > 0)?.responsibleStaffIds?.[0];
-            const hasTaskStaff = item.task.responsibleStaffIds && item.task.responsibleStaffIds.length > 0;
-            const isTaskClosed = 
-                (item.task.status as string) === 'Verified' || 
-                (item.task.status as string) === 'completed' || 
-                item.wo.status === 'Verified' || 
-                item.wo.status === 'Completed' || 
-                item.wo.status === 'Cancelled' || 
-                ((item.task.status as string) === 'Rejected' && !hasTaskStaff) ||
-                (item.wo.status === 'Rejected' && !foremanId);
-            return activeSubTab === 'Active' ? !isTaskClosed : isTaskClosed;
-        });
+        return allHistoryTasks.filter(item => activeSubTab === 'Active' ? !isTaskClosed(item) : isTaskClosed(item));
     }, [allHistoryTasks, activeSubTab]);
 
     const clearFilters = () => {
@@ -516,15 +514,15 @@ const History = () => {
 
                                 // Calculate task progress dynamically
                                 let taskProgress = task.dailyProgress || 0;
-                                if (task.status?.toLowerCase() === 'completed' || task.status === 'Verified') {
+                                if (['For Checking', 'pending_delivery', 'Complete'].includes(task.status as string)) {
                                     taskProgress = 100;
-                                } else if (task.status?.toLowerCase() === 'in-progress' && taskProgress === 0) {
+                                } else if (task.status === 'In Progress' && taskProgress === 0) {
                                     taskProgress = 50;
                                 }
 
                                 // Determine End Date dynamically based on task status, wo status, or history
                                 let endDateStr = '-';
-                                if (task.status === 'Verified' || wo.status === 'Verified') {
+                                if (task.status === 'Complete' || wo.status === 'Complete') {
                                     let latestDate = new Date(wo.createdAt).getTime();
                                     if (wo.submittedAt) {
                                         latestDate = new Date(wo.submittedAt).getTime();
@@ -641,19 +639,22 @@ const History = () => {
                                             </td>
                                         ) : (
                                             <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                                                {(isWorkOrderFullyCompleted(wo) && task.status !== 'Rejected') ? (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
-                                                            <Star size={14} fill="#f59e0b" style={{ stroke: 'none' }} />
-                                                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#0f172a' }}>
-                                                                {(task as any).satisfaction || (wo as any).overallSatisfaction || '5.0'}
-                                                            </span>
+                                                {(() => {
+                                                    const satisfactionAvg = getSatisfactionAverage((wo as any).satisfactionSurvey);
+                                                    return (isWorkOrderFullyCompleted(wo) && task.status !== 'Rejected' && satisfactionAvg) ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
+                                                                <Star size={14} fill="#f59e0b" style={{ stroke: 'none' }} />
+                                                                <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#0f172a' }}>
+                                                                    {satisfactionAvg}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>ผลประเมิน</span>
                                                         </div>
-                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>ผลประเมิน</span>
-                                                    </div>
-                                                ) : (
-                                                    <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 500 }}>-</span>
-                                                )}
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 500 }}>-</span>
+                                                    );
+                                                })()}
                                             </td>
                                         )}
 
@@ -663,7 +664,7 @@ const History = () => {
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#64748b', background: '#f1f5f9', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #e2e8f0' }}>
                                                     <XCircle size={14} /> ยกเลิกใบงาน
                                                 </div>
-                                            ) : (task.status as string) === 'Rejected' || (wo.status === 'Rejected' && (task.status as string) !== 'Verified') ? (
+                                            ) : (task.status as string) === 'Rejected' || (wo.status === 'Rejected' && (task.status as string) !== 'Complete') ? (
                                                 (!task.responsibleStaffIds || task.responsibleStaffIds.length === 0) || !foremanId ? (
                                                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#ef4444', background: '#fef2f2', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fee2e2' }}>
                                                         <XCircle size={14} /> ปฏิเสธโดยแอดมิน
@@ -673,7 +674,7 @@ const History = () => {
                                                         <RotateCcw size={14} /> ส่งคืนแก้ไข (ลูกค้า)
                                                     </div>
                                                 )
-                                            ) : (task.status as string) === 'Verified' || (wo.status === 'Verified' && (task.status as string) !== 'Rejected') ? (
+                                            ) : (task.status as string) === 'Complete' || (wo.status === 'Complete' && (task.status as string) !== 'Rejected') ? (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#10b981', background: '#ecfdf5', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #d1fae5' }}>
                                                     <CheckCircle size={14} /> สำเร็จสมบูรณ์
                                                 </div>
@@ -681,7 +682,7 @@ const History = () => {
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', background: '#fef3c7', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fde68a' }}>
                                                     <Clock size={14} /> รอลูกค้าประเมิน
                                                 </div>
-                                            ) : (task.status as string)?.toLowerCase() === 'completed' ? (
+                                            ) : (task.status as string) === 'For Checking' ? (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', background: '#fffbeb', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fef3c7' }}>
                                                     <Clock size={14} /> รอ Owner ตรวจรับ
                                                 </div>
@@ -689,7 +690,7 @@ const History = () => {
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#7c3aed', background: '#f5f3ff', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #ddd6fe' }}>
                                                     <User2 size={14} /> รอมอบหมาย [แอดมิน]
                                                 </div>
-) : (task.status as string) === 'in-progress' && revNum > 0 ? (
+) : (task.status as string) === 'In Progress' && revNum > 0 ? (
                                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#b45309', background: '#fef3c7', padding: '4px 10px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 900, border: '1px solid #fde68a' }}>
                                                      <Clock size={14} /> กำลังรอแก้ไขครั้งที่ {revNum}
                                                  </div>

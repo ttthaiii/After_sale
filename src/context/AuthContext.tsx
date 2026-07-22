@@ -5,15 +5,17 @@ import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/fir
 import { logService } from '../services/logService';
 import bcrypt from 'bcryptjs';
 
-const mapLaborUserToRole = (userData: any, empId: string): UserRole => {
-    // Align roles according to Labor Standard (Image 3): AM = Admin, FM = Foreman
-    if (userData.roleId === 'AM' || userData.roleId === 'PE' || empId === '100051' || empId === '101485' || empId === 'admin1') {
-        return 'Admin';
+// After Sale owns the user role as a full name (Admin/Manager/Approver/Foreman).
+// Read `role` directly from the DB; fall back to legacy Labor codes only for old
+// records that were synced in before this field existed.
+const resolveUserRole = (userData: any): UserRole => {
+    const role = userData.role;
+    if (role === 'Admin' || role === 'Manager' || role === 'Approver' || role === 'Foreman') {
+        return role;
     }
-    if (userData.roleId === 'FM' || userData.roleId === 'GOD' || empId === '101527') {
-        return 'Foreman';
-    }
-    return (userData.role || 'Foreman') as UserRole;
+    // Legacy fallback: users still carrying only a Labor code (AM/FM/PE/GOD)
+    if (userData.roleId === 'AM' || userData.roleId === 'PE') return 'Admin';
+    return 'Foreman';
 };
 
 interface AuthContextType {
@@ -58,12 +60,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // 🔄 Dynamic Real-time profile updates (for instant assignedProjects alignment)
     useEffect(() => {
-        if (!user || user.id === 'admin-initial' || user.id === '100051') return;
+        if (!user || user.id === 'admin-initial') return;
         
         const unsub = onSnapshot(doc(db, 'users', user.id), (docSnap) => {
             if (docSnap.exists()) {
                 const userData = docSnap.data();
-                const mappedRole = mapLaborUserToRole(userData, user.id);
+                const mappedRole = resolveUserRole(userData);
                 setUser(prev => {
                     if (!prev) return null;
                     const updated = {
@@ -89,31 +91,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const cleanPassword = password.trim();
 
             console.log("Attempting login for:", cleanUsername);
-
-            // ✅ Initial Admin Fallback (for first-time setup)
-            if (cleanUsername === 'admin' && cleanPassword === 'admin123') {
-                const adminUser: User = {
-                    id: '100051',
-                    name: 'System Admin (Prayuth)',
-                    role: 'Admin',
-                    avatar: 'https://ui-avatars.com/api/?background=4f46e5&color=fff&name=Admin',
-                    assignedProjects: ["P002"]
-                };
-                setUser(adminUser);
-                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser));
-
-                // ✅ Log Action
-                await logService.trackAction({
-                    userId: adminUser.id,
-                    userName: adminUser.name,
-                    role: adminUser.role,
-                    action: 'LOGIN',
-                    module: 'AUTH',
-                    details: 'เข้าสู่ระบบ (Initial Admin Fallback)'
-                });
-
-                return true;
-            }
 
             let q = query(
                 collection(db, 'users'),
@@ -152,7 +129,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                    return false;
                 }
 
-                const mappedRole = mapLaborUserToRole(userData, empId);
+                // Block deactivated (soft-deleted) users from logging in.
+                if (userData.isActive === false) {
+                    console.warn("Login blocked — user is deactivated:", cleanUsername);
+                    alert('บัญชีนี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ');
+                    return false;
+                }
+
+                const mappedRole = resolveUserRole(userData);
 
                 const loggedInUser: User = {
                     id: empId,
@@ -197,7 +181,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     }
 
                     if (isPasswordCorrect) {
-                        const mappedRole = mapLaborUserToRole(userData, empId);
+                        // Block deactivated (soft-deleted) users from logging in.
+                        if (userData.isActive === false) {
+                            console.warn("Login blocked — user is deactivated:", cleanUsername);
+                            alert('บัญชีนี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ');
+                            return false;
+                        }
+                        const mappedRole = resolveUserRole(userData);
                         const loggedInUser: User = {
                             id: empId,
                             employeeId: userData.employeeId || empId,

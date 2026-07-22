@@ -1,6 +1,9 @@
 node_modules
 .env
+__pycache__/
 
 
 # Firebase Service Account Keys
 key/
+cloud-functions/labor-management-system.json
+cloud-functions/after-sale-key.json

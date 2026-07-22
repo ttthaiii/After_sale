@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
-import { 
-    CheckCircle2, XCircle, Camera, AlertTriangle, 
-    Building2, MapPin, Package, UserCheck, FileText, 
+import { doc, getDoc } from 'firebase/firestore';
+import { useWorkOrders } from '../context/WorkOrderContext';
+import {
+    CheckCircle2, XCircle, Camera, AlertTriangle,
+    Building2, MapPin, Package, UserCheck, FileText,
     Loader2, Sparkles
 } from 'lucide-react';
 
 export default function OwnerReview() {
+    const { updateTask } = useWorkOrders();
     const [searchParams] = useSearchParams();
     const woId = searchParams.get('woId') || '';
     const catId = searchParams.get('catId') || '';
@@ -107,6 +109,8 @@ export default function OwnerReview() {
     const currentRev = task.currentRevision || 'rev00';
     const revDisplay = currentRev === 'rev00' ? 'REV. 0 (ครั้งแรก)' : `REV. ${parseInt(currentRev.replace('rev', ''))}`;
 
+    // Same pipeline as the "Foreman fills it in" tab (SLAMonitor.tsx's handleConfirmReview) —
+    // whichever device does the tapping, approve/reject must produce identical results.
     const handleApprove = async () => {
         if (!ownerName.trim()) {
             alert('กรุณากรอกชื่อผู้ตรวจรับงาน');
@@ -115,16 +119,13 @@ export default function OwnerReview() {
         setSubmitting(true);
         try {
             const now = new Date().toISOString();
-            const taskRef = doc(db, 'workOrders', woId, 'categories', catId, 'tasks', taskId);
-            
-            await updateDoc(taskRef, {
-                status: 'Verified',
+            await updateTask(woId, catId, taskId, {
+                status: 'Complete',
                 ownerName: ownerName.trim(),
                 notes: notes.trim(),
                 updatedAt: now
             });
 
-            // Log action if possible, otherwise write directly to Firestore
             setSubmitType('approve');
             setSubmitted(true);
         } catch (error) {
@@ -143,18 +144,16 @@ export default function OwnerReview() {
         setSubmitting(true);
         try {
             const now = new Date().toISOString();
-            const taskRef = doc(db, 'workOrders', woId, 'categories', catId, 'tasks', taskId);
-
             const revNum = parseInt(currentRev.replace('rev', '')) || 0;
             const nextRev = `rev${String(revNum + 1).padStart(2, '0')}`;
 
-            await updateDoc(taskRef, {
-                status: 'Rejected',
+            await updateTask(woId, catId, taskId, {
+                // customer reject → task re-enters evaluation (rework loop); WO derives to customer_reject
+                status: 'Evaluating',
                 revisionName: rejectReason.trim(),
                 revisionCreatedAt: now,
                 currentRevision: nextRev,
                 dailyProgress: 0,
-                completedAt: deleteField(), // clear stale timestamp so Round N+1 SLA calculates correctly
                 updatedAt: now
             });
 

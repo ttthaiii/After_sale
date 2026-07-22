@@ -153,7 +153,7 @@ const ActivityLogTable = () => {
                         <option value="">ทุกตำแหน่ง (Roles)</option>
                         <option value="Admin">Admin</option>
                         <option value="Foreman">Foreman</option>
-                        <option value="BackOffice">BackOffice</option>
+                        <option value="Manager">Manager</option>
                         <option value="Approver">Approver</option>
                     </select>
 

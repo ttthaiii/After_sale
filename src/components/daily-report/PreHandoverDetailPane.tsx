@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useDailyReport } from '../../context/DailyReportContext';
 import { PreHandoverSummaryModal } from './PreHandoverSummaryModal';
+import { computeJobSLA } from '../../utils/jobSla';
 
 // ─── Inline Calendar Component ───────────────────────────────────────────────
 const MONTH_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -108,10 +109,7 @@ const PhCalendar: React.FC<PhCalendarProps> = ({ reportDate, onSelectDate, getDa
   );
 };
 
-const SLA_HOURS: Record<string, number> = {
-  Immediately: 4, '24h': 24, '1-3d': 72,
-  '3-7d': 168, '7-14d': 336, '14-30d': 720, '30-60d': 1440, '60d+': 2880,
-};
+// SLA hours map now lives in src/utils/jobSla.ts (computeJobSLA) — single source of truth.
 
 
 export const PreHandoverDetailPane: React.FC = () => {
@@ -228,12 +226,11 @@ export const PreHandoverDetailPane: React.FC = () => {
   const { wo, cat } = selectedPhCatInfo;
   const project = realProjects.find((p: any) => p.id === wo.projectId);
 
-  // SLA deadline calculation
-  const phSlaHours = SLA_HOURS[wo.phActualSla] || SLA_HOURS[wo.phEstimatedSla] || 720;
-  const phStartMs = wo.startDate ? new Date(wo.startDate).getTime() : Date.now();
-  const phDeadlineMs = phStartMs + phSlaHours * 3600 * 1000;
-  const daysLeft = Math.ceil((phDeadlineMs - Date.now()) / 86400000);
-  const deadlineLabel = new Date(phDeadlineMs).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
+  // SLA deadline — job-level via central helper (wo.scheduledDate@08:00 + phActualSla, no Date.now / 720 fallback).
+  const _jobSla = computeJobSLA(wo);
+  const phDeadlineMs = _jobSla.deadlineMs ?? Date.now();
+  const daysLeft = _jobSla.deadlineMs !== null ? Math.ceil((phDeadlineMs - Date.now()) / 86400000) : 0;
+  const deadlineLabel = _jobSla.deadlineMs !== null ? new Date(phDeadlineMs).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
   const deadlineColor = daysLeft < 0 ? '#ef4444' : daysLeft <= 3 ? '#f59e0b' : '#10b981';
 
   // Photo map

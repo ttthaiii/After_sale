@@ -121,15 +121,17 @@ const WorkOrders = () => {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', fontSize: '0.85rem' }}>
                                                             {/* Master Status */}
                                                             <div style={{
-                                                                color: task.status === 'Completed' ? '#4CAF50' : task.status === 'In Progress' ? '#FF9800' : '#888',
+                                                                color: task.status === 'Complete' ? '#4CAF50' : task.status === 'In Progress' ? '#FF9800' : '#888',
                                                                 display: 'flex', alignItems: 'center', gap: '5px'
                                                             }}>
-                                                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: task.status === 'Completed' ? '#4CAF50' : task.status === 'In Progress' ? '#FF9800' : '#888' }}></span>
-                                                                {task.status === 'Pending' && 'รอเริ่มงาน'}
+                                                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: task.status === 'Complete' ? '#4CAF50' : task.status === 'In Progress' ? '#FF9800' : '#888' }}></span>
+                                                                {task.status === 'Evaluating' && 'รอประเมิน'}
                                                                 {task.status === 'Assigned' && 'มอบหมายแล้ว'}
                                                                 {task.status === 'In Progress' && 'กำลังดำเนินการ'}
-                                                                {task.status === 'Completed' && 'เสร็จสมบูรณ์'}
-                                                                {task.status === 'Verified' && 'ตรวจสอบแล้ว'}
+                                                                {task.status === 'For Checking' && 'งานเสร็จ · รอออก QR'}
+                                                                {task.status === 'pending_delivery' && 'รอลูกค้าประเมิน'}
+                                                                {task.status === 'Complete' && 'เสร็จสมบูรณ์'}
+                                                                {task.status === 'Rejected' && 'ตีกลับแก้ไข'}
                                                             </div>
 
                                                             {/* API Daily Progress */}

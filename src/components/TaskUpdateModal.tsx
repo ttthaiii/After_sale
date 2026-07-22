@@ -54,8 +54,8 @@ const TaskUpdateModal = ({ isOpen, onClose, task, categoryId, workOrderId, categ
 
             await addTaskUpdate(workOrderId, categoryId, task.id, report);
             
-            // 2. Mark task as Verified/Completed
-            await updateTask(workOrderId, categoryId, task.id, { status: 'Verified' });
+            // 2. Mark task as Complete (WO status re-derives from tasks)
+            await updateTask(workOrderId, categoryId, task.id, { status: 'Complete' });
             
             onClose();
         } catch (error) {
@@ -69,11 +69,15 @@ const TaskUpdateModal = ({ isOpen, onClose, task, categoryId, workOrderId, categ
         let color = '#777';
         let label = status;
 
-        if (status === 'Pending') { color = '#FFC107'; label = 'รอเริ่มงาน'; }
+        if (status === 'Draft') { color = '#94a3b8'; label = 'ร่าง'; }
+        if (status === 'Evaluating') { color = '#FFC107'; label = 'รอประเมิน'; }
         if (status === 'Assigned') { color = '#2196F3'; label = 'มอบหมายแล้ว'; }
         if (status === 'In Progress') { color = '#FF9800'; label = 'กำลังทำ'; }
-        if (status === 'Completed') { color = '#4CAF50'; label = 'เสร็จแล้ว'; }
-        if (status === 'Verified') { color = '#8BC34A'; label = 'ตรวจสอบแล้ว'; }
+        if (status === 'For Checking') { color = '#0891b2'; label = 'งานเสร็จ · รอออก QR'; }
+        if (status === 'pending_delivery') { color = '#d97706'; label = 'รอลูกค้าประเมิน'; }
+        if (status === 'Complete') { color = '#4CAF50'; label = 'เสร็จแล้ว'; }
+        if (status === 'Rejected') { color = '#ef4444'; label = 'ตีกลับ'; }
+        if (status === 'Cancelled') { color = '#64748b'; label = 'ยกเลิก'; }
 
         return (
             <span style={{

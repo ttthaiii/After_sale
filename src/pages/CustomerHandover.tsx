@@ -106,20 +106,7 @@ export default function CustomerHandover() {
                             // Fetch daily reports history
                             const historyList: any[] = [];
                             
-                            // 1. Fetch from legacy dailyreport
-                            try {
-                                const legacySnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'dailyreport'));
-                                legacySnap.docs.forEach(d => {
-                                    historyList.push({
-                                        ...d.data(),
-                                        id: d.id
-                                    });
-                                });
-                            } catch (e) {
-                                console.error("Error fetching legacy dailyreport:", e);
-                            }
-
-                            // 2. Fetch from revisions dailyReports
+                            // Fetch from revisions dailyReports
                             try {
                                 const subtaskId = getSubtaskId(taskId);
                                 const revisionsSnap = await getDocs(collection(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions'));
@@ -251,7 +238,7 @@ export default function CustomerHandover() {
     const eligibleTasks = (workOrder.categories || []).flatMap((cat: any) => 
         (cat.tasks || []).filter((task: any) => {
             const hasCompletedProgress = task.dailyProgress === 100;
-            const notYetVerified = task.status !== 'Verified' && task.status !== 'completed';
+            const notYetVerified = task.status !== 'Complete';
             const notStillRejectedByAdmin = task.status !== 'Rejected' && !isWoPendingReassign;
             return hasCompletedProgress && notYetVerified && notStillRejectedByAdmin;
         })

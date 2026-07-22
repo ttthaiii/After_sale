@@ -437,7 +437,7 @@ const OverviewContent = ({
                                             </div>
                                         )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
                                     } else {
-                                        const items = workOrders.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Approved', 'Partially Approved', 'Pending', 'Rejected'].includes(wo.status));
+                                        const items = workOrders.filter((wo: any) => !isWorkOrderCompleted(wo) && ['In Progress', 'Assigned', 'Partially Approved', 'Rejected'].includes(wo.status));
                                         return items.length > 0 ? items.map((wo: any) => {
                                             const slaStatus = getSLATimeStatus(wo);
                                             return (

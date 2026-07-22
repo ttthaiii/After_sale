@@ -30,6 +30,29 @@ class LogService {
     }
 
     /**
+     * Workstream C — audit trail: record field-level before→after changes.
+     * Serialises the change set into `details` so history can be replayed.
+     */
+    async trackChange(params: {
+        userId: string;
+        userName: string;
+        role: string;
+        module: ActivityLog['module'];
+        action?: ActivityLog['action'];
+        targetId: string;
+        projectId?: string;
+        changes: { field: string; before: any; after: any }[];
+        note?: string;
+    }) {
+        const { changes, note, action, ...rest } = params;
+        return this.trackAction({
+            ...rest,
+            action: action || 'UPDATE',
+            details: JSON.stringify({ note: note || '', changes })
+        });
+    }
+
+    /**
      * Helper for page views (can be called in useEffect)
      */
     async trackPageView(user: any, module: ActivityLog['module'], pageName: string) {

@@ -2,7 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, X, ChevronLeft, ChevronRight, Image as ImageIcon, Info, FileText } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
+import { computeJobSLA } from '../utils/jobSla';
 import { useAuth } from '../context/AuthContext';
 import { logService } from '../services/logService';
 import CloseJobModal from '../components/CloseJobModal';
@@ -53,64 +55,37 @@ const SLAMonitor = () => {
     }, [historyTask]);
 
     const getThaiStatusBadge = (t: any) => {
-        const progress = t.dailyProgress || 0;
-        let status: any = t.status;
-        const hasQrToken = !!t.woDeliveryQrToken;
-
-        if (!hasQrToken && (progress >= 100 || status === 'Completed' || status === 'completed' || status === 'for-checking')) {
-            if (status !== 'Verified') {
-                status = 'in-progress';
-            }
-        } else if (progress >= 100 && status !== 'Completed' && status !== 'completed' && status !== 'Verified') {
-            if (hasQrToken) {
-                status = 'for-checking';
-            } else {
-                status = 'in-progress';
-            }
-        } else if (progress > 0 && progress < 100 && (status === 'Pending' || status === 'Assigned' || status === 'upcoming')) {
-            status = 'in-progress';
-        } else if (status === 'for-checking' && !hasQrToken) {
-            status = 'in-progress';
+        // task.status is now the single source of truth — badge maps it directly (no progress/QR inference)
+        const badge = (color: string, bg: string, label: string) =>
+            <span style={{ color, background: bg, padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>{label}</span>;
+        switch (t.status) {
+            case 'Draft':            return badge('#64748b', '#f1f5f9', 'ร่าง');
+            case 'Evaluating':       return badge('#ef4444', '#fee2e2', 'รอประเมิน');
+            case 'Assigned':         return badge('#3b82f6', '#dbeafe', 'มอบหมายแล้ว');
+            case 'In Progress':      return badge('#7c3aed', '#f5f3ff', 'กำลังทำ');
+            case 'For Checking':     return badge('#0891b2', '#cffafe', 'งานเสร็จ · รอออก QR');
+            case 'pending_delivery': return badge('#d97706', '#fef3c7', 'รอลูกค้าประเมิน');
+            case 'Complete':         return badge('#059669', '#d1fae5', 'สำเร็จ');
+            case 'Rejected':         return badge('#b91c1c', '#fee2e2', 'รอมอบหมายใหม่');
+            case 'Cancelled':        return badge('#64748b', '#f1f5f9', 'ยกเลิก');
         }
-
-        switch (status) {
-            case 'Pending':
-                return <span style={{ color: '#ef4444', background: '#fee2e2', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอประเมิน</span>;
-            case 'Assigned':
-            case 'Approved':
-                if (progress === 0) {
-                    return <span style={{ color: '#3b82f6', background: '#dbeafe', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>มอบหมายแล้ว</span>;
-                }
-                break;
-            case 'In Progress':
-            case 'in-progress':
-                return <span style={{ color: '#7c3aed', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>กำลังทำ</span>;
-            case 'for-checking':
-                return <span style={{ color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอลูกค้าประเมิน</span>;
-            case 'Verified':
-            case 'Completed':
-            case 'completed':
-                return <span style={{ color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>สำเร็จ</span>;
-            case 'Rejected':
-                return <span style={{ color: '#b91c1c', background: '#fee2e2', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>รอมอบหมายใหม่</span>;
-        }
-        return <span style={{ color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontWeight: 900, fontSize: '0.7rem' }}>{status}</span>;
+        return badge('#64748b', '#f1f5f9', t.status || '-');
     };
 
     const [selectedEvalWO, setSelectedEvalWO] = useState<any | null>(null);
     const [currentEvalTask, setCurrentEvalTask] = useState<any | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
-    const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Approved' | 'Assigned' | 'Rejected'>>({});
+    const [taskDecisions, setTaskDecisions] = useState<Record<string, 'Assigned' | 'Rejected'>>({});
 
     useEffect(() => {
         if (selectedEvalWO) {
             const updatedWo = workOrders.find((w) => w.id === selectedEvalWO.id);
             if (updatedWo) {
                 setSelectedEvalWO(updatedWo);
-                const decisions: Record<string, 'Approved' | 'Assigned' | 'Rejected'> = {};
+                const decisions: Record<string, 'Assigned' | 'Rejected'> = {};
                 updatedWo.categories.flatMap((c: any) => c.tasks).forEach((t: any) => {
-                    if (t.status === 'Approved' || t.status === 'Assigned' || t.status === 'Rejected') {
+                    if (t.status === 'Assigned' || t.status === 'Rejected') {
                         decisions[t.id] = t.status;
                     }
                 });
@@ -159,7 +134,7 @@ const SLAMonitor = () => {
     const handleModalConfirm = async (updates: Partial<any>) => {
         if (!currentEvalTask || !selectedEvalWO) return;
 
-        const status = updates.status as 'Approved' | 'Assigned' | 'Rejected';
+        const status = updates.status as 'Assigned' | 'Rejected';
         setTaskDecisions((prev) => ({ ...prev, [currentEvalTask.id]: status }));
 
         const updatedCategories = selectedEvalWO.categories.map((cat: any) => ({
@@ -168,23 +143,9 @@ const SLAMonitor = () => {
         }));
 
         const allTasks = updatedCategories.flatMap((c: any) => c.tasks);
-        const pendingCount = allTasks.filter((t: any) => t.status === 'Pending').length;
-        const approvedCount = allTasks.filter((t: any) => t.status === 'Approved' || t.status === 'Assigned').length;
-        const totalCount = allTasks.length;
-
-        let finalWoStatus: 'Evaluating' | 'Approved' | 'Partially Approved' | 'Rejected' = 'Evaluating';
-
-        if (pendingCount > 0) {
-            finalWoStatus = 'Evaluating';
-        } else {
-            if (approvedCount === 0) {
-                finalWoStatus = 'Rejected';
-            } else if (approvedCount < totalCount) {
-                finalWoStatus = 'Partially Approved';
-            } else {
-                finalWoStatus = 'Approved';
-            }
-        }
+        // WO status is computed from tasks — single source of truth
+        const finalWoStatus = deriveWoStatus(allTasks);
+        const pendingCount = allTasks.filter((t: any) => t.status === 'Evaluating').length;
 
         try {
             await saveEvaluation(selectedEvalWO.id, finalWoStatus, updatedCategories);
@@ -202,7 +163,10 @@ const SLAMonitor = () => {
         setIsEvalModalOpen(false);
     };
 
-    const getSLARemaining = (task: any, woCreatedAt: string) => {
+    // T-347: job-level (per ใบงาน) — every subtask in the same WO shares the WO's SLA status
+    // via the central computeJobSLA helper (max-SLA-among-subtasks, 7-day fixed warning window).
+    // Per-task terminal states (done/rejected) stay per-subtask — those describe the subtask itself.
+    const getSLARemaining = (task: any, wo: any) => {
         if (task.dailyProgress === 100) {
             return { text: 'เสร็จสิ้นแล้ว', isCritical: false, isWarning: false, isDone: true, diffMs: 0 };
         }
@@ -211,21 +175,11 @@ const SLAMonitor = () => {
             return { text: 'ถูกปฏิเสธ', isCritical: false, isWarning: false, isRejected: true, diffMs: 0 };
         }
 
-        const slaHoursMap = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
-        const limit = slaHoursMap[task.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;
-        const getTaskStartTime = () => {
-            if (task.startDate) {
-                const datePart = task.startDate.includes('T') ? task.startDate.split('T')[0] : task.startDate;
-                return new Date(`${datePart}T08:00:00`).getTime();
-            }
-            if (task.slaStartTime) {
-                return new Date(task.slaStartTime).getTime();
-            }
-            return woCreatedAt ? new Date(woCreatedAt).getTime() : Date.now();
-        };
-        const parsedStart = getTaskStartTime();
-        const start = isNaN(parsedStart) ? Date.now() : parsedStart;
-        const diffMs = (start + (limit * 60 * 60 * 1000)) - Date.now();
+        const sla = computeJobSLA(wo);
+        if (!sla.isEligible || sla.deadlineMs === null) {
+            return { text: '—', isCritical: false, isWarning: false, diffMs: 0 };
+        }
+        const diffMs = sla.deadlineMs - Date.now();
 
         if (diffMs < 0) {
             const hoursOverdue = Math.floor(Math.abs(diffMs) / (1000 * 60 * 60));
@@ -243,7 +197,7 @@ const SLAMonitor = () => {
             const remHours = hours % 24;
             text = `เหลือ ${days}วัน ${remHours}ชม.`;
         }
-        return { text, isCritical: false, isWarning: hours < 24, diffMs };
+        return { text, isCritical: false, isWarning: sla.status === 'critical', diffMs };
     };
 
     const handleInitiateClose = (taskId: string, woId: string) => {
@@ -254,48 +208,6 @@ const SLAMonitor = () => {
                 setReviewTaskInfo({ task, wo });
                 setIsReviewModalOpen(true);
             }
-        }
-    };
-
-    const handleConfirmReview = async (
-        woId: string,
-        categoryId: string,
-        taskId: string,
-        status: 'Verified' | 'Rejected',
-        updates: {
-            ownerName?: string;
-            rejectReason?: string;
-            notes?: string;
-            currentRevision?: string;
-        }
-    ) => {
-        try {
-            const now = new Date().toISOString();
-
-            if (status === 'Verified') {
-                await updateTask(woId, categoryId, taskId, {
-                    status: 'Verified',
-                    ownerName: updates.ownerName || '',
-                    notes: updates.notes || '',
-                    updatedAt: now
-                });
-
-                alert('ตรวจรับงานสำเร็จเรียบร้อยแล้ว');
-            } else if (status === 'Rejected') {
-                await updateTask(woId, categoryId, taskId, {
-                    status: 'Rejected',
-                    revisionName: updates.rejectReason || '',
-                    revisionCreatedAt: now,
-                    currentRevision: updates.currentRevision || 'rev01',
-                    dailyProgress: 0,
-                    updatedAt: now
-                });
-
-                alert(`ส่งกลับแก้ไขสำเร็จ (ตีกลับเป็น ${updates.currentRevision || 'REV. 01'})`);
-            }
-        } catch (error) {
-            console.error('Error confirming review in SLAMonitor:', error);
-            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         }
     };
 
@@ -320,10 +232,10 @@ const SLAMonitor = () => {
             const wo = workOrders.find((w) => w.id === id);
             const category = wo?.categories?.find((c: any) => c.tasks.some((t: any) => t.id === verifyingTaskId));
             if (category) {
-                await updateTask(id, category.id, verifyingTaskId, { status: 'Verified' });
+                await updateTask(id, category.id, verifyingTaskId, { status: 'Complete' });
             }
         } else {
-            await updateWorkOrderStatus(id, 'Completed');
+            await updateWorkOrderStatus(id, 'Complete');
         }
         setClosingWorkOrder(null);
         setVerifyingTaskId(null);
@@ -346,7 +258,7 @@ const SLAMonitor = () => {
         let filteredWOs = workOrders.filter((wo) => {
             if ((wo as any).type === 'PreHandover') return false;
             if (wo.status === 'Draft' || wo.isArchived) return false;
-            if (wo.status === 'Completed' || wo.status === 'Verified') {
+            if (wo.status === 'Complete') {
                 const completedDate = (wo as any).updatedAt || wo.createdAt || '';
                 if (!completedDate) return false;
                 const d = new Date(completedDate);
@@ -375,7 +287,7 @@ const SLAMonitor = () => {
         const allTasks = filteredWOs.flatMap((wo) => {
             return (wo.categories || []).flatMap((cat: any) =>
                 (cat.tasks || []).map((t: any) => {
-                    const sla = getSLARemaining(t, wo.createdAt);
+                    const sla = getSLARemaining(t, wo);
                     let score = 2;
                     let slaType: 'overdue' | 'warning' | 'normal' | 'completed' = 'normal';
 
@@ -517,8 +429,8 @@ const SLAMonitor = () => {
                     <select style={commonInputStyle} value={activeSlaFilter || ''} onChange={(e) => setActiveSlaFilter(e.target.value as any || null)}>
                         <option value="">สถานะ SLA ทั้งหมด</option>
                         <option value="overdue">🔴 เกินกำหนด</option>
-                        <option value="warning">🟡 วิกฤต (&lt;24ชม.)</option>
-                        <option value="normal">🔵 ปกติ (&gt;24ชม.)</option>
+                        <option value="warning">🟡 ใกล้ถึง SLA (≤7วัน)</option>
+                        <option value="normal">🔵 ปกติ (&gt;7วัน)</option>
                         <option value="completed">🟢 เสร็จสิ้น</option>
                     </select>
 
@@ -617,38 +529,18 @@ const SLAMonitor = () => {
                     { id: 'pending-eval', label: 'งานรอประเมิน', color: '#ef4444' },
                     { id: 'assigned-unstarted', label: 'มอบหมายแล้วยังไม่ทำ', color: '#3b82f6' },
                     { id: 'in-progress', label: 'กำลังทำ', color: '#7c3aed' },
-                    { id: 'for-checking', label: 'รอลูกค้าประเมิน', color: '#d97706' },
+                    { id: 'for-checking', label: 'งานเสร็จ · รอออก QR', color: '#0891b2' },
+                    { id: 'pending-delivery', label: 'รอลูกค้าประเมิน', color: '#d97706' },
                     { id: 'completed', label: 'สำเร็จ', color: '#059669' },
                 ].map((column) => {
                     const columnTasks = flattenedTasks.filter((t) => {
-                        let effectiveStatus: string = t.status;
-                        const progress = t.dailyProgress || 0;
-                        const hasQrToken = !!t.woDeliveryQrToken;
-
-                        if (!hasQrToken && (progress >= 100 || effectiveStatus === 'Completed' || effectiveStatus === 'completed' || effectiveStatus === 'for-checking')) {
-                            if (effectiveStatus !== 'Verified') {
-                                effectiveStatus = 'in-progress';
-                            }
-                        } else if (progress >= 100 && effectiveStatus !== 'Completed' && effectiveStatus !== 'completed' && effectiveStatus !== 'Verified') {
-                            if (hasQrToken) {
-                                effectiveStatus = 'Completed';
-                            } else {
-                                effectiveStatus = 'in-progress';
-                            }
-                        } else if (progress > 0 && progress < 100 && (effectiveStatus === 'Pending' || effectiveStatus === 'Assigned' || effectiveStatus === 'upcoming')) {
-                            effectiveStatus = 'in-progress';
-                        }
-
-                        if (effectiveStatus === 'for-checking' && !hasQrToken) {
-                            effectiveStatus = 'in-progress';
-                        }
-
-                        if (column.id === 'pending-eval') return effectiveStatus === 'Pending' || effectiveStatus === 'Rejected';
-                        if (column.id === 'assigned-unstarted') return (effectiveStatus === 'Assigned' || effectiveStatus === 'Approved' || effectiveStatus === 'upcoming') && progress === 0;
-                        if (column.id === 'in-progress') return effectiveStatus === 'In Progress' || effectiveStatus === 'in-progress';
-                        if (column.id === 'for-checking') return effectiveStatus === 'Completed' || effectiveStatus === 'completed' || effectiveStatus === 'for-checking';
-                        if (column.id === 'completed') return effectiveStatus === 'Verified';
-
+                        // columns key directly off task.status — the single source of truth
+                        if (column.id === 'pending-eval') return t.status === 'Evaluating' || t.status === 'Rejected';
+                        if (column.id === 'assigned-unstarted') return t.status === 'Assigned';
+                        if (column.id === 'in-progress') return t.status === 'In Progress';
+                        if (column.id === 'for-checking') return t.status === 'For Checking';
+                        if (column.id === 'pending-delivery') return t.status === 'pending_delivery';
+                        if (column.id === 'completed') return t.status === 'Complete';
                         return false;
                     });
 
@@ -685,8 +577,8 @@ const SLAMonitor = () => {
                                         const parentWO = workOrders.find((w) => w.id === task.woId);
                                         const allTasksInWO = parentWO ? parentWO.categories.flatMap((c: any) => c.tasks) : [];
                                         const totalSisterTasksCount = allTasksInWO.length;
-                                        const pendingSisterCount = allTasksInWO.filter((t: any) => t.status === 'Pending').length;
-                                        const evaluatedSisterCount = allTasksInWO.filter((t: any) => t.status !== 'Pending' && t.status !== 'Rejected').length;
+                                        const pendingSisterCount = allTasksInWO.filter((t: any) => t.status === 'Evaluating').length;
+                                        const evaluatedSisterCount = allTasksInWO.filter((t: any) => t.status !== 'Evaluating' && t.status !== 'Rejected').length;
                                         const rejectedSisterCount = allTasksInWO.filter((t: any) => t.status === 'Rejected').length;
 
                                         return (
@@ -912,7 +804,7 @@ const SLAMonitor = () => {
                                                                 </button>
                                                             )}
 
-                                                            {column.id === 'for-checking' && (
+                                                            {column.id === 'pending-delivery' && (
                                                                 <button
                                                                     onClick={() => handleInitiateClose(task.id, task.woId)}
                                                                     style={{
@@ -930,7 +822,7 @@ const SLAMonitor = () => {
                                                                         justifyContent: 'center'
                                                                     }}
                                                                 >
-                                                                    ตรวจรับงาน
+                                                                    ดู/ส่ง QR Code
                                                                 </button>
                                                             )}
                                                         </div>
@@ -958,10 +850,10 @@ const SLAMonitor = () => {
             {viewMode === 'preHandover' && (
                 <div style={{ display: 'flex', gap: '24px', overflowX: 'auto', paddingBottom: '16px' }}>
                     {[
-                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'Rejected' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived },
-                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true) },
-                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && (cat.dailyProgress || 0) < 100 && !wo.isArchived && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true) },
-                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && !wo.isArchived && !(wo.status === 'Rejected' && wo.pendingAdminReassign === true) },
+                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived },
+                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && (cat.dailyProgress || 0) < 100 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
                         { id: 'completed',        label: 'สำเร็จ',                 color: '#059669', test: (_cat: any, wo: any) => !!wo.isArchived },
                     ].map((col) => {
                         const items = phWorkOrders.flatMap((wo: any) =>
@@ -991,13 +883,16 @@ const SLAMonitor = () => {
                                         const defectCount = item.defectCount || 0;
                                         const allCatsInWO: any[] = item._wo.categories || [];
                                         const totalDefectsInWO = allCatsInWO.reduce((sum: number, c: any) => sum + (c.defectCount || 0), 0);
-                                        const phSlaHoursMap: Record<string, number> = { Immediately: 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
-                                        const phSlaHours = phSlaHoursMap[item._wo.phActualSla] || phSlaHoursMap[item._wo.phEstimatedSla] || 720;
-                                        const phStartMs = item._wo.startDate ? new Date(item._wo.startDate).getTime() : Date.now();
-                                        const phDeadlineMs = phStartMs + phSlaHours * 3600 * 1000;
-                                        const daysLeft = Math.ceil((phDeadlineMs - Date.now()) / 86400000);
-                                        const slaText = daysLeft < 0 ? `เกินกำหนด ${Math.abs(daysLeft)} วัน` : daysLeft === 0 ? 'ครบกำหนดวันนี้' : `เหลือ ${daysLeft} วัน`;
-                                        const slaIsCritical = daysLeft < 0;
+                                        // T-346: job-level SLA via the central helper — anchors on
+                                        // wo.scheduledDate@08:00 (วันนัด) + wo.phActualSla, no Date.now / 720 fallback.
+                                        const _jobSla = computeJobSLA(item._wo);
+                                        const daysLeft = _jobSla.deadlineMs !== null ? Math.ceil((_jobSla.deadlineMs - Date.now()) / 86400000) : 0;
+                                        const slaText = _jobSla.phase === 'done'
+                                            ? 'เสร็จสิ้น'
+                                            : !_jobSla.isEligible ? '—'
+                                            : daysLeft < 0 ? `เกินกำหนด ${Math.abs(daysLeft)} วัน` : daysLeft === 0 ? 'ครบกำหนดวันนี้' : `เหลือ ${daysLeft} วัน`;
+                                        const slaIsCritical = _jobSla.status === 'overdue';
+                                        const slaIsNearDue = _jobSla.status === 'critical';
                                         return (
                                             <div
                                                 key={phKey}
@@ -1111,7 +1006,7 @@ const SLAMonitor = () => {
 
                                                 {/* Footer SLA — same as WOA */}
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
-                                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: slaIsCritical ? '#ef4444' : '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: slaIsCritical ? '#ef4444' : slaIsNearDue ? '#d97706' : '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <AlertCircle size={12} /> {slaText}
                                                     </div>
                                                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>{isExpanded ? 'คลิกเพื่อยุบ' : 'คลิกเพื่อขยาย'}</div>
@@ -1138,7 +1033,6 @@ const SLAMonitor = () => {
                     }}
                     workOrder={reviewTaskInfo.wo}
                     task={reviewTaskInfo.task}
-                    onConfirm={handleConfirmReview}
                 />
             )}
 

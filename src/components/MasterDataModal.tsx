@@ -278,8 +278,8 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
                                     >
                                         <option value="Foreman">Foreman (ผู้ควบคุมงาน)</option>
                                         <option value="Admin">Admin (ผู้ดูแลระบบ)</option>
-                                        <option value="Manager">Manager/Approver (ผู้อนุมัติ)</option>
-                                        <option value="BackOffice">BackOffice (ธุรการ/คลัง)</option>
+                                        <option value="Manager">Manager (ผู้จัดการ)</option>
+                                        <option value="Approver">Approver (ผู้อนุมัติ)</option>
                                     </select>
                                 </div>
                                 <div className="form-group">

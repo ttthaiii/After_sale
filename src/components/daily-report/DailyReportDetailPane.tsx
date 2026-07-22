@@ -808,7 +808,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                   "24h";
                                 const tDurHours = slaHoursMap[tSla] || 24;
                                 let tStart = t.startDate && typeof t.startDate === 'string'
-                                  ? `${t.startDate.split('T')[0]}T08:00:00` 
+                                  ? `${t.startDate.split('T')[0]}T08:00:00+07:00`
                                   : t.slaStartTime;
                                 if (!tStart) {
                                   tStart =
@@ -864,7 +864,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                 isHelperTask
                                   ? (selectedTaskInfo.task.dueDate || new Date().toISOString())
                                   : ((selectedTaskInfo.task.startDate && typeof selectedTaskInfo.task.startDate === 'string'
-                                      ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00`
+                                      ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00+07:00`
                                       : selectedTaskInfo.task.slaStartTime) ||
                                      new Date().toISOString())
                               }

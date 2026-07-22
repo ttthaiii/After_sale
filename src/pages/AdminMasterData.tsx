@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Users, HardHat, Plus, Edit2, Trash2, Building, Eye, EyeOff, ClipboardList } from 'lucide-react';
+import { Users, HardHat, Plus, Edit2, Trash2, Building, Eye, EyeOff, ClipboardList, FileSpreadsheet } from 'lucide-react';
 import { Contractor, Staff, Project } from '../types';
 import MasterDataModal from '../components/MasterDataModal';
+import ImportExcelModal, { ImportOutcome } from '../components/ImportExcelModal';
 import bcrypt from 'bcryptjs';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { migrateAll } from '../services/migrationService'; // Import migration
-import { performUniversalStaffMigration, clearAllNotifications } from '../services/staffSystemMigration';
 import ActivityLogTable from '../components/ActivityLogTable';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -120,15 +119,10 @@ const AdminMasterData = () => {
         let id = data.id;
 
         if (!editingItem) {
-            // ✅ Auto-sequence ID for Staff/Contractors, Manual for Projects
-            if (activeTab === 'Projects') {
-                // Find the highest numeric id
-                const maxIdNum = projectList.reduce((max, item) => {
-                    const num = parseInt(item.id);
-                    return !isNaN(num) ? Math.max(max, num) : max;
-                }, 0);
-                id = String(maxIdNum + 1).padStart(4, '0');
-            } else if (activeTab === 'Staff') {
+            // ✅ Auto-sequence ID for Staff/Contractors.
+            // (Projects can't be created here — they sync in one-way from Labor —
+            //  so there is no new-project ID branch.)
+            if (activeTab === 'Staff') {
                 // ✅ Use employeeId as the Document ID for new staff
                 if (data.employeeId) {
                     id = data.employeeId;
@@ -182,31 +176,34 @@ const AdminMasterData = () => {
                 password: plainPassword,
                 passwordHash: hashedPassword,
                 name: data.name || '',
-                roleId: data.role === 'Admin' ? 'AM' : 'FM', // AM for Admin, FM for Foreman (Labor standard)
+                role: data.role || 'Foreman', // After Sale source of truth (full name)
+                roleId: data.role === 'Admin' ? 'AM' : 'FM', // Labor-facing code (kept for sync compatibility)
                 department: 'WH', // Always WH for After Sale staff
                 systemCode: 'AS', // Tag as After Sale created user
                 projectLocationIds: data.assignedProjects || [],
                 isActive: true,
                 createdAt: editingStaff?.createdAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-                createdBy: editingStaff?.createdBy || user?.id || '100051',
-                updatedBy: user?.id || '100051',
+                createdBy: editingStaff?.createdBy || user?.id || '',
+                updatedBy: user?.id || '',
                 startDate: editingStaff?.startDate || new Date().toISOString()
             };
             
             // Use merge: true to protect native labor db fields like dateOfBirth
             await setDoc(docRef, finalData, { merge: true });
-            
-            // ✅ Real-time sync back to Labor DB directly from UI!
+
+            // One-way sync AS -> Labor via the deployed `userSync` Cloud Function.
+            // (After Sale DB is in asia-southeast3 where Firestore triggers can't
+            //  run, so we call an HTTP function — works in production, unlike the
+            //  old dev-only /api/sync-user middleware.)
             try {
-                await fetch('/api/sync-user', {
+                await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/userSync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id, userData: finalData })
                 });
-                console.log("Real-time sync to Labor DB successful!");
             } catch (err) {
-                console.error("Real-time sync to Labor DB failed:", err);
+                console.error("Sync to Labor DB failed:", err);
             }
         } else {
             await setDoc(docRef, finalData);
@@ -228,12 +225,65 @@ const AdminMasterData = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!window.confirm('ยืนยันการลบข้อมูล?')) return;
         const collectionName = activeTab === 'Staff' ? 'users' : activeTab.toLowerCase();
         const itemToDelete =
             activeTab === 'Staff' ? staffList.find(s => s.id === id) :
                 activeTab === 'Contractors' ? contractorList.find(c => c.id === id) :
                     projectList.find(p => p.id === id);
+
+        // Staff = soft delete (deactivate). Hard-deleting a user would orphan
+        // every work order that references them (woOwnerId, assignees, etc.),
+        // so we keep the record and just flip isActive:false. The Labor DB is
+        // kept in sync with the same inactive flag (not deleted).
+        if (activeTab === 'Staff') {
+            if (!window.confirm('ยืนยันการปิดการใช้งานพนักงานคนนี้? (ประวัติงานเก่าจะยังคงอยู่ แต่จะเข้าระบบและรับงานใหม่ไม่ได้)')) return;
+
+            await setDoc(doc(db, collectionName, id), { isActive: false }, { merge: true });
+
+            try {
+                await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/userSync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, userData: { ...itemToDelete, isActive: false, systemCode: 'AS' } })
+                });
+            } catch (err) {
+                console.error("Deactivate sync to Labor DB failed:", err);
+            }
+
+            await logService.trackAction({
+                userId: user?.id || 'admin-system',
+                userName: user?.name || 'Admin',
+                role: user?.role || 'Admin',
+                action: 'DELETE',
+                module: 'MASTER_DATA',
+                details: `ปิดการใช้งานพนักงาน: ${itemToDelete?.name || id}`,
+                targetId: id
+            });
+            return;
+        }
+
+        // Contractors = soft delete too. daily-report subtasks reference a
+        // contractor by contractorId, so hard-deleting would orphan those
+        // records. Contractors are NOT synced to Labor, so no Labor call here.
+        if (activeTab === 'Contractors') {
+            if (!window.confirm('ยืนยันการปิดการใช้งานผู้รับเหมารายนี้? (ประวัติงานเก่าจะยังคงอยู่ แต่จะเลือกมารับงานใหม่ไม่ได้)')) return;
+
+            await setDoc(doc(db, collectionName, id), { isActive: false }, { merge: true });
+
+            await logService.trackAction({
+                userId: user?.id || 'admin-system',
+                userName: user?.name || 'Admin',
+                role: user?.role || 'Admin',
+                action: 'DELETE',
+                module: 'MASTER_DATA',
+                details: `ปิดการใช้งานผู้รับเหมา: ${itemToDelete?.name || id}`,
+                targetId: id
+            });
+            return;
+        }
+
+        // Fallback hard delete (Projects have no delete button, so unreached).
+        if (!window.confirm('ยืนยันการลบข้อมูล?')) return;
 
         await deleteDoc(doc(db, collectionName, id));
 
@@ -257,6 +307,113 @@ const AdminMasterData = () => {
     const openEditModal = (item: any) => {
         setEditingItem(item);
         setIsModalOpen(true);
+    };
+
+    // ---- Excel bulk import -------------------------------------------------
+    const [isImportOpen, setIsImportOpen] = useState(false);
+
+    const importStaff = async (rows: any[]): Promise<ImportOutcome> => {
+        const failed: { label: string; reason: string }[] = [];
+        let success = 0;
+        for (const r of rows) {
+            try {
+                const id = r.employeeId;
+                const existing: any = staffList.find(s => s.id === id || (s as any).employeeId === id);
+                let plainPassword: string;
+                let hashedPassword: string;
+                if (r.password) {
+                    plainPassword = r.password;
+                    hashedPassword = bcrypt.hashSync(r.password, 10);
+                } else if (existing) {
+                    // keep the existing user's password when the cell is blank
+                    plainPassword = existing.password || '';
+                    hashedPassword = existing.passwordHash || '';
+                } else {
+                    plainPassword = id;
+                    hashedPassword = bcrypt.hashSync(id, 10);
+                }
+                const finalData = {
+                    employeeId: id,
+                    username: r.username || id,
+                    password: plainPassword,
+                    passwordHash: hashedPassword,
+                    name: r.name,
+                    role: r.role,
+                    roleId: r.role === 'Admin' ? 'AM' : 'FM',
+                    department: 'WH',
+                    systemCode: 'AS',
+                    projectLocationIds: r.assignedProjects || [],
+                    isActive: true,
+                    createdAt: existing?.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    createdBy: existing?.createdBy || user?.id || '',
+                    updatedBy: user?.id || '',
+                    startDate: existing?.startDate || new Date().toISOString(),
+                };
+                await setDoc(doc(db, 'users', id), finalData, { merge: true });
+                // One-way sync AS -> Labor (non-fatal if it fails).
+                try {
+                    await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/userSync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, userData: finalData })
+                    });
+                } catch (err) {
+                    console.error(`[import] Labor sync failed for ${id}:`, err);
+                }
+                success++;
+            } catch (err: any) {
+                failed.push({ label: r.name || r.employeeId || '?', reason: err?.message || 'บันทึกไม่สำเร็จ' });
+            }
+        }
+        return { success, failed };
+    };
+
+    const importContractors = async (rows: any[]): Promise<ImportOutcome> => {
+        const failed: { label: string; reason: string }[] = [];
+        let success = 0;
+        // running max so batch-generated ids don't collide
+        let maxIdNum = contractorList.reduce((max, item) => {
+            const num = parseInt(item.id.replace('C', ''));
+            return !isNaN(num) ? Math.max(max, num) : max;
+        }, 0);
+        for (const r of rows) {
+            try {
+                const existing = contractorList.find(c => c.name === r.name);
+                let id: string;
+                if (existing) {
+                    id = existing.id;
+                } else {
+                    maxIdNum++;
+                    id = `C${String(maxIdNum).padStart(3, '0')}`;
+                }
+                const data = {
+                    name: r.name,
+                    specialty: r.specialty || [],
+                    phone: r.phone || '',
+                    isActive: true,
+                };
+                await setDoc(doc(db, 'contractors', id), data, { merge: true });
+                success++;
+            } catch (err: any) {
+                failed.push({ label: r.name || '?', reason: err?.message || 'บันทึกไม่สำเร็จ' });
+            }
+        }
+        return { success, failed };
+    };
+
+    const handleImport = async (rows: any[]): Promise<ImportOutcome> => {
+        const outcome = activeTab === 'Staff' ? await importStaff(rows) : await importContractors(rows);
+        await logService.trackAction({
+            userId: user?.id || 'admin-system',
+            userName: user?.name || 'Admin',
+            role: user?.role || 'Admin',
+            action: 'CREATE',
+            module: 'MASTER_DATA',
+            details: `นำเข้า ${activeTab} จาก Excel: สำเร็จ ${outcome.success} รายการ, ผิดพลาด ${outcome.failed.length} รายการ`,
+            targetId: 'bulk-import'
+        });
+        return outcome;
     };
 
     const [showPasscode, setShowPasscode] = useState(false);
@@ -312,64 +469,6 @@ const AdminMasterData = () => {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>จัดการข้อมูลพื้นฐาน (Master Data)</h1>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <button
-                        onClick={async () => {
-                            if (confirm('🚨 คำเตือน: ปฏิบัติการนี้จะทำการ "ย้ายไอดีพนักงาน" ในทุกใบงานและระบบLog ทั้งหมด! ต้องการดำเนินการใช่หรือไม่?')) {
-                                const result = await performUniversalStaffMigration();
-                                if (result.success) alert(result.message);
-                                else alert(result.message);
-                            }
-                        }}
-                        style={{ padding: '8px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 900, boxShadow: '0 4px 10px rgba(239, 68, 68, 0.3)' }}
-                    >
-                        🚨 Universal Align IDs (Global Update)
-                    </button>
-                    <button
-                        onClick={async () => {
-                            if (confirm('🗑️ คุณต้องการล้างการแจ้งเตือน (Notifications) ทั้งหมดออกจากฐานข้อมูลใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนคืนได้')) {
-                                try {
-                                    const result = await clearAllNotifications();
-                                    if (result.success) {
-                                        alert(`ล้างการแจ้งเตือนสำเร็จ! ลบไปทั้งหมด ${result.count} รายการ`);
-                                    }
-                                } catch (err) {
-                                    alert('เกิดข้อผิดพลาดในการล้างข้อมูล');
-                                }
-                            }
-                        }}
-                        style={{ padding: '8px 16px', background: '#475569', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 900, boxShadow: '0 4px 10px rgba(71, 85, 105, 0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}
-                    >
-                        🗑️ ล้างแจ้งเตือนทั้งหมด
-                    </button>
-                    <button
-                        onClick={async () => {
-                            if (confirm('ต้องการล้างและลงข้อมูลใหม่ตาม Excel ใช่ไหม?')) {
-                                await migrateAll();
-                                alert('Migration สำเร็จ!');
-                            }
-                        }}
-                        style={{ padding: '8px 16px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-                    >
-                        🔄 Sync Excel Data
-                    </button>
-                    <button
-                        onClick={() => {
-                            alert('📢 วิธีการซิงค์:\nกรุณาเปิด Terminal แล้วรันคำสั่งด้านล่างนี้:\n\nnode scratch/sync_users_aftersale_to_labor.js\n\nระบบจะทำการอัปเดตและประสานข้อมูลผู้ใช้ระหว่าง 2 ระบบทันทีครับ!');
-                        }}
-                        style={{ padding: '8px 16px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 900, boxShadow: '0 4px 10px rgba(139, 92, 246, 0.3)' }}
-                    >
-                        🔄 Sync Users to Labor
-                    </button>
-                    {activeTab !== 'Costs' && activeTab !== 'Projects' && (
-                        <button
-                            onClick={() => setIsModalOpen(true)}
-                            style={{ padding: '8px 16px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-                        >
-                            + เพิ่ม{activeTab === 'Staff' ? 'พนักงาน' : activeTab === 'Contractors' ? 'ผู้รับเหมา' : 'โครงการ'}
-                        </button>
-                    )}
-                </div>
             </div>
 
             {/* Tabs */}
@@ -485,29 +584,51 @@ const AdminMasterData = () => {
                                 : activeTab === 'Projects' ? 'รายชื่อโครงการทั้งหมด' : 'ตั้งค่าอัตราค่าแรง (บาท/วัน)'}
                     </h3>
                     {activeTab !== 'Projects' && activeTab !== 'Costs' && (
-                        <button
-                            onClick={openAddModal}
-                            style={{
-                                background: '#4f46e5',
-                                color: 'white',
-                                border: 'none',
-                                padding: '12px 24px',
-                                borderRadius: '14px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                fontWeight: 800,
-                                boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.3)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                        >
-                            <Plus size={20} />
-                            {activeTab === 'Staff' ? 'เพิ่มเจ้าหน้าที่'
-                                : activeTab === 'Contractors' ? 'เพิ่มผู้รับเหมา' : ''}
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button
+                                onClick={() => setIsImportOpen(true)}
+                                style={{
+                                    background: '#ffffff',
+                                    color: '#059669',
+                                    border: '1px solid #a7f3d0',
+                                    padding: '12px 20px',
+                                    borderRadius: '14px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    fontWeight: 800,
+                                    transition: 'all 0.2s'
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.background = '#ecfdf5'}
+                                onMouseOut={(e) => e.currentTarget.style.background = '#ffffff'}
+                            >
+                                <FileSpreadsheet size={20} /> Import Excel
+                            </button>
+                            <button
+                                onClick={openAddModal}
+                                style={{
+                                    background: '#4f46e5',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '12px 24px',
+                                    borderRadius: '14px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontWeight: 800,
+                                    boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.3)',
+                                    transition: 'all 0.2s'
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                            >
+                                <Plus size={20} />
+                                {activeTab === 'Staff' ? 'เพิ่มเจ้าหน้าที่'
+                                    : activeTab === 'Contractors' ? 'เพิ่มผู้รับเหมา' : ''}
+                            </button>
+                        </div>
                     )}
                     {activeTab === 'Projects' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#eff6ff', color: '#1d4ed8', padding: '8px 16px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 800, border: '1px solid #bfdbfe' }}>
@@ -612,7 +733,7 @@ const AdminMasterData = () => {
                                     </tr>
                                 ) : (
                                     <>
-                                        {activeTab === 'Staff' && staffList.map(st => (
+                                        {activeTab === 'Staff' && staffList.filter(st => st.isActive !== false).map(st => (
                                             <tr key={st.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#fcfcfd'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
                                                 <td style={{ padding: '20px 32px', color: '#64748b', fontWeight: 600 }}>{st.employeeId || st.password || st.id}</td>
                                                 <td style={{ padding: '20px 32px', color: '#0f172a', fontWeight: 700 }}>
@@ -654,7 +775,7 @@ const AdminMasterData = () => {
                                             </tr>
                                         ))}
 
-                                        {activeTab === 'Contractors' && contractorList.map(con => (
+                                        {activeTab === 'Contractors' && contractorList.filter(con => con.isActive !== false).map(con => (
                                             <tr key={con.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#fcfcfd'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
                                                 <td style={{ padding: '20px 32px', color: '#64748b', fontWeight: 600 }}>{con.id}</td>
                                                 <td style={{ padding: '20px 32px', color: '#0f172a', fontWeight: 700 }}>{con.name}</td>
@@ -743,6 +864,20 @@ const AdminMasterData = () => {
                     initialData={editingItem}
                     projects={projectList}
                     onSave={handleSave}
+                />
+            )}
+
+            {(activeTab === 'Staff' || activeTab === 'Contractors') && (
+                <ImportExcelModal
+                    isOpen={isImportOpen}
+                    onClose={() => setIsImportOpen(false)}
+                    type={activeTab}
+                    existingKeys={
+                        activeTab === 'Staff'
+                            ? new Set(staffList.flatMap(s => [s.id, (s as any).employeeId].filter(Boolean).map(x => String(x).trim())))
+                            : new Set(contractorList.map(c => c.name.trim().toLowerCase()))
+                    }
+                    onConfirm={handleImport}
                 />
             )}
         </div>

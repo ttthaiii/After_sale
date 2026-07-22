@@ -1,38 +1,26 @@
-gather_complete — T-274 backlink-graph click-to-read panel
-date: 2026-06-25
-skill: coder (extend the existing generator + emitted HTML)
+date: 2026-07-15
+task: T-347 — job-level SLA warning unification (7-day fixed window) + Health Pulse "เกือบช้า" removal + SLA Pressure job-level + SLAMonitor WOA dropdown job-level + SLA-anchor timezone lock (+07:00)
 
-## Task
-Turn the backlink graph from "look-only map" into a "walkable wiki": click a node →
-side panel showing the file's summary + clickable connected-file links (navigate in-graph)
-+ an "open file" link to read the real file. Offline single-file preserved.
+## G1 — spots located
+1. Health Pulse "เกือบช้า" — Dashboard.tsx healthCardProjects (1922) + render (3270-3318)
+2. SLA Pressure "ใกล้หมด SLA" — Dashboard.tsx sCurveData day-loop (2127-2208)
+3. SLAMonitor dropdown — SLAMonitor.tsx getSLARemaining (166-208, WOA per-task) + WOP kanban (935-944, already job-level)
+4. การ์ดเร่งด่วน SLA — Dashboard.tsx getSLATimeStatus (1075-1143), still per-subtask 30%-relative (NOT yet on computeJobSLA)
+5. Timezone anchor lock — 19 raw `T08:00:00` (no offset) sites across jobSla.ts, Dashboard.tsx, SLAMonitor.tsx, TrackingCard.tsx, WorkOrderGroupList.tsx, TaskEvaluationModal.tsx, DailyReportDetailPane.tsx (WorkOrderContext.tsx:1276/1300 `.000Z` DB-write EXCLUDED — deferred per [[workordercontext-utc-timestamp-bug]])
 
-## G1/G2 findings (verified from index_files.json — python probe, not full read)
-- 212 entries (nodes). Per-node fields available: description, topics, references[],
-  related[{path,strength,score}], backlinks[].
-- COVERAGE (the design driver): description present on only 94/212 (avg 75 chars, max 604).
-  → panel MUST degrade gracefully: show summary if present, else "no summary — open file".
-- Connected-file list: reuse the JS `adj` set already built from edges (symmetric, covers
-  both related[] and incoming) — no new data needed for neighbor links.
-- Open-file href: HTML lives at knowledge/diagrams/ → repo root is `../../` → href = "../../"+id
-  (uniform prefix for every node; opens raw file via file:// offline). Verified path shape.
+## G2 — verified
+- computeJobSLA(wo) (src/utils/jobSla.ts) already job-level (max-SLA-among-subtasks, max-start anchor). CRITICAL_WINDOW_MS currently 24h fixed — needs 7-day (168h).
+- healthCardProjects / projectTrend / Executive Summary slaScore already route through computeJobSLA (done-phase only).
+- getSLATimeStatus is a SEPARATE, still-legacy per-subtask "most urgent" (min-hours-left) + 30%-relative function feeding urgentTasks + projectsMap.highRisk — needs full rewrite to delegate to computeJobSLA, same return shape {text,color,bg,level,hoursLeft} preserved (taskName/categoryName fields confirmed unused downstream — safe to drop).
+- SLA Pressure day-loop uses its own local per-task elapsed>limit*0.7 calc — deadlineMs from computeJobSLA(wo) is asOf-independent (start+limit are static wo fields), so no need to add an asOfMs param to computeJobSLA — just reuse computeJobSLA(wo).deadlineMs as the per-WO governing deadline for every day's bucketing.
+- SLAMonitor getSLARemaining currently per-task (own local map + own 24h-fixed). WOP kanban already uses computeJobSLA (S3 prior work) — just needs the 7-day threshold from jobSla.ts change (automatic) + an amber "near-due" tier added (currently only red/gray).
 
-## G3 design decision
-- ONLY new embedded data needed = `desc` per node (truncate ~240 chars, ascii-safe). Everything
-  else (neighbors, open-file path) is computable in-browser from existing data → minimal size add.
-- Additive: Core graph + cooling (T-273) must keep working unchanged; panel is new UI only.
-- Single file, offline, idempotent — same invariants as T-273.
-
-## Scope (1 file)
-scripts/build_backlink_graph.py only (regenerates knowledge/diagrams/backlink-graph.html).
-NOT backfilling the 118 missing descriptions (separate future task).
-
-## Affected files
-- scripts/build_backlink_graph.py (edit) → regenerates knowledge/diagrams/backlink-graph.html
-
-## Acceptance criteria
-- Click node → panel with: title · path · topic · summary-or-fallback · clickable neighbor list · open-file link
-- Click a neighbor name → focuses that node + recenters (in-graph navigation)
-- Still 0 network refs · idempotent · 212 nodes · JS syntax valid
+## G3 — user-confirmed spec (this session)
+- Job SLA = MAX SLA among counted subtasks (unchanged from T-346).
+- Warning threshold: FIXED "≤7 days left" (replaces old 24h fixed AND old 30%-relative AND old 70%-elapsed). Overdue = past deadline, unchanged.
+- All 4 display spots (Pressure, เร่งด่วน card, SLAMonitor dropdown incl. WOA) must show ONE status per WO — every subtask in the same WO shares the WO's status.
+- Health Pulse "เกือบช้า" REMOVED entirely (it only shows completed jobs — "near-late" cannot apply to a finished job). Reduced to 2-way: ทันกำหนด (deviation>=0) / ล่าช้า (deviation<0).
+- Per-subtask SLA data is NOT touched/removed — still used by daily-report views (kept as employee-tracking, out of scope).
+- Timezone: lock all SLA-anchor `T08:00:00` constructions to explicit `+07:00` (deterministic regardless of runtime locale). WorkOrderContext.tsx DB-write timestamps (1276/1300, `.000Z`=UTC) are OUT OF SCOPE this task (standing no-DB-write constraint) — logged as a separate deferred issue.
 
 [✓ gather]

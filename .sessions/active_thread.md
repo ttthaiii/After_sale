@@ -1,3 +1,15 @@
-task: ปรับปรุง syncDailyReport ให้บันทึกฟิลด์ editHistory ไปยัง DailyEmployeeTimesheets ปลายทางสำเร็จ
-phase: done
-next: none
+task: T-347 — job-level SLA 7-day warning threshold (final, team-confirmed) + Health Pulse "เกือบช้า" removal + SLA Pressure/เร่งด่วน card/SLAMonitor WOA dropdown all job-level + SLA-anchor timezone lock (+07:00)
+phase: in_progress (code+tsc done, tsc=0; awaiting user in-app verification — S5)
+next: user verifies in-app (Health Pulse 2-way split, SLA Pressure per-WO status, เร่งด่วน SLA card, SLAMonitor dropdown all-subtasks-same-status + WOP 3-tier color) → then close T-347.
+RESOLVED (was the T-346 pending team decision): threshold is now FIXED "≤7 days left" everywhere (replaces the old mix of 24h/30%-relative/70%-elapsed). CRITICAL_WINDOW_MS in jobSla.ts = 7*DAY_MS.
+DEFERRED (separate task, NOT part of T-347): [[workordercontext-utc-timestamp-bug]] — WorkOrderContext.tsx:1276/1300 daily-report `date` write uses T08:00:00.000Z (=15:00 Thai); out of scope (DB write, standing no-WorkOrderContext-writes rule).
+Still open: cosmetic map-dedup on WOA per-subtask displays + remove dead computeTaskSLA (unrelated, deferred).
+DONE (T-346, tsc=0 held throughout):
+  - S1 NEW src/utils/jobSla.ts — computeJobSLA(wo) + SLA_HOURS_MAP + SLA_LABELS + getCountedSubtasks + JobSLA type. Job SLA = MAX subtask SLA-hours; anchor = MAX appointment@08:00 (WOA task.startDate / WOP wo.scheduledDate); deadline=start+limit (calendar); completion=latest counted-subtask done (all done). Status: done→on-time/late; in-progress→normal/critical(<24h fixed)/overdue. No fabricated default (missing SLA→isEligible=false+warn). Counted subtasks = Assigned/In Progress/For Checking/pending_delivery/Complete.
+  - CRITICAL: SLA_HOURS_MAP includes WOP-only 30-60d(1440h)/60d+(2880h) (from PreHandoverAssignModal). Without them WOP jobs w/ those SLAs get dropped.
+  - S2 Dashboard.tsx → job-level: healthCardProjects (cards เสร็จทัน/เลย + gauge + Project Health Pulse), Executive Summary slaScore, projectTrend, highRisk. KEPT per-subtask (employee-perf): bottom Task Performance Details table + comparison projectAggregation. computeTaskSLA(929) now DEAD (kept, deferred cleanup).
+  - S3 SLAMonitor.tsx → WOP kanban calc (935) via helper; getSLARemaining WOA list KEPT (already correct: task.startDate@08:00 + 3-tier fixed-24h = the dropdown user confirmed); dedup local map.
+  - S4 WOP secondary displays → helper: PreHandoverDetailPane (232, removed local SLA_HOURS) + WorkOrderGroupList (984 WOP block, map was missing 30-60d/60d+). Verified: `|| 720` fallback = 0 across src; computeJobSLA imported in 4 files.
+KEY field map (confusing names — verified): appointment/วันนัด = WOA task.startDate / WOP wo.scheduledDate (anchor@08:00); assign-moment = WOA task.slaStartTime / WOP wo.startDate (NOT SLA); admin SLA = WOA task.slaCategory / WOP wo.phActualSla.
+Standing: no migration; read-only audit scripts touch only WOA/WOP; no DB/WorkOrderContext writes. tsc baseline now 0 (was 70, fixed in prior commits).
+IN-APP VERIFY PENDING (user): Dashboard cards count ใบงาน (not งานย่อย) · gauge/Executive Summary match · SLAMonitor WOP statuses (08:00 anchor) · a WOP job with 30-60d/60d+ SLA shows correct deadline.

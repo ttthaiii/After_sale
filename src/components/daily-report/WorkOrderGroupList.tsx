@@ -1,4 +1,5 @@
 import React, { Fragment, useState, useEffect } from "react";
+import { computeJobSLA } from "../../utils/jobSla";
 import {
   ChevronLeft,
   Search,
@@ -16,7 +17,7 @@ import {
 import { useDailyReport } from "../../context/DailyReportContext";
 import { GroupSLACountdown } from "./SLACountdowns";
 import { WorkTask, WorkOrder } from "../../types/dailyReport.types";
-import { MOCK_STAFF } from "../../data/mockData";
+import { useWorkOrders } from "../../context/WorkOrderContext";
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
@@ -34,8 +35,7 @@ const getCompletedAtTime = (wo: any, tasks: any[]): number | null => {
 
   // ถ้ายังมี task รอลูกค้าประเมิน → ยังไม่เสร็จสมบูรณ์จริง → ไม่แสดง completedAt
   const hasPendingEval = tasks.some((t: any) =>
-    (t.status || '').toLowerCase() === 'for-checking' ||
-    ((t.status || '').toLowerCase() === 'completed' && t.evaluationStatus === 'Assigned')
+    t.status === 'For Checking' || t.status === 'pending_delivery'
   );
   if (hasPendingEval) {
     // งานรอลูกค้าประเมิน → แสดงวันที่ progress ถึง 100% ของ rev ปัจจุบัน (updatedAt ล่าสุด)
@@ -100,6 +100,9 @@ export const WorkOrderGroupList: React.FC = () => {
     draftedTaskIds,
   } = useDailyReport();
 
+  // Real staff (users, systemCode='AS') — used to resolve foreman display names by id/employeeId
+  const { staff } = useWorkOrders();
+
   const [activeTab, setActiveTab] = useState<'internal' | 'support'>('internal');
   const [sortBy, setSortBy] = useState<'deadline' | 'delivery' | 'id'>('deadline');
   const [showQrModal, setShowQrModal] = useState(false);
@@ -144,6 +147,10 @@ export const WorkOrderGroupList: React.FC = () => {
   const mappedPendingDeliveries = pendingDeliveryWorkOrders.map(item => {
     const wo = item.wo;
     const globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+      // Cancelled/archived-rejected tasks never happened — exclude them here too,
+      // same rule as the other task-count sites in this file (globalTasks filter,
+      // allActiveItems.forEach, otherTasks fallback, generateDeliveryQrToken).
+      if (t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true)) return false;
       const isSupport = t.isSupportRequest === true || t.isHelper === true;
       return activeTab === 'support' ? isSupport : !isSupport;
     });
@@ -168,7 +175,7 @@ export const WorkOrderGroupList: React.FC = () => {
         const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
         const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
         let tStart = t.startDate 
-           ? `${t.startDate.split('T')[0]}T08:00:00` 
+           ? `${t.startDate.split('T')[0]}T08:00:00+07:00`
            : t.slaStartTime;
         if (!tStart) {
           tStart = wo.createdAt || new Date().toISOString();
@@ -187,7 +194,7 @@ export const WorkOrderGroupList: React.FC = () => {
         const tDurHoursOriginal = slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24;
         const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
         const tStartOriginal = tValidInit1
-          ? `${tStartOriginalRaw.split('T')[0]}T08:00:00`
+          ? `${tStartOriginalRaw.split('T')[0]}T08:00:00+07:00`
           : tStartOriginalRaw;
         const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
         if (tDeadlineOriginal > maxDlOriginal) {
@@ -267,7 +274,7 @@ export const WorkOrderGroupList: React.FC = () => {
             });
             return;
           }
-          if ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified') {
+          if ((task.dailyProgress || 0) === 100 || task.status === 'Complete') {
             return;
           }
           if (isReadOnly) {
@@ -325,7 +332,7 @@ export const WorkOrderGroupList: React.FC = () => {
                     : "#fff",
           cursor: isTaskDisabledInRejectedWo
             ? "default"
-            : ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+            : ((task.dailyProgress || 0) === 100 || task.status === 'Complete')
               ? "default"
               : isReadOnly
                 ? "not-allowed"
@@ -342,7 +349,7 @@ export const WorkOrderGroupList: React.FC = () => {
           position: "relative",
           opacity: isTaskDisabledInRejectedWo
             ? 0.55
-            : ((task.dailyProgress || 0) === 100 || task.status === 'completed' || task.status === 'Verified')
+            : ((task.dailyProgress || 0) === 100 || task.status === 'Complete')
               ? 0.55
               : isReadOnly
                 ? 0.75
@@ -620,7 +627,7 @@ export const WorkOrderGroupList: React.FC = () => {
                 </div>
               );
             })()}
-          {wo.status === "Rejected" && !wo.reviewedByAdmin && task.evaluationStatus === "Rejected" && (
+          {wo.status === "Rejected" && !wo.reviewedByAdmin && task.status === "Rejected" && (
             <div
               style={{
                 marginTop: "4px",
@@ -979,16 +986,12 @@ export const WorkOrderGroupList: React.FC = () => {
                     {preHandoverWorkOrders.map(({ wo, assignedCategories }) => {
                       const project = realProjects.find((p: any) => p.id === wo.projectId);
                       const woCollapsed = collapsedPhWos[wo.id];
-                      const phSlaHoursMap: Record<string, number> = {
-                        Immediately: 4, '24h': 24, '1-3d': 72,
-                        '3-7d': 168, '7-14d': 336, '14-30d': 720,
-                      };
-                      const phSlaHours = phSlaHoursMap[wo.phActualSla] || phSlaHoursMap[wo.phEstimatedSla] || 720;
-                      const phStartMs = wo.startDate ? new Date(wo.startDate).getTime() : Date.now();
-                      const phDeadlineMs = phStartMs + phSlaHours * 3600 * 1000;
+                      // SLA deadline — job-level via central helper (wo.scheduledDate@08:00 + phActualSla, no Date.now / 720 fallback; incl 30-60d/60d+).
+                      const _jobSla = computeJobSLA(wo);
+                      const phDeadlineMs = _jobSla.deadlineMs ?? Date.now();
                       const phDeadlineDate = new Date(phDeadlineMs);
-                      const slaLabel = phDeadlineDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
-                      const daysLeft = Math.ceil((phDeadlineMs - Date.now()) / 86400000);
+                      const slaLabel = _jobSla.deadlineMs !== null ? phDeadlineDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '—';
+                      const daysLeft = _jobSla.deadlineMs !== null ? Math.ceil((phDeadlineMs - Date.now()) / 86400000) : 0;
                       const daysLabel = daysLeft > 0 ? `อีก ${daysLeft} วัน` : daysLeft === 0 ? 'วันนี้!' : `เกิน ${Math.abs(daysLeft)} วัน`;
                       const allDone = assignedCategories.every((cat: any) => (cat.dailyProgress || 0) >= 100);
                       const hasReassigned = assignedCategories.some((cat: any) => cat.customerStatus === 'reassigned');
@@ -1035,12 +1038,12 @@ export const WorkOrderGroupList: React.FC = () => {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{
                                   fontSize: '0.62rem', fontWeight: 900,
-                                  color: wo.status === 'Completed' ? '#059669' : wo.status === 'Rejected' ? '#dc2626' : hasReassigned ? '#d97706' : allDone ? '#059669' : '#0891b2',
-                                  background: wo.status === 'Completed' ? '#d1fae5' : wo.status === 'Rejected' ? '#fee2e2' : hasReassigned ? '#fef3c7' : allDone ? '#d1fae5' : '#cffafe',
+                                  color: wo.status === 'Complete' ? '#059669' : wo.status === 'Rejected' ? '#dc2626' : hasReassigned ? '#d97706' : allDone ? '#059669' : '#0891b2',
+                                  background: wo.status === 'Complete' ? '#d1fae5' : wo.status === 'Rejected' ? '#fee2e2' : hasReassigned ? '#fef3c7' : allDone ? '#d1fae5' : '#cffafe',
                                   padding: '2px 6px', borderRadius: '4px',
                                   display: 'inline-flex', alignItems: 'center', gap: '2px',
                                 }}>
-                                  {wo.status === 'Completed' ? '✓ เสร็จสมบูรณ์' : wo.status === 'Rejected' ? '⚠️ รอแก้ไข' : hasReassigned ? '🔄 ได้รับมอบหมายใหม่' : allDone ? '✓ ครบ 100%' : `${assignedCategories.length} หมวด`}
+                                  {wo.status === 'Complete' ? '✓ เสร็จสมบูรณ์' : wo.status === 'Rejected' ? '⚠️ รอแก้ไข' : hasReassigned ? '🔄 ได้รับมอบหมายใหม่' : allDone ? '✓ ครบ 100%' : `${assignedCategories.length} หมวด`}
                                 </span>
                                 {(() => {
                                   const isPhWoOwner = assignedCategories.some(
@@ -1243,7 +1246,7 @@ export const WorkOrderGroupList: React.FC = () => {
                             transition: "all 0.2s",
                           }}
                           onClick={() => {
-                            if (wo.status === 'Completed' || wo.status === 'pending_delivery') {
+                            if (wo.status === 'Complete' || wo.status === 'pending_delivery') {
                               return; // Do nothing for fully completed/pending delivery WOs
                             }
                             if (wo.status === 'Rejected' && !wo.reviewedByAdmin) {
@@ -1258,7 +1261,7 @@ export const WorkOrderGroupList: React.FC = () => {
                             if (globalTasks.length > 0) {
                               // Select the first rejected task, or first unfinished task, or first task
                               const activeTask =
-                                globalTasks.find((t: any) => t.evaluationStatus === 'Rejected') ||
+                                globalTasks.find((t: any) => t.status === 'Rejected') ||
                                 globalTasks.find((t: any) => (t.dailyProgress || 0) < 100) ||
                                 globalTasks[0];
                               const catId = wo.categories.find((c: any) =>
@@ -1315,12 +1318,16 @@ export const WorkOrderGroupList: React.FC = () => {
                                       ? "#059669"
                                       : wo.status === "Rejected"
                                         ? "#dc2626"
-                                        : "#0891b2",
+                                        : globalIsAllCompleted
+                                          ? "#0891b2"
+                                          : "#b45309",
                                     background: wo.status === "Completed"
                                       ? "#d1fae5"
                                       : wo.status === "Rejected"
                                         ? "#fee2e2"
-                                        : "#cffafe",
+                                        : globalIsAllCompleted
+                                          ? "#cffafe"
+                                          : "#fef3c7",
                                     padding: "2px 6px",
                                     borderRadius: "4px",
                                     display: "inline-flex",
@@ -1332,7 +1339,9 @@ export const WorkOrderGroupList: React.FC = () => {
                                     ? "✓ เสร็จสมบูรณ์"
                                     : wo.status === "Rejected"
                                       ? "⚠️ รอแก้ไข"
-                                      : "✓ เสร็จครบ 100%"}
+                                      : globalIsAllCompleted
+                                        ? "✓ เสร็จครบ 100%"
+                                        : `⏳ เสร็จ ${globalTasks.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100).length}/${globalTasks.length}`}
                                 </span>
 
                                  {isWoOwner && globalIsAllCompleted && (
@@ -1453,6 +1462,10 @@ export const WorkOrderGroupList: React.FC = () => {
                   if (allActiveItems.length === 0) return null;
                   const groups: Record<string, any> = {};
                   allActiveItems.forEach((item) => {
+                    // Cancelled/archived-rejected tasks never happened — hide entirely from the
+                    // FM's daily-report list, same as completed tasks are already filtered out
+                    // upstream (agreed with product owner: don't show a task with zero remaining action).
+                    if (item.task.status === 'Cancelled' || (item.task.status === 'Rejected' && item.task.taskArchived === true)) return;
                     const woId = item.wo.id;
                     const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
                     const slaHoursMap: Record<string, number> = {
@@ -1470,7 +1483,7 @@ export const WorkOrderGroupList: React.FC = () => {
                       "24h";
                     const durationHours = slaHoursMap[taskSla as keyof typeof slaHoursMap] || 24;
                     let startTime = item.task.startDate 
-                      ? `${item.task.startDate.split('T')[0]}T08:00:00` 
+                      ? `${item.task.startDate.split('T')[0]}T08:00:00+07:00`
                       : item.task.slaStartTime;
                     if (!startTime) {
                       startTime =
@@ -1492,7 +1505,7 @@ export const WorkOrderGroupList: React.FC = () => {
                     const origSlaItem = (tValidInit2 ? (item.task as any).initialSlaCategory : null) || item.task.baselineSla || item.task.estimatedSla || item.task.slaCategory || "24h";
                     const origStartRaw = tValidInit2 || item.task.slaStartTime || item.wo.createdAt || new Date().toISOString();
                     const origStart = tValidInit2
-                      ? `${origStartRaw.split('T')[0]}T08:00:00`
+                      ? `${origStartRaw.split('T')[0]}T08:00:00+07:00`
                       : origStartRaw;
                     let deadlineTimeOriginal = new Date(origStart).getTime() + (slaHoursMap[origSlaItem as keyof typeof slaHoursMap] || 24) * 60 * 60 * 1e3;
                     let globalDeadlineTimeOriginal = deadlineTimeOriginal;
@@ -1519,7 +1532,7 @@ export const WorkOrderGroupList: React.FC = () => {
                               "24h";
                             const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
                             let tStart = t.startDate 
-                               ? `${t.startDate.split('T')[0]}T08:00:00` 
+                               ? `${t.startDate.split('T')[0]}T08:00:00+07:00`
                                : t.slaStartTime;
                             if (!tStart) {
                               tStart =
@@ -1544,7 +1557,7 @@ export const WorkOrderGroupList: React.FC = () => {
                             const tDurHoursOriginal = slaHoursMap[oSla as keyof typeof slaHoursMap] || 24;
                             const tOrigRaw = tValidInit3 || t.slaStartTime || fullWo.createdAt || new Date().toISOString();
                             const tStartOriginal = tValidInit3
-                              ? `${tOrigRaw.split('T')[0]}T08:00:00`
+                              ? `${tOrigRaw.split('T')[0]}T08:00:00+07:00`
                               : tOrigRaw;
                             const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
                             if (tDeadlineOriginal > maxDlOriginal) {
@@ -1595,6 +1608,9 @@ export const WorkOrderGroupList: React.FC = () => {
                   // Post-process groups to calculate globalTasks, isAllCompleted, globalTotal, and globalCompleted
                   const processedGroups = Object.values(groups).map((g: any) => {
                     let globalTasks = g.wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+                      // Cancelled/archived-rejected tasks never happened — exclude from the
+                      // completion count, same rule as Dashboard.tsx's isWorkOrderCompleted.
+                      if (t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true)) return false;
                       const isSupport = t.isSupportRequest === true || t.isHelper === true;
                       return activeTab === 'support' ? isSupport : !isSupport;
                     });
@@ -1711,7 +1727,13 @@ export const WorkOrderGroupList: React.FC = () => {
                             ...helperTasks,
                             ...wo.categories.flatMap((c: any) =>
                               c.tasks
-                                .filter((t: any) => !myTaskIds.has(t.id) && !helperTaskIds.has(t.id))
+                                .filter((t: any) =>
+                                  !myTaskIds.has(t.id) && !helperTaskIds.has(t.id) &&
+                                  // Cancelled/archived-rejected tasks never happened — this fallback
+                                  // branch pulls straight from wo.categories, so it must re-apply the
+                                  // same exclusion the main loop uses, or a hidden task reappears here.
+                                  t.status !== 'Cancelled' && !(t.status === 'Rejected' && t.taskArchived === true)
+                                )
                                 .map((t: any) => ({ task: t, categoryId: c.id }))
                             ),
                           ].filter(({ task }: any) => {
@@ -1933,7 +1955,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                           >
                                             {" "}
                                             
-                                            <QrCode size={10} /> ส่งมอบภาพรวม
+                                            <QrCode size={10} /> สร้าง QR Code
                                           </button>
                                         ) : null;
                                       })()}
@@ -2061,14 +2083,14 @@ export const WorkOrderGroupList: React.FC = () => {
                                               foremanName = task.assignee;
                                             } else if (task.responsibleStaffIds && task.responsibleStaffIds.length > 0) {
                                               const staffId = task.responsibleStaffIds[0];
-                                              const f = MOCK_STAFF.find((s) => s.id === staffId || s.name.toLowerCase().includes(staffId.toLowerCase()));
+                                              const f = staff.find((s) => s.id === staffId || s.employeeId === staffId);
                                               if (f) {
                                                 foremanName = f.name;
                                               } else {
                                                 foremanName = staffId;
                                               }
                                             } else if (task.subtaskOperatorId) {
-                                              const f = MOCK_STAFF.find((s) => s.id === task.subtaskOperatorId || s.name.toLowerCase().includes(task.subtaskOperatorId.toLowerCase()));
+                                              const f = staff.find((s) => s.id === task.subtaskOperatorId || s.employeeId === task.subtaskOperatorId);
                                               if (f) {
                                                 foremanName = f.name;
                                               } else {

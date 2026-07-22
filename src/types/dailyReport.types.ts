@@ -71,7 +71,6 @@ export interface WorkTask {
   afterPhotoUrl?: string;
   images?: string[];
   attachments?: { url: string }[];
-  evaluationStatus?: string;
   rejectReason?: string;
   reason?: string;
   taskName?: string;
