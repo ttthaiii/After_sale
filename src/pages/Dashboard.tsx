@@ -31,7 +31,6 @@ import {
     Legend,
     ResponsiveContainer,
     Bar,
-    BarChart,
     Cell,
     ReferenceLine,
     Label,
@@ -1001,7 +1000,6 @@ const Dashboard = () => {
     // T-337: year dimension — all-work mode is scoped to a selected YEAR (default current year).
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
     const [selectedBarWOs, setSelectedBarWOs] = useState<any>(null);
-    const [activeProgressIndex, setActiveProgressIndex] = useState<any>(null);
     const [statusFilters] = useState<string[]>([]);
     const [viewMode, setViewMode] = useState(isAdminOrManager ? 'insights' : 'operations');
     const [selectedForemanId, setSelectedForemanId] = useState<string | null>(null);
@@ -2118,64 +2116,6 @@ const Dashboard = () => {
 
     
 
-    const timelineData = useMemo(() => {
-        const [year, monthNum] = selectedMonth.split('-').map(Number);
-        let startDay = 1;
-        let endDay = new Date(year, monthNum, 0).getDate();
-        if (selectedWeek > 0) {
-            startDay = (selectedWeek - 1) * 7 + 1;
-            if (selectedWeek < 4) endDay = startDay + 6;
-            else if (selectedWeek === 4) endDay = 28;
-        }
-        const dataPoints = [];
-        for (let d = startDay; d <= endDay; d++) {
-            const dateStr = `${year}-${monthNum.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-
-            let openedTasksCount = 0;
-            let closedTasksCount = 0;
-            let isRelatedDay = false;
-
-            allAccessibleWOs.forEach((wo: any) => {
-                let woCreatedDate = '';
-                if (wo.createdAt) {
-                    const parsed = new Date(wo.createdAt);
-                    if (!isNaN(parsed.getTime())) {
-                        woCreatedDate = parsed.toISOString().split('T')[0];
-                    }
-                }
-                const isWOCreatedToday = woCreatedDate === dateStr;
-                const isTargetWO = wo.id?.toString().trim() === highlightedWOId?.toString().trim();
-
-                (wo.categories || []).forEach((c: any) => {
-                    (c.tasks || []).forEach((t: any) => {
-                        // Task "opened" when WO is created
-                        if (isWOCreatedToday) {
-                            openedTasksCount++;
-                            if (isTargetWO) isRelatedDay = true;
-                        }
-
-                        // Task "closed" when it reaches 100% progress
-                        const history = t.history || [];
-                        const completionUpdate = history.find((h: any) => h.progress === 100 && h.date.startsWith(dateStr));
-                        if (completionUpdate) {
-                            closedTasksCount++;
-                            if (isTargetWO) isRelatedDay = true;
-                        }
-                    });
-                });
-            });
-
-            dataPoints.push({
-                day: d,
-                name: `${String(d).padStart(2, '0')}/${String(monthNum).padStart(2, '0')}`,
-                openedCount: openedTasksCount,
-                closedCount: closedTasksCount,
-                isHighlighted: isRelatedDay
-            });
-        }
-        return dataPoints;
-    }, [allAccessibleWOs, selectedMonth, selectedWeek, highlightedWOId]);
-
     const sCurveData = useMemo(() => {
         const [year, monthNum] = selectedMonth.split('-').map(Number);
         const daysInMonth = new Date(year, monthNum, 0).getDate();
@@ -3166,95 +3106,6 @@ const Dashboard = () => {
                                     />
                                 </div>
                             )}
-
-                            {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1.4fr 1fr'), gap: '2rem', marginBottom: '2.5rem' }}>
-                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-                                    <SectionHeader
-                                        title="สถิติการเปิด-ปิดรายการงาน (Task Statistics)"
-                                        icon={<TrendingUp size={22} />}
-                                        subtitle={`สรุปจำนวนรายการงานที่เปิดใหม่และทำเสร็จสำเร็จราย${selectedWeek === 0 ? 'เดือน' : `สัปดาห์ที่ ${selectedWeek}`}`}
-                                        actions={
-                                            <div style={{ padding: '6px 14px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
-                                                <span style={{ color: '#f59e0b' }}>เปิด {timelineData.reduce((acc, d) => acc + d.openedCount, 0)}</span>
-                                                <span style={{ color: '#94a3b8', margin: '0 8px' }}>|</span>
-                                                <span style={{ color: '#8b5cf6' }}>ปิด {timelineData.reduce((acc, d) => acc + d.closedCount, 0)}</span>
-                                            </div>
-                                        }
-                                    />
-                                    <div style={{ height: '320px', width: '100%' }}>
-                                        <ResponsiveContainer>
-                                            <BarChart
-                                                key={`timeline-${highlightedWOId || 'none'}`}
-                                                data={timelineData}
-                                                onMouseMove={(state) => { if (state && state.activeLabel !== undefined) setActiveProgressIndex(state.activeLabel); else setActiveProgressIndex(null); }}
-                                                onMouseLeave={() => setActiveProgressIndex(null)}
-                                                onClick={(state: any) => {
-                                                    if (state && state.activeLabel !== undefined) {
-                                                        const dataPoint = timelineData.find(d => d.day === state.activeLabel);
-                                                        if (dataPoint && (dataPoint.openedCount > 0 || dataPoint.closedCount > 0)) {
-                                                            setSelectedBarWOs(dataPoint);
-                                                        }
-                                                    }
-                                                }}
-                                                style={{ cursor: 'pointer' }}
-                                            >
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                                <Tooltip
-                                                    cursor={{ fill: '#f8fafc' }}
-                                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                                    labelFormatter={(value) => {
-                                                        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-                                                        const [yr, mn] = selectedMonth.split('-');
-                                                        return `${value} ${monthNames[parseInt(mn) - 1]} ${yr}`;
-                                                    }}
-                                                />
-                                                <Legend verticalAlign="top" align="right" />
-                                                <Bar dataKey="openedCount" name="เปิดงานใหม่" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20}>
-                                                    {timelineData.map((item, index) => <Cell key={`cell-opened-${index}`} fillOpacity={highlightedWOId ? (item.isHighlighted ? 1 : 0.25) : (activeProgressIndex === null || activeProgressIndex === item.day ? 1 : 0.3)} stroke={highlightedWOId && item.isHighlighted ? '#b45309' : 'none'} strokeWidth={2} />)}
-                                                </Bar>
-                                                <Bar dataKey="closedCount" name="ปิดงานสำเร็จ" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20}>
-                                                    {timelineData.map((item, index) => <Cell key={`cell-closed-${index}`} fillOpacity={highlightedWOId ? (item.isHighlighted ? 1 : 0.25) : (activeProgressIndex === null || activeProgressIndex === item.day ? 1 : 0.3)} stroke={highlightedWOId && item.isHighlighted ? '#5b21b6' : 'none'} strokeWidth={2} />)}
-                                                </Bar>
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-
-                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
-                                    <SectionHeader title="สัดส่วนการใช้แรงงาน (Efficiency)" icon={<Users size={20} />} subtitle="ชั่วโมงงานภายใน vs ผู้รับเหมา" />
-                                    <div style={{ height: '320px', position: 'relative' }}>
-                                        {/* Centered Summary Total */}
-                                        <div style={{
-                                            position: 'absolute',
-                                            top: '45%',
-                                            left: '50%',
-                                            transform: 'translate(-50%, -50%)',
-                                            textAlign: 'center',
-                                            pointerEvents: 'none',
-                                            zIndex: 10
-                                        }}>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '-5px' }}>
-                                                {highlightedWOId ? 'ใบงานที่เน้น' : 'ชั่วโมงรวม'}
-                                            </div>
-                                            <div style={{ fontSize: scaleFont(isMobile, '2.4rem'), fontWeight: 900, color: '#1e293b', lineHeight: 1.1 }}>
-                                                {((stats.internalHours || 0) + (stats.outsourceHours || 0)).toLocaleString()}
-                                            </div>
-                                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#4f46e5' }}>ชม. งาน</div>
-                                        </div>
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart key={`pie-${highlightedWOId || 'none'}`}>
-                                                <Pie data={stats.laborStats} cx="50%" cy="45%" innerRadius={isMobile ? 52 : 70} outerRadius={isMobile ? 78 : 100} paddingAngle={8} dataKey="value">
-                                                    {stats.laborStats.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                                                </Pie>
-                                                <Tooltip />
-                                                <Legend verticalAlign="bottom" />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            </div>}
 
                             {/* S-Curve Chart — T-337: hidden in all-time mode (month-anchored) */}
                             <div style={{ display: isAllTime ? 'none' : undefined, gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
