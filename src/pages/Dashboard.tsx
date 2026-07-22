@@ -20,7 +20,7 @@ import {
     MapPin,
     UserCheck
 } from 'lucide-react';
-import { formatDate, formatDateTime } from '../utils/date';
+import { formatDate } from '../utils/date';
 import { isWoaWop } from '../utils/workOrder';
 import { computeJobSLA, getCountedSubtasks } from '../utils/jobSla';
 import {
@@ -33,9 +33,6 @@ import {
     Bar,
     Cell,
     ReferenceLine,
-    Label,
-    LabelList,
-    Area,
     PieChart,
     Pie,
     ComposedChart,
@@ -348,84 +345,6 @@ const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onU
 };
 
 
-const renderSCurveLegend = (props: any) => {
-    const { payload } = props;
-    const explanations: any = {
-        ideal: 'เส้นเป้าหมายความคืบหน้าที่ควรจะได้ตามเวลา',
-        manpower: 'การใช้คนงานไปจริงๆ ในแต่ละวัน (เชื่อมโยงกับงานที่เพิ่มขึ้น)',
-        progress: 'ความคืบหน้าสะสม (%) ของทุกใบงานในโครงการ',
-    };
-    const thaiNames: any = {
-        ideal: 'เป้าหมายมาตรฐาน',
-        manpower: 'จำนวนแรงงานรวม',
-        progress: 'ความคืบหน้าจริง',
-    };
-    return (
-        <>
-            <style>{`
-        .scurve-legend-item {
-          position: relative;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.8rem;
-          font-weight: 800;
-          color: #64748b;
-          cursor: help;
-        }
-        .scurve-legend-tooltip {
-          visibility: hidden;
-          opacity: 0;
-          position: absolute;
-          bottom: 150%;
-          left: 50%;
-          transform: translateX(-50%);
-          background-color: #1e293b;
-          color: #fff;
-          text-align: center;
-          padding: 8px 12px;
-          border-radius: 8px;
-          font-size: 0.75rem;
-          font-weight: 600;
-          white-space: nowrap;
-          z-index: 50;
-          transition: opacity 0.2s, visibility 0.2s;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-          pointer-events: none;
-        }
-        .scurve-legend-tooltip::after {
-          content: "";
-          position: absolute;
-          top: 100%;
-          left: 50%;
-          margin-left: -5px;
-          border-width: 5px;
-          border-style: solid;
-          border-color: #1e293b transparent transparent transparent;
-        }
-        .scurve-legend-item:hover .scurve-legend-tooltip {
-          visibility: visible;
-          opacity: 1;
-        }
-      `}</style>
-            <ul style={{ listStyle: 'none', display: 'flex', justifyContent: 'center', gap: '20px', padding: 0, margin: '0 0 10px 0' }}>
-                {payload.map((entry: any, index: number) => (
-                    <li key={`item-${index}`} className="scurve-legend-item">
-                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: entry.color }} />
-                        {thaiNames[entry.value] || entry.value}
-                        <div className="scurve-legend-tooltip">{explanations[entry.value] || entry.value}</div>
-                    </li>
-                ))}
-                <li className="scurve-legend-item">
-                    <div style={{ height: '0px', width: '12px', borderBottom: '2px dashed #94a3b8' }} />
-                    สิ้นสุดสัปดาห์
-                    <div className="scurve-legend-tooltip">เส้นแบ่งแยกข้อมูลเพื่อแสดงจุดสิ้นสุดสัปดาห์ (วันอาทิตย์)</div>
-                </li>
-            </ul>
-        </>
-    );
-};
-
 const WOSummaryModal = ({ isOpen, onClose, data, onViewDetail, selectedMonth, getProjectName }: any) => {
     if (!isOpen || !data) return null;
     const { day, openedWOs = [], closedWOs = [] } = data;
@@ -592,7 +511,6 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                 const col = revColors[revIdx % revColors.length];
                                 const revHrs = calcHrs(logs);
                                 const revDays = new Set(logs.map((l: any) => l.date?.split('T')[0]).filter(Boolean)).size;
-                                const firstProg = logs[0]?.progress ?? 0;
                                 const lastProg = logs[logs.length - 1]?.progress ?? 0;
                                 // Find start progress of this revision (progress before first entry)
                                 const allBeforeThisRev = history.filter((l: any) => (l.revisionId || 'rev00') !== revId);
@@ -904,73 +822,6 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
     );
 };
 
-// ── Central SLA model (T-343) ────────────────────────────────────────────────
-// Single source of truth for the dashboard's SLA on-time / late calculation.
-// User-locked model (supersedes T-342):
-//   • eligible    = foreman work finished (dailyProgress===100) — NOT status 'Complete'
-//   • start       = task.startDate@08:00 → slaStartTime → wo.createdAt
-//   • end         = task.completedAt (the progress-100 date) → earliest history progress===100
-//                   → last history date. NEVER `now` (customer-wait must not count vs the foreman).
-//   • duration    = max(calendarHours, workHours) — waiting-for-materials counts against SLA
-//   • onTime      = duration <= slaLimit
-//   • completedMs = end (used for completion-month windowing of SLA-performance cards)
-// Pure function — no component state, no side effects.
-const SLA_HOURS_MAP: Record<string, number> = { 'Immediately': 4, '24h': 24, '1-3d': 72, '3-7d': 168, '7-14d': 336, '14-30d': 720 };
-
-interface TaskSLA {
-    eligible: boolean;
-    startMs: number;
-    endMs: number | null;
-    calHours: number;
-    workHours: number;
-    duration: number;
-    limit: number;
-    onTime: boolean;
-    deviation: number;
-    completedMs: number | null;
-}
-
-const computeTaskSLA = (t: any, wo: any): TaskSLA => {
-    const limit = SLA_HOURS_MAP[t.slaCategory || '24h'] || 24;
-    const startMs = t.startDate
-        ? new Date(`${t.startDate.split('T')[0]}T08:00:00+07:00`).getTime()
-        : (t.slaStartTime ? new Date(t.slaStartTime).getTime() : new Date(wo.createdAt).getTime());
-
-    const history = [...(t.history || [])].sort(
-        (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    const firstP100 = history.find((h: any) => Number(h.progress) === 100);
-    const lastHist = history[history.length - 1];
-    const endMs =
-        t.completedAt ? new Date(t.completedAt).getTime() :
-        firstP100 ? new Date(firstP100.date).getTime() :
-        lastHist ? new Date(lastHist.date).getTime() :
-        null;
-
-    const workHours = history.reduce((acc: number, h: any) => {
-        let hTotal = 0;
-        (h.labor || []).forEach((lab: any) => {
-            const hrs = lab.shifts
-                ? (lab.shifts.normal ? 8 : 0) + (lab.shifts.otMorning ? 2 : 0) + (lab.shifts.otNoon ? 1 : 0) + (lab.shifts.otEvening ? 3 : 0)
-                : (lab.timeType === 'Normal' ? 8 : 2);
-            hTotal += hrs * (lab.amount || 1);
-        });
-        return acc + hTotal;
-    }, 0);
-
-    // Gate: foreman work finished AND a usable, non-inverted end timestamp.
-    const workDone = (t.dailyProgress ?? t.progress ?? 0) === 100;
-    const validEnd = endMs !== null && endMs >= startMs;
-    const eligible = workDone && validEnd;
-
-    const calHours = validEnd ? (endMs! - startMs) / 3600000 : 0;
-    const duration = Math.max(calHours, workHours);
-    const onTime = eligible && duration <= limit;
-    const deviation = 100 - (duration / limit * 100);
-
-    return { eligible, startMs, endMs, calHours, workHours, duration, limit, onTime, deviation, completedMs: endMs };
-};
-
 const Dashboard = () => {
     const { workOrders: allWorkOrders, projects, staff, loading } = useWorkOrders();
     // Shared collection also holds a separate "labor" system's records. Keep only
@@ -1053,14 +904,12 @@ const Dashboard = () => {
     const [lastBarContext, setLastBarContext] = useState<any>(null);
     const [selectedLaborDetail, setSelectedLaborDetail] = useState<any>(null);
     const [highlightedSection] = useState<string | null>(null);
-    const [drillDownProject, setDrillDownProject] = useState<string | null>(null);
     const [highlightedWOId, setHighlightedWOId] = useState<string | null>(null);
     const [selectedTaskHistory, setSelectedTaskHistory] = useState<any>(null);
     const [selectedComparisonCategory, setSelectedComparisonCategory] = useState<string | null>(null);
     const [selectedOpCategory, setSelectedOpCategory] = useState('urgent');
     const opListRef = useRef<HTMLDivElement>(null);
     const userHasManuallySelected = useRef(false);
-    const [hoveredBarKey, setHoveredBarKey] = useState<string | null>(null);
     const [donutFilter, setDonutFilter] = useState<string | null>(null);
 
     const getProjectName = (id: string) => projects.find((p: any) => p.id === id)?.name || id;
@@ -1140,7 +989,7 @@ const Dashboard = () => {
     // T-336: single owner definition matching /daily-report (DailyReportContext.tsx:825-841).
     // Previously the admin view only checked reporterId + responsibleStaffIds, so a WO where the
     // foreman is the actual worker (subtaskOperatorId) or a helper — e.g. project WH — was hidden.
-    const taskOwnedByForeman = (t: any, wo: any, ids: Set<string> | null) => {
+    const taskOwnedByForeman = (t: any, _wo: any, ids: Set<string> | null) => {
         if (!ids) return false;
         const inSet = (v: any) => v != null && ids.has(v);
         return (
@@ -1707,7 +1556,7 @@ const Dashboard = () => {
                         ...wo,
                         woId: wo.id,
                         statusInfo: status,
-                        taskName: status.taskName || wo.locationName
+                        taskName: wo.locationName
                     });
                 }
                 if (status.text?.includes('เหลือ') && !status.text?.includes('ว')) {
@@ -2007,10 +1856,6 @@ const Dashboard = () => {
         setSelectedOpCategory('urgent'); // all empty → show urgent (ไม่มีงาน)
     }, [(stats.urgentTasks || []).length, allAccessibleWOs.length, stats.evaluating]);
 
-    const maxDevRaw = stats.laborByProject.length > 0 ? Math.max(100, ...stats.laborByProject.map((p: any) => Math.abs(p.deviation))) : 100;
-    const maxDev = Math.ceil(maxDevRaw / 50) * 50;
-    const devTicks = [-maxDev, -maxDev / 2, 0, maxDev / 2, maxDev].map((v) => Math.round(v));
-
     const handleLaborDetailClick = (projectId: string, dateStr: string) => {
         const project = projects.find((p: any) => p.id === projectId);
         if (!project || !dateStr) return;
@@ -2307,72 +2152,6 @@ const Dashboard = () => {
                 </div>
             </div>
         );
-    };
-
-    const WorkloadTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            const data = payload[0].payload;
-            const displayPayload = hoveredBarKey
-                ? payload.filter((entry: any) => entry.dataKey === hoveredBarKey)
-                : payload;
-
-            if (displayPayload.length === 0) return null;
-
-            return (
-                <div style={{
-                    background: 'rgba(255, 255, 255, 0.98)',
-                    padding: '1.25rem',
-                    borderRadius: '20px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-                    backdropFilter: 'blur(8px)',
-                    minWidth: isMobile ? 0 : '240px'
-                }}>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 900, color: '#1e293b', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <BarChart3 size={16} color="#4f46e5" /> {label}
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {displayPayload.map((entry: any, index: number) => {
-                            const isProgress = entry.dataKey === 'inProgress';
-                            const jobs = isProgress ? data.inProgressJobs : entry.dataKey === 'completed' ? data.completedJobs : data.evaluatingJobs;
-
-                            return (
-                                <div key={`tooltip-row-${index}`} style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: entry.color, fontWeight: 800, fontSize: '0.85rem' }}>
-                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: entry.color }} />
-                                            {entry.name}
-                                        </div>
-                                        <div style={{ fontWeight: 900, fontSize: '0.9rem', color: '#1e293b' }}>{entry.value} งาน</div>
-                                    </div>
-
-                                    {jobs && jobs.length > 0 && (
-                                        <div style={{
-                                            marginTop: '6px',
-                                            paddingLeft: '16px',
-                                            borderLeft: `2px solid ${entry.color}40`,
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '4px'
-                                        }}>
-                                            {jobs.slice(0, 5).map((job: any, jIdx: number) => (
-                                                <div key={`job-${jIdx}`} style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-                                                    <span style={{ color: entry.dataKey === 'completed' ? '#10b981' : entry.dataKey === 'inProgress' ? '#0ea5e9' : '#eab308', fontWeight: 800 }}>#{job.id}</span> • {job.name}
-                                                </div>
-                                            ))}
-                                            {jobs.length > 5 && (
-                                                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontStyle: 'italic', marginTop: '2px' }}>...และอีก {jobs.length - 5} รายการ</div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            );
-        }
-        return null;
     };
 
     return (
@@ -2715,70 +2494,6 @@ const Dashboard = () => {
                                                 );
                                             };
 
-                                            const WOCard = ({ wo, bg, border, idColor, actionLabel, actionNav, statusBadge }: any) => {
-                                                const allSubtasks = wo.categories?.flatMap((c: any) => c.tasks || []) || [];
-                                                const mySubtasks = allSubtasks.filter(isMySubtask);
-                                                const relevantTasks = mySubtasks.length > 0 ? mySubtasks : allSubtasks;
-                                                const getAvgProg = (tasks: any[]) => tasks.length > 0 ? Math.round(tasks.reduce((s: number, t: any) => s + (t.dailyProgress ?? t.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(t.status) ? 100 : 0)), 0) / tasks.length) : null;
-                                                const prog = getAvgProg(relevantTasks);
-                                                const overallProg = mySubtasks.length > 0 && mySubtasks.length < allSubtasks.length ? getAvgProg(allSubtasks) : null;
-                                                return (
-                                                    <div onClick={() => navigate(actionNav)} style={{ padding: '1.25rem 1.5rem', background: bg, borderRadius: '24px', border: `1px solid ${border}`, cursor: 'pointer', transition: 'all 0.2s ease' }} onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: prog !== null || statusBadge ? '10px' : '0' }}>
-                                                            <div>
-                                                                <div style={{ fontWeight: 900, color: idColor, fontSize: '1.05rem', marginBottom: '2px' }}>#{wo.id?.slice(-6)}</div>
-                                                                <div style={{ fontSize: '0.875rem', color: '#1e293b', fontWeight: 700 }}>{wo.locationName}</div>
-                                                                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>🏗️ {getProjectName(wo.projectId)}</div>
-                                                                {wo.categories && wo.categories.length > 0 && (
-                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '7px' }}>
-                                                                        {wo.categories.slice(0, 4).map((cat: any, i: number) => {
-                                                                            const catMyTasks = mySubtasks.length > 0 ? cat.tasks?.filter((t: any) => isMySubtask(t)) : cat.tasks;
-                                                                            const total = catMyTasks?.length || 0;
-                                                                            if (total === 0) return null;
-                                                                            const pending = catMyTasks?.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) < 100 && t.status !== 'Rejected').length || 0;
-                                                                            return (
-                                                                                <span key={i} style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', background: pending > 0 ? 'rgba(14,165,233,0.1)' : 'rgba(16,185,129,0.08)', border: `1px solid ${pending > 0 ? '#bae6fd' : '#a7f3d0'}`, borderRadius: '6px', color: pending > 0 ? '#0369a1' : '#059669', whiteSpace: 'nowrap' }}>
-                                                                                    {cat.name}{pending > 0 ? ` ·${pending}` : ' ✓'}
-                                                                                </span>
-                                                                            );
-                                                                        })}
-                                                                        {wo.categories.length > 4 && (
-                                                                            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', background: 'rgba(0,0,0,0.04)', borderRadius: '6px', color: '#94a3b8' }}>+{wo.categories.length - 4}</span>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            {statusBadge}
-                                                        </div>
-                                                        {prog !== null && (
-                                                            <div style={{ marginBottom: '10px' }}>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>
-                                                                    <span>{mySubtasks.length > 0 ? `งานของฉัน · ${mySubtasks.length} งานย่อย` : `รวม · ${allSubtasks.length} งานย่อย`}</span>
-                                                                    <span style={{ color: prog >= 80 ? '#059669' : prog >= 40 ? '#0369a1' : '#d97706' }}>{prog}%</span>
-                                                                </div>
-                                                                <div style={{ background: '#e2e8f0', borderRadius: '6px', height: '6px', overflow: 'hidden', marginBottom: overallProg !== null ? '6px' : '0' }}>
-                                                                    <div style={{ width: `${prog}%`, height: '100%', background: prog >= 80 ? '#10b981' : prog >= 40 ? '#0ea5e9' : '#f59e0b', borderRadius: '6px', transition: 'width 0.5s ease' }} />
-                                                                </div>
-                                                                {overallProg !== null && (
-                                                                    <div>
-                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: '#94a3b8', fontWeight: 500, marginBottom: '3px' }}>
-                                                                            <span>รวมทั้ง WO · {allSubtasks.length} งานย่อย</span>
-                                                                            <span>{overallProg}%</span>
-                                                                        </div>
-                                                                        <div style={{ background: '#f1f5f9', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
-                                                                            <div style={{ width: `${overallProg}%`, height: '100%', background: '#cbd5e1', borderRadius: '4px', transition: 'width 0.5s ease' }} />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        <button onClick={(e) => { e.stopPropagation(); navigate(actionNav); }} style={{ width: '100%', padding: '7px', background: 'rgba(0,0,0,0.04)', border: `1px solid ${border}`, borderRadius: '12px', color: idColor, fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s' }}>
-                                                            {actionLabel}
-                                                        </button>
-                                                    </div>
-                                                );
-                                            };
-
                                             if (selectedOpCategory === 'urgent') {
                                                 const urgentWOs = stats.urgentTasks || [];
                                                 const urgentFlat: any[] = urgentWOs.flatMap((wo: any) => {
@@ -2951,9 +2666,6 @@ const Dashboard = () => {
                                 const closedWOs = stats.closedWOsInScope ?? 0;
                                 const closeRate = stats.totalInMonth > 0 ? Math.round(closedWOs / stats.totalInMonth * 100) : 0;
                                 const lateCount = (stats.urgentTasks || []).filter((wo: any) => wo.statusInfo?.level === 'critical').length;
-                                const topUrgent = (stats.urgentTasks || [])[0];
-                                const nextUpcoming = (stats.upcomingTasks || [])[0];
-                                const circ = 2 * Math.PI * 52;
                                 return (
                                 <div style={{ background: '#fff', borderRadius: '24px', border: '0.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', padding: '1.5rem 2rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: gridCols(isMobile, '180px 1fr'), gap: '1.5rem', alignItems: 'center' }}>
 
@@ -2995,10 +2707,7 @@ const Dashboard = () => {
                                     {/* MIDDLE: stats + progress */}
                                     {(() => {
                                         const closedWOs = stats.closedWOsInScope ?? 0;
-                                        const pendingWOs = stats.totalInMonth - closedWOs;
                                         const totalTasks = stats.totalTasksInScope ?? 0; // T-338: grand total in-scope (was closed+open, which dropped 100%-awaiting-customer tasks)
-                                        const woRate = stats.totalInMonth > 0 ? Math.round(closedWOs / stats.totalInMonth * 100) : 0;
-                                        const taskRate = totalTasks > 0 ? Math.round(stats.closed / totalTasks * 100) : 0;
                                         return (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         {(() => {
@@ -3557,14 +3266,6 @@ const Dashboard = () => {
                                                         const tStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00+07:00') : null;
                                                         const calDaysUsed = (tStartDate && taskCompletedAt)
                                                             ? Math.max(1, Math.ceil((taskCompletedAt.getTime() - tStartDate.getTime()) / 86400000)) : null;
-
-                                                        // Distinct workdays from labor logs
-                                                        const logDaysSet = new Set(
-                                                            (task.history || []).map((h: any) =>
-                                                                h.date || h.workDate || (h.createdAt ? h.createdAt.split('T')[0] : null)
-                                                            ).filter(Boolean)
-                                                        );
-                                                        const logDaysCount = logDaysSet.size;
 
                                                         // +/- days vs task deadline
                                                         const taskDaysDiff = (isWoCompleted && taskCompletedAt)

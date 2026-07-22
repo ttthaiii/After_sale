@@ -4,7 +4,7 @@ import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/f
 import { formatDate, formatDateTime } from '../utils/date';
 import { ActivityLog } from '../types';
 import CustomDateInput from './CustomDateInput';
-import { Search, Calendar, User, Shield, Activity as ActionIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, User, Shield, Activity as ActionIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ActivityLogTable = () => {
     const [logs, setLogs] = useState<ActivityLog[]>([]);

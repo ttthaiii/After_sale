@@ -23,13 +23,13 @@ const MOCK_LOGS = [
 ];
 
 const TaskUpdateModal = ({ isOpen, onClose, task, categoryId, workOrderId, categoryName }: TaskUpdateModalProps) => {
-    if (!isOpen || !task) return null;
-
     const { addTaskUpdate, updateTask } = useWorkOrders();
     const { user } = useAuth();
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+
+    if (!isOpen || !task) return null;
 
     // Date limits: Today and 3 days back
     const today = new Date();

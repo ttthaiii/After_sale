@@ -89,7 +89,6 @@ export const WorkOrderGroupList: React.FC = () => {
     pendingInspectionTasks: rawPendingInspectionTasks,
     pendingDeliveryWorkOrders: rawPendingDeliveryWorkOrders,
     preHandoverWorkOrders,
-    setSelectedPhCatInfo,
     selectPhCatInfo,
     selectedPhCatInfo,
     setSelectedTaskInfo,

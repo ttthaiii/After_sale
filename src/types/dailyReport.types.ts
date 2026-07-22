@@ -74,7 +74,10 @@ export interface WorkTask {
   rejectReason?: string;
   reason?: string;
   taskName?: string;
+  subtaskName?: string;
   subtaskId?: string;
+  dueDate?: string;
+  taskArchived?: boolean;
   isHelper?: boolean;
   isSupportRequest?: boolean;
   isPickedUpBySupport?: boolean;

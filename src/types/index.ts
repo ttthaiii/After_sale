@@ -181,7 +181,6 @@ export interface MasterTask {
     revisionCreatedAt?: any;
     ownerName?: string;
     notes?: string;
-    updatedAt?: string;
     evaluationChecklist?: Record<string, number | boolean>;
     overallSatisfaction?: number;
     rejectReason?: string;
@@ -225,6 +224,7 @@ export interface Staff {
     createdAt?: string; // Add for labor database compatibility
     createdBy?: string; // Add for labor database compatibility
     startDate?: string; // Add for labor database compatibility
+    isActive?: boolean;
 }
 
 export interface Category {
@@ -250,8 +250,10 @@ export interface Project {
 
 export interface WorkOrder {
     id: string;
-    projectId: string; 
+    projectId: string;
+    projectName?: string;
     locationName: string;
+    location?: string; // legacy/alternate field some search code defensively checks alongside locationName
     type: WorkOrderType;
     categories: Category[]; // Removed optional for strictness in some views
     createdAt: string;

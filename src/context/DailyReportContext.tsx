@@ -713,7 +713,6 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       
       const defaultProgress = min > 0 ? min + 1 : 0;
-      const lastEntry = priorEntries[0];
 
       const checkAndLoadDraft = async () => {
         try {

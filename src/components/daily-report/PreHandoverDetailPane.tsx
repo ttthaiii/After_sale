@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   ClipboardList, Calendar, Users, Camera, CheckCircle2,
   FileText, Clock, X, Plus, Trash2, Loader2,
@@ -117,7 +117,6 @@ const PhCalendar: React.FC<PhCalendarProps> = ({ reportDate, onSelectDate, getDa
 export const PreHandoverDetailPane: React.FC = () => {
   const {
     selectedPhCatInfo,
-    setSelectedPhCatInfo,
     selectPhCatInfo,
     reportDate,
     setReportDate,
@@ -137,9 +136,7 @@ export const PreHandoverDetailPane: React.FC = () => {
     togglePhShift,
     openTimePicker,
     phDailyHistory,
-    submitPhDailyReport,
     savePhDraft,
-    phDraftedDates,
     getPhDateStatus,
     isPhReportDatePast3Days,
     phRetroactiveSubmitDone,
@@ -148,7 +145,6 @@ export const PreHandoverDetailPane: React.FC = () => {
     setIsPhEditingExisting,
     isPhExistingReport,
     hasPhUnsavedChanges,
-    showPhSummaryModal,
     setShowPhSummaryModal,
     phProgressBounds,
     isSubmitting,
@@ -191,7 +187,6 @@ export const PreHandoverDetailPane: React.FC = () => {
   const [showCalendarDropdown, setShowCalendarDropdown] = useState(false);
   const [expandedHistoryPhotos, setExpandedHistoryPhotos] = useState<Set<string>>(new Set());
   const [phReportType, setPhReportType] = useState<'Normal' | 'Problem'>('Normal');
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const toggleHistoryPhotos = (key: string) => {
     setExpandedHistoryPhotos(prev => {
@@ -235,7 +230,6 @@ export const PreHandoverDetailPane: React.FC = () => {
   const phDeadlineMs = _jobSla.deadlineMs ?? Date.now();
   const daysLeft = _jobSla.deadlineMs !== null ? Math.ceil((phDeadlineMs - Date.now()) / 86400000) : 0;
   const deadlineLabel = _jobSla.deadlineMs !== null ? new Date(phDeadlineMs).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
-  const deadlineColor = daysLeft < 0 ? '#ef4444' : daysLeft <= 3 ? '#f59e0b' : '#10b981';
 
   // Photo map
   const photoMap: Record<string, (File | string | null)[]> = {

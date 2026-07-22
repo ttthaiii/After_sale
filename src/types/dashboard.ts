@@ -49,8 +49,10 @@ export interface DashboardStats {
     open: number;
     totalTasksInScope: number;
     evaluating: number;
-    slaScore: number;
+    slaScore: number | null;
     highRisk: number;
+    pendingAdminEval: number;
+    closedWOsInScope: number;
     totalHours: number;
     totalBudget: number;
     totalActualCost: number;

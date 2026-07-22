@@ -123,7 +123,7 @@ const History = () => {
                 wo.categories.some(cat =>
                     cat.tasks.some(task =>
                         task.responsibleStaffIds?.includes(effectiveStaffId) ||
-                        (targetStaff && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
+                        (targetStaff && targetStaff.employeeId && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
                         (targetStaff && targetStaff.id && task.responsibleStaffIds?.includes(targetStaff.id))
                     )
                 )
@@ -184,7 +184,7 @@ const History = () => {
                     if (effectiveStaffId) {
                         const targetStaff = staff.find(s => s.id === effectiveStaffId);
                         const isAssigned = task.responsibleStaffIds?.includes(effectiveStaffId) ||
-                            (targetStaff && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
+                            (targetStaff && targetStaff.employeeId && task.responsibleStaffIds?.includes(targetStaff.employeeId)) ||
                             (targetStaff && targetStaff.id && task.responsibleStaffIds?.includes(targetStaff.id));
                         // A task rejected/archived before ever being assigned has no responsibleStaffIds —
                         // still show it to the WO owner, or it silently disappears from their history.

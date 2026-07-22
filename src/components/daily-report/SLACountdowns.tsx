@@ -106,8 +106,7 @@ export const SLACountdown: React.FC<SLACountdownProps & { isHelper?: boolean }> 
 
   if (isHelper) {
     const formattedDeadline = groupDeadline ? formatDate(groupDeadline) : "-";
-    const totalHours = timeLeft ? (timeLeft.days * 24 + timeLeft.hours) : 0;
-    
+
     let timeText = "";
     let textColor = "#10b981"; 
     if (isCompleted) {

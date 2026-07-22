@@ -1,11 +1,9 @@
 import React from "react";
 import {
-  Lock,
   CheckCircle2,
   AlertCircle,
   XCircle,
   Info,
-  ChevronLeft,
 } from "lucide-react";
 import { DailyReportProvider, useDailyReport } from "../context/DailyReportContext";
 import { formatDate } from "../utils/date";
@@ -18,8 +16,6 @@ import { AnalogTimePicker } from "../components/AnalogTimePicker";
 import TaskReviewModal from "../components/TaskReviewModal";
 import CustomerInspectionMockup from "../components/CustomerInspectionMockup";
 import { useIsMobile } from "../hooks/useIsMobile";
-
-const TaskReviewModalAny = TaskReviewModal as any;
 
 const DailyReportContent: React.FC = () => {
   const {
@@ -45,13 +41,9 @@ const DailyReportContent: React.FC = () => {
     setIsCustomerMockupOpen,
     mockupWorkOrder,
     setMockupWorkOrder,
-    handleConfirmReview,
-    handleBounceBackSLA,
     submitCustomerInspection,
     pendingUnlockDate,
-    unlockReason,
     setUnlockReason,
-    requestRetroactiveUnlock,
     handleTimeChange,
     handleBatchAdd,
     availableStaff,
@@ -357,20 +349,16 @@ const DailyReportContent: React.FC = () => {
         </div>
       )}
 
-      {/* Task Review Modal (Typecasted to bypass external props clashing) */}
+      {/* Task Review Modal */}
       {isReviewModalOpen && reviewTaskInfo && (
-        <TaskReviewModalAny
+        <TaskReviewModal
           isOpen={isReviewModalOpen}
           onClose={() => {
             setIsReviewModalOpen(false);
             setReviewTaskInfo(null);
           }}
+          workOrder={reviewTaskInfo.wo}
           task={reviewTaskInfo.task}
-          categoryId={reviewTaskInfo.categoryId}
-          woId={reviewTaskInfo.woId}
-          wo={reviewTaskInfo.wo}
-          onConfirm={handleConfirmReview}
-          onBounceBack={handleBounceBackSLA}
         />
       )}
 

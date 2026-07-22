@@ -203,30 +203,6 @@ export const DailyReportDetailPane: React.FC = () => {
     });
   }, [selectedTaskInfo, reportDate]);
 
-  // For helper tasks: find the support report for the current date to fall back on photos
-  // This handles the case where laborXxxPhotos state may not have loaded yet
-  const supportReportForDate = React.useMemo(() => {
-    if (!selectedTaskInfo?.task?.isHelper) return null;
-    return selectedTaskInfo.task.history?.find((h) => {
-      const matchesRevision = h.revisionId === (selectedTaskInfo.task.currentRevision || 'rev00');
-      return matchesRevision && h.isSupportReport === true && h.date?.split("T")[0] === reportDate;
-    }) || null;
-  }, [selectedTaskInfo, reportDate]);
-
-  // Helper to extract shift photos from a history entry
-  const extractShiftPhotos = (historyEntry: any, shiftKey: 'regular' | 'otMorning' | 'otNoon' | 'otEvening'): (string | null)[] => {
-    if (!historyEntry?.photos) return [];
-    const pObj = historyEntry.photos && !Array.isArray(historyEntry.photos) ? historyEntry.photos as any : null;
-    if (!pObj?.laborByShift) return [];
-    const dbShift = pObj.laborByShift[shiftKey];
-    if (!dbShift) return [];
-    if (Array.isArray(dbShift)) return dbShift.filter(Boolean);
-    if (shiftKey === 'regular') {
-      return [dbShift.in || '', dbShift.lunch || '', dbShift.afternoon || '', dbShift.out || ''].filter(Boolean);
-    }
-    return [dbShift.in || '', dbShift.out || ''].filter(Boolean);
-  };
-
   const referenceLabor = React.useMemo(() => {
     if (labor.length > 0) return labor;
     if (selectedTaskInfo?.task?.isHelper) {
@@ -3796,7 +3772,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           alignItems: "flex-start",
                         }}
                       >
-                        {displaySitePhotos.map((p, i) => (
+                        {displaySitePhotos.map((p: File | string | null, i: number) => (
                            <div
                             style={{
                               position: "relative",

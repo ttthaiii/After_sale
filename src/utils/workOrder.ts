@@ -30,7 +30,6 @@ type TaskLike = {
     id?: string;
     parentTaskId?: string;
     currentRevision?: string;
-    [k: string]: unknown;
 };
 type CategoryLike = { id?: string; tasks?: TaskLike[] };
 type WorkOrderLike = { id?: string; categories?: CategoryLike[] };

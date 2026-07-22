@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, User, Save, CheckCircle2, Search } from 'lucide-react';
+import { X, User, Save, Search } from 'lucide-react';
 import { MasterTask, Staff } from '../types';
 
 interface AdminAssignHelperModalProps {
