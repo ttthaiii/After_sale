@@ -1,6 +1,7 @@
 import { X, Wrench, FileText, ExternalLink, Clock } from 'lucide-react';
 import { WorkOrder, Project } from '../types';
 import { formatDate } from '../utils/date';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface WorkOrderViewModalProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface WorkOrderViewModalProps {
 }
 
 const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModalProps) => {
+    const isMobile = useIsMobile();
     if (!isOpen || !wo) return null;
 
     const project = projects.find(p => p.id === wo.projectId);
@@ -43,7 +45,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                 }}
             >
                 {/* Header Section (Exactly like Image 2) */}
-                <div style={{ padding: '1.5rem 2.5rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff' }}>
+                <div style={{ padding: isMobile ? '1rem' : '1.5rem 2.5rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <div style={{
                             background: wo.type === 'AfterSale' ? 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
@@ -86,7 +88,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                 </div>
 
                 {/* Content Section (Scrollable) */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px', background: '#ffffff' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px' : '32px', display: 'flex', flexDirection: 'column', gap: isMobile ? '20px' : '32px', background: '#ffffff' }}>
                     
                     {/* General Info (Section 1 from Image 2) */}
                     <section>
@@ -95,7 +97,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                             ข้อมูลทั่วไป (General Information)
                         </h3>
 
-                        <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                        <div style={{ background: '#f8fafc', padding: isMobile ? '16px' : '24px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? '16px' : '24px' }}>
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: '6px', fontWeight: 600 }}>โครงการ (Project)</label>
                                 <div style={{ padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#0f172a', fontWeight: 700 }}>
@@ -111,7 +113,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                             
                             <div style={{ gridColumn: 'span 2' }}>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: '8px', fontWeight: 600 }}>สถานที่ (Location Details)</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '12px' }}>
                                     <div>
                                         <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '4px' }}>อาคาร (Bldg)</div>
                                         <div style={{ padding: '10px 14px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', color: '#0f172a', fontWeight: 700 }}>
@@ -162,7 +164,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                                 <div style={{ width: '4px', height: '18px', background: '#10b981', borderRadius: '4px' }} />
                                 ข้อมูลการตรวจรับ
                             </h3>
-                            <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', alignItems: 'flex-start' }}>
+                            <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: '20px', alignItems: 'flex-start' }}>
                                 {/* SLA */}
                                 <div>
                                     <label style={{ display: 'flex', fontSize: '0.75rem', color: '#64748b', marginBottom: '6px', fontWeight: 600, alignItems: 'center', gap: '6px' }}>
@@ -218,7 +220,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                             </h3>
                             <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                                 {/* Table header */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', padding: '10px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 140px', padding: '10px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                                     <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>หมวดงาน</span>
                                     <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textAlign: 'center' }}>จำนวนจุดที่พบ</span>
                                 </div>
@@ -226,7 +228,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                                     <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>ไม่มีข้อมูลหมวดงาน</div>
                                 ) : (
                                     wo.categories.map((cat, cIdx) => (
-                                        <div key={cIdx} style={{ display: 'grid', gridTemplateColumns: '1fr 140px', padding: '12px 20px', borderBottom: cIdx === wo.categories.length - 1 ? 'none' : '1px solid #f1f5f9', alignItems: 'center' }}>
+                                        <div key={cIdx} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 140px', padding: '12px 20px', borderBottom: cIdx === wo.categories.length - 1 ? 'none' : '1px solid #f1f5f9', alignItems: 'center' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <Wrench size={14} color="#6366f1" />
                                                 <span style={{ fontWeight: 600, color: '#334155', fontSize: '0.9rem' }}>{cat.name}</span>
@@ -247,7 +249,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                                 )}
                                 {/* Footer total */}
                                 {wo.categories.length > 0 && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 140px', padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                                         <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>รวมทั้งหมด ({wo.categories.length} หมวด)</span>
                                         <span style={{ textAlign: 'center', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>
                                             {wo.categories.reduce((sum, cat) => sum + ((cat as any).defectCount || 0), 0)} จุด
@@ -274,7 +276,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                                     <div style={{ padding: '16px 20px' }}>
                                         {cat.tasks.map((task, tIdx) => (
                                             <div key={tIdx} style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', marginBottom: tIdx === cat.tasks.length - 1 ? 0 : '12px' }}>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr', gap: '16px', marginBottom: '12px' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 2fr 1fr', gap: '16px', marginBottom: '12px' }}>
                                                     <div>
                                                         <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '4px' }}>จุดที่พบ (Position)</div>
                                                         <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>{task.position || '-'}</div>
@@ -312,7 +314,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                 </div>
 
                 {/* Footer Section (Consistent with Dashboard modals) */}
-                <div style={{ padding: '1.5rem 2.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ padding: isMobile ? '1rem' : '1.5rem 2.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                         onClick={onClose}
                         style={{

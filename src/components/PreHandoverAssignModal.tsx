@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Clock, Users, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
 import { WorkOrder, Staff } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface Assignment {
     foremanId: string;
@@ -19,6 +20,7 @@ const SLA_OPTIONS = ['7-14d', '14-30d', '30-60d', '60d+'];
 
 const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: PreHandoverAssignModalProps) => {
     const foremanList = staffList.filter(s => s.role === 'Foreman' && s.isActive !== false);
+    const isMobile = useIsMobile();
 
     const [confirmedSla, setConfirmedSla] = useState((wo as any).phEstimatedSla || '14-30d');
     const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
@@ -116,7 +118,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                 }}
             >
                 {/* Header */}
-                <div style={{ padding: '20px 28px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: isMobile ? '16px 16px' : '20px 28px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', padding: '10px', borderRadius: '12px', color: '#fff', display: 'flex' }}>
                             <Users size={20} />
@@ -132,14 +134,14 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                 </div>
 
                 {/* Body */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 16px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
                     {/* SLA Section */}
                     <section>
                         <h3 style={{ margin: '0 0 12px', fontSize: '0.88rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Clock size={15} color="#6366f1" /> ยืนยัน SLA
                         </h3>
-                        <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '16px' }}>
                             <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: '0.75rem', color: '#334155', marginBottom: '4px' }}>SLA คาดการณ์จากโฟรแมน (reference)</div>
                                 <div style={{ fontWeight: 700, color: '#6366f1', fontSize: '0.95rem' }}>{(wo as any).phEstimatedSla || '-'}</div>
@@ -231,7 +233,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
 
                         {/* Per-category table */}
                         <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                            <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: '1fr 80px 1fr', padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>หมวดงาน</span>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textAlign: 'center' }}>จุดที่พบ</span>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>มอบหมายให้</span>
@@ -242,15 +244,17 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                                     : assignments[cat.id];
                                 const isLocked = assignAllMode; // locked by "assign all"
                                 return (
-                                    <div key={cat.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', padding: '12px 16px', borderBottom: i === wo.categories.length - 1 ? 'none' : '1px solid #f8fafc', alignItems: 'center', background: assigned?.foremanId ? '#f0fdf4' : '#fff', opacity: isLocked ? 0.7 : 1, transition: 'all 0.15s' }}>
+                                    <div key={cat.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 80px 1fr', rowGap: isMobile ? '8px' : undefined, padding: '12px 16px', borderBottom: i === wo.categories.length - 1 ? 'none' : '1px solid #f8fafc', alignItems: 'center', background: assigned?.foremanId ? '#f0fdf4' : '#fff', opacity: isLocked ? 0.7 : 1, transition: 'all 0.15s' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             {assigned?.foremanId ? <CheckCircle2 size={14} color="#10b981" /> : <div style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #d1d5db' }} />}
                                             <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>{cat.name}</span>
                                         </div>
-                                        <span style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.88rem', color: (cat as any).defectCount > 0 ? '#92400e' : '#334155' }}>
+                                        <span style={{ textAlign: isMobile ? 'left' : 'center', fontWeight: 700, fontSize: '0.88rem', color: (cat as any).defectCount > 0 ? '#92400e' : '#334155' }}>
+                                            {isMobile && <span style={{ fontWeight: 700, color: '#94a3b8', fontSize: '0.78rem' }}>จุดที่พบ: </span>}
                                             {(cat as any).defectCount ?? 0} จุด
                                         </span>
                                         <div style={{ position: 'relative' }}>
+                                            {isMobile && <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', marginBottom: '4px' }}>มอบหมายให้</div>}
                                             <select
                                                 value={assigned?.foremanId || ''}
                                                 onChange={e => handleCategoryAssign(cat.id, e.target.value)}
@@ -266,7 +270,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                                 );
                             })}
                             {/* Footer: summary */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', padding: '10px 16px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 80px 1fr', rowGap: isMobile ? '8px' : undefined, padding: '10px 16px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>
                                     มอบหมายแล้ว {assignAllMode ? wo.categories.length : Object.keys(assignments).length}/{wo.categories.length} หมวด
                                 </span>
@@ -280,7 +284,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                 </div>
 
                 {/* Footer */}
-                <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: isMobile ? '16px 16px' : '16px 28px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <button
                         onClick={onClose}
                         style={{ padding: '10px 20px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', color: '#64748b', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}

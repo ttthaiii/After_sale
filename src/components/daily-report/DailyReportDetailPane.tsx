@@ -20,6 +20,8 @@ import {
   Edit2,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   LayoutDashboard,
   Package,
   User,
@@ -29,6 +31,8 @@ import { SLACountdown } from "./SLACountdowns";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
 import { formatDate } from "../../utils/date";
 import { todayTH } from "../../lib/dateUtils";
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { gridCols } from '../ui/responsiveGrid';
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
@@ -108,7 +112,19 @@ export const DailyReportDetailPane: React.FC = () => {
     setActiveModal,
   } = useDailyReport();
 
+  const isMobile = useIsMobile();
+
   const [expandedPhotos, setExpandedPhotos] = useState<Set<string>>(new Set());
+  const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [showSLAPopup, setShowSLAPopup] = useState(false);
+  const [isCardCollapsed, setIsCardCollapsed] = useState(false);
+  const [expandedLaborCards, setExpandedLaborCards] = useState<Set<string>>(new Set());
+  const toggleLaborCard = (id: string) => setExpandedLaborCards(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
   const togglePhotos = (key: string) => setExpandedPhotos(prev => {
     const next = new Set(prev);
     next.has(key) ? next.delete(key) : next.add(key);
@@ -522,19 +538,22 @@ export const DailyReportDetailPane: React.FC = () => {
                   border: "1px solid #e2e8f0",
                   overflow: "visible",
                   display: "flex",
-                  height: "220px",
+                  flexDirection: isMobile ? "column" : "row",
+                  height: isMobile ? "auto" : "220px",
                 }}
               >
                 {" "}
                 
-                <div
+                {(!isMobile || !isCardCollapsed) && <div
                   style={{
-                    width: "190px",
+                    width: isMobile ? "100%" : "190px",
+                    height: isMobile ? "170px" : undefined,
                     background: "#f1f5f9",
                     position: "relative",
                     flexShrink: 0,
                     borderTopLeftRadius: "15px",
-                    borderBottomLeftRadius: "15px",
+                    borderBottomLeftRadius: isMobile ? "0" : "15px",
+                    borderTopRightRadius: isMobile ? "15px" : "0",
                     overflow: "hidden",
                   }}
                 >
@@ -547,9 +566,14 @@ export const DailyReportDetailPane: React.FC = () => {
                         objectFit: "cover",
                         cursor: "pointer",
                       }}
-                      onClick={() =>
-                        setZoomImage(getTaskImage(selectedTaskInfo.task))
-                      }
+                      onClick={() => {
+                        if (isMobile) {
+                          setPhotoPreviewOpen(true);
+                          setPhotoPreviewUrl(getTaskImage(selectedTaskInfo.task));
+                        } else {
+                          setZoomImage(getTaskImage(selectedTaskInfo.task));
+                        }
+                      }}
                       alt="Task"
                     />
                   ) : (
@@ -583,8 +607,8 @@ export const DailyReportDetailPane: React.FC = () => {
                   >
                     BEFORE
                   </div>
-                </div>{" "}
-                
+                </div>}{" "}
+
                 <div
                   style={{
                     flex: 1,
@@ -599,9 +623,10 @@ export const DailyReportDetailPane: React.FC = () => {
                   <div
                     style={{
                       display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
                       justifyContent: "space-between",
                       alignItems: "stretch",
-                      height: "100%",
+                      height: isMobile ? "auto" : "100%",
                     }}
                   >
                     {" "}
@@ -617,7 +642,52 @@ export const DailyReportDetailPane: React.FC = () => {
                     >
                       {" "}
                       
-                      <div>
+                      <div style={{ position: isMobile ? "relative" : undefined }}>
+                        {isMobile && (
+                          <div style={{ position: "absolute", top: 0, right: 0, display: "flex", gap: "6px", alignItems: "center" }}>
+                            <button
+                              onClick={() => setShowSLAPopup(true)}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                background: "#eff6ff",
+                                border: "1px solid #bfdbfe",
+                                borderRadius: "8px",
+                                padding: "4px 10px",
+                                cursor: "pointer",
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                                color: "#2563eb",
+                                minWidth: "44px",
+                                minHeight: "44px",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Clock size={12} />
+                              SLA
+                            </button>
+                            <button
+                              onClick={() => setIsCardCollapsed(c => !c)}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#f1f5f9",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: "8px",
+                                padding: "4px 8px",
+                                cursor: "pointer",
+                                minWidth: "36px",
+                                minHeight: "44px",
+                                color: "#64748b",
+                              }}
+                              aria-label={isCardCollapsed ? "ขยายการ์ด" : "ยุบการ์ด"}
+                            >
+                              {isCardCollapsed ? <ChevronDown size={16} strokeWidth={2.5} /> : <ChevronUp size={16} strokeWidth={2.5} />}
+                            </button>
+                          </div>
+                        )}
                         {!isSidebarOpen && (
                           <div style={{ marginBottom: "8px" }}>
                             <button
@@ -657,56 +727,95 @@ export const DailyReportDetailPane: React.FC = () => {
                             color: "#0f172a",
                             lineHeight: 1.2,
                             display: "flex",
-                            alignItems: "center",
+                            alignItems: isMobile ? "flex-start" : "center",
                             gap: "8px",
                             flexWrap: "wrap",
+                            flexDirection: isMobile ? "column" : "row",
                           }}
                         >
                           {" "}
                           <span>{selectedTaskInfo.task.isHelper ? (selectedTaskInfo.task.subtaskName || selectedTaskInfo.task.name) : (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName)}</span>
-                          
-                          <span
-                            style={{
-                              fontSize: "0.68rem",
-                              fontWeight: 800,
-                              color: "#166534",
-                              background: "#f0fdf4",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              border: "1px solid #dcfce7",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                          >
-                            <Package size={10} color="#15803d" />
-                            {selectedTaskInfo.task.amount || 1} {selectedTaskInfo.task.unit || "จุด"}
-                          </span>
 
-                          {selectedTaskInfo.task.currentRevision &&
-                            selectedTaskInfo.task.currentRevision !== "rev00" && (
-                               <span
+                          {isMobile ? (
+                            <div style={{ display: "flex", flexDirection: "row", gap: "6px", flexWrap: "wrap" }}>
+                              <span
                                 style={{
-                                  color: "#ef4444",
-                                  fontWeight: 900,
-                                  background: "#fef2f2",
+                                  fontSize: "0.68rem",
+                                  fontWeight: 800,
+                                  color: "#166534",
+                                  background: "#f0fdf4",
                                   padding: "2px 8px",
                                   borderRadius: "6px",
-                                  border: "1px solid #fca5a5",
-                                  fontSize: "0.68rem",
+                                  border: "1px solid #dcfce7",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
                                 }}
                               >
-                                REV. {parseInt(
-                                  selectedTaskInfo.task.currentRevision.replace(
-                                    "rev",
-                                    "",
-                                  ),
-                                )}
+                                <Package size={10} color="#15803d" />
+                                {selectedTaskInfo.task.amount || 1} {selectedTaskInfo.task.unit || "จุด"}
                               </span>
-                            )}
+                              {selectedTaskInfo.task.currentRevision &&
+                                selectedTaskInfo.task.currentRevision !== "rev00" && (
+                                  <span
+                                    style={{
+                                      color: "#ef4444",
+                                      fontWeight: 900,
+                                      background: "#fef2f2",
+                                      padding: "2px 8px",
+                                      borderRadius: "6px",
+                                      border: "1px solid #fca5a5",
+                                      fontSize: "0.68rem",
+                                    }}
+                                  >
+                                    REV. {parseInt(
+                                      selectedTaskInfo.task.currentRevision.replace("rev", ""),
+                                    )}
+                                  </span>
+                                )}
+                            </div>
+                          ) : (
+                            <>
+                              <span
+                                style={{
+                                  fontSize: "0.68rem",
+                                  fontWeight: 800,
+                                  color: "#166534",
+                                  background: "#f0fdf4",
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #dcfce7",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <Package size={10} color="#15803d" />
+                                {selectedTaskInfo.task.amount || 1} {selectedTaskInfo.task.unit || "จุด"}
+                              </span>
+                              {selectedTaskInfo.task.currentRevision &&
+                                selectedTaskInfo.task.currentRevision !== "rev00" && (
+                                  <span
+                                    style={{
+                                      color: "#ef4444",
+                                      fontWeight: 900,
+                                      background: "#fef2f2",
+                                      padding: "2px 8px",
+                                      borderRadius: "6px",
+                                      border: "1px solid #fca5a5",
+                                      fontSize: "0.68rem",
+                                    }}
+                                  >
+                                    REV. {parseInt(
+                                      selectedTaskInfo.task.currentRevision.replace("rev", ""),
+                                    )}
+                                  </span>
+                                )}
+                            </>
+                          )}
                         </h2>
 
-                        <div
+                        {(!isMobile || !isCardCollapsed) && <div
                           style={{
                             display: "flex",
                             flexDirection: "column",
@@ -760,18 +869,19 @@ export const DailyReportDetailPane: React.FC = () => {
                               })()}
                             </span>
                           </div>
-                        </div>
+                        </div>}
                       </div>
                     </div> {" "}
                     
                     <div
                       style={{
-                        display: "flex",
+                        display: isMobile ? "none" : "flex",
                         flexDirection: "column",
                         gap: "6px",
                         alignItems: "flex-end",
                         minWidth: "200px",
                         marginLeft: "20px",
+                        marginTop: 0,
                       }}
                     >
                       {(() => {
@@ -1307,7 +1417,7 @@ export const DailyReportDetailPane: React.FC = () => {
               style={{
                 flex: 1,
                 overflowY: "auto",
-                padding: "2rem",
+                padding: isMobile ? "1rem" : "2rem",
               }}
             >
               {isAwaitingAdmin ? (
@@ -1397,6 +1507,145 @@ export const DailyReportDetailPane: React.FC = () => {
                 </div>
               ) : (
                 <Fragment>
+                  {isMobile && (
+                    <div style={{ position: "relative", marginBottom: "1rem" }}>
+                      <div
+                        style={{
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "#f8fafc",
+                          borderRadius: "12px",
+                          border: "1px solid #e2e8f0",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.72rem", fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
+                          รายงานระบุวันที่
+                        </span>
+                        <div
+                          onClick={() => setShowCalendarDropdown(!showCalendarDropdown)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            color: "#1e40af",
+                            fontSize: "0.85rem",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                            userSelect: "none",
+                            minHeight: "36px",
+                            padding: "0 4px",
+                          }}
+                        >
+                          <Calendar size={14} />
+                          <span>{formatDate(reportDate)}</span>
+                        </div>
+                      </div>
+                      {showCalendarDropdown && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            right: 0,
+                            marginTop: "8px",
+                            zIndex: 1000,
+                            background: "#fff",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "16px",
+                            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+                            padding: "16px",
+                            width: "280px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(prev => prev - 1); }
+                                else setCalendarMonth(prev => prev - 1);
+                              }}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "6px", color: "#64748b", fontSize: "1rem" }}
+                            >‹</button>
+                            <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "#1e293b" }}>
+                              {["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"][calendarMonth]} {calendarYear}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(prev => prev + 1); }
+                                else setCalendarMonth(prev => prev + 1);
+                              }}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "6px", color: "#64748b", fontSize: "1rem" }}
+                            >›</button>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 32px)", gap: "2px", justifyContent: "center" }}>
+                            {["อา","จ","อ","พ","พฤ","ศ","ส"].map(d => (
+                              <div key={d} style={{ width: "32px", textAlign: "center", fontSize: "0.65rem", fontWeight: 800, color: "#94a3b8", paddingBottom: "4px" }}>{d}</div>
+                            ))}
+                            {Array.from({ length: new Date(calendarYear, calendarMonth, 1).getDay() }).map((_, i) => (
+                              <div key={`b-${i}`} style={{ width: "32px", height: "32px" }} />
+                            ))}
+                            {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, idx) => {
+                              const day = idx + 1;
+                              const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                              const status = getDateStatus(dateStr, selectedTaskInfo.task, selectedTaskInfo.wo);
+                              const isSelected = reportDate === dateStr;
+                              const isDisabled = status === "disabled";
+                              let dotColor = "";
+                              if (status === "reported") dotColor = "#10b981";
+                              else if (status === "unlocked") dotColor = "#f59e0b";
+                              else if (status === "locked") dotColor = "#ef4444";
+                              return (
+                                <div
+                                  key={dateStr}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isDisabled) return;
+                                    if (status === "locked") {
+                                      setPendingUnlockDate(dateStr);
+                                      setUnlockReason("");
+                                      setShowUnlockModal(true);
+                                      setShowCalendarDropdown(false);
+                                    } else {
+                                      handleDateChange(dateStr);
+                                      setShowCalendarDropdown(false);
+                                    }
+                                  }}
+                                  style={{
+                                    width: "32px", height: "32px",
+                                    display: "flex", flexDirection: "column",
+                                    alignItems: "center", justifyContent: "center",
+                                    borderRadius: "8px",
+                                    fontSize: "0.75rem", fontWeight: 800,
+                                    cursor: isDisabled ? "not-allowed" : "pointer",
+                                    position: "relative",
+                                    background: isSelected ? "#3b82f6" : "transparent",
+                                    color: isDisabled ? "#cbd5e1" : isSelected ? "#fff" : "#334155",
+                                    opacity: isDisabled ? 0.6 : 1,
+                                  }}
+                                >
+                                  {day}
+                                  {dotColor && (
+                                    <span style={{ position: "absolute", bottom: "2px", width: "4px", height: "4px", borderRadius: "50%", background: isSelected ? "#fff" : dotColor }} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #f1f5f9", fontSize: "0.65rem", fontWeight: 800 }}>
+                            {[["#10b981","มีข้อมูล"],["#f59e0b","ยังไม่ได้ลง"],["#ef4444","ไม่มีข้อมูล"]].map(([color, label]) => (
+                              <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px", color: "#64748b" }}>
+                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: color, display: "inline-block" }} />
+                                {label}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {selectedTaskInfo?.task?.isReadOnly && (
                     <div
                       style={{
@@ -1473,8 +1722,10 @@ export const DailyReportDetailPane: React.FC = () => {
                       padding: "1.25rem",
                       marginBottom: "2rem",
                       display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
                       justifyContent: "space-between",
-                      alignItems: "center",
+                      alignItems: isMobile ? "stretch" : "center",
+                      gap: isMobile ? "12px" : 0,
                       boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
                     }}
                   >
@@ -1586,13 +1837,15 @@ export const DailyReportDetailPane: React.FC = () => {
                 <div
                   style={{
                     display: "flex",
+                    flexDirection: isMobile ? "column" : "row",
                     justifyContent: "space-between",
-                    alignItems: "center",
+                    alignItems: isMobile ? "stretch" : "center",
+                    gap: isMobile ? "12px" : 0,
                     marginBottom: "1.25rem",
                   }}
                 >
                   {" "}
-                  
+
                   <h3
                     style={{
                       fontSize: "1.1rem",
@@ -1602,10 +1855,11 @@ export const DailyReportDetailPane: React.FC = () => {
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {" "}
-                    
+
                     <Users size={20} color="#3b82f6" /> การจัดการคนงาน (Labor)
                   </h3>{" "}
                   
@@ -1711,9 +1965,9 @@ export const DailyReportDetailPane: React.FC = () => {
                           style={{
                             padding: "8px 14px",
                             borderRadius: "10px",
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            color: "#0f172a",
+                            border: "1px solid #2563eb",
+                            background: "#2563eb",
+                            color: "#fff",
                             fontSize: "0.8rem",
                             fontWeight: 800,
                             cursor: "pointer",
@@ -1723,18 +1977,18 @@ export const DailyReportDetailPane: React.FC = () => {
                           }}
                         >
                           {" "}
-                          
+
                           <Plus size={14} /> คนงานบริษัท (Internal)
                         </button>{" "}
-                        
+
                         <button
                           onClick={() => setActiveModal("Outsource")}
                           style={{
                             padding: "8px 14px",
                             borderRadius: "10px",
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            color: "#0f172a",
+                            border: "1px solid #0ea5e9",
+                            background: "#0ea5e9",
+                            color: "#fff",
                             fontSize: "0.8rem",
                             fontWeight: 800,
                             cursor: "pointer",
@@ -1744,7 +1998,7 @@ export const DailyReportDetailPane: React.FC = () => {
                           }}
                         >
                           {" "}
-                          
+
                           <Plus size={14} /> ทีมงานผู้รับเหมา (Subco)
                         </button>
                       </Fragment>
@@ -1752,6 +2006,7 @@ export const DailyReportDetailPane: React.FC = () => {
                   </div>
                 </div>{" "}
                 
+                {!isMobile && (
                 <div
                   style={{
                     background: "#fff",
@@ -2776,12 +3031,192 @@ export const DailyReportDetailPane: React.FC = () => {
                     </table>
                   )}
                 </div>
+                )}
+                {isMobile && (
+                  displayLabor.length === 0 ? (
+                    <div style={{padding:"3rem", textAlign:"center", color:"#94a3b8", fontSize:"0.9rem", fontWeight:700}}>
+                      <Users size={32} color="#cbd5e1" style={{marginBottom:"10px"}} />
+                      {isTaskFinished ? (
+                        <Fragment>
+                          <div style={{color:"#0f172a", fontSize:"1rem", marginBottom:"4px"}}>ใบงานนี้ดำเนินการเสร็จสมบูรณ์ 100% แล้ว</div>
+                          <div style={{fontSize:"0.78rem", color:"#64748b", fontWeight:600}}>(ไม่มีการบันทึกรายงานข้อมูลแรงงานสำหรับวันที่เลือก)</div>
+                        </Fragment>
+                      ) : (
+                        <div>ยังไม่มีข้อมูลแรงงาน (กรุณากดปุ่มเพิ่มคนงานด้านบน)</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{display:"flex", flexDirection:"column", gap:"8px"}}>
+                      {displayLabor.map((l) => {
+                        const isExpanded = expandedLaborCards.has(l.id);
+                        const initial = (l.staffName || l.affiliation || "?")[0].toUpperCase();
+                        const isInternal = l.membership === "Internal";
+                        const otMorningTime = l.shiftTimes?.otMorning || "06:00 - 08:00";
+                        const otNoonTime = l.shiftTimes?.otNoon || "12:00 - 13:00";
+                        const otEveningTime = l.shiftTimes?.otEvening || "18:00 - 20:00";
+                        const leaveTime = l.leave?.time || "08:00 - 17:00";
+                        const isOtMorningBlocked = l.leave?.active ? isTimeOverlap(otMorningTime, leaveTime) : false;
+                        const isOtNoonBlocked = l.leave?.active ? isTimeOverlap(otNoonTime, leaveTime) : false;
+                        const isOtEveningBlocked = l.leave?.active ? isTimeOverlap(otEveningTime, leaveTime) : false;
+                        return (
+                          <div key={l.id} style={{borderRadius:"12px", border:"1px solid #e2e8f0", background:"#fff", overflow:"hidden"}}>
+                            <div onClick={() => toggleLaborCard(l.id)} style={{display:"flex", alignItems:"center", gap:"8px", padding:"10px 12px", cursor:"pointer"}}>
+                              <div style={{width:36, height:36, borderRadius:"50%", background: isInternal ? "#eff6ff" : "#f0fdf4", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0}}>
+                                <span style={{fontSize:"0.9rem", fontWeight:800, color: isInternal ? "#2563eb" : "#059669"}}>{initial}</span>
+                              </div>
+                              <div style={{flex:1, minWidth:0}}>
+                                <div style={{fontSize:"0.82rem", fontWeight:800, color:"#0f172a", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{l.staffName || l.affiliation}</div>
+                                <div style={{fontSize:"0.68rem", color:"#64748b", fontWeight:700}}>{l.employeeId ? `#${l.employeeId}` : (isInternal ? "Internal" : "Subco")}</div>
+                              </div>
+                              <div style={{display:"flex", gap:"3px", alignItems:"center"}}>
+                                <div style={{width:7, height:7, borderRadius:"50%", background: l.shifts?.normal ? "#2563eb" : "#e2e8f0"}} title="ปกติ" />
+                                <div style={{width:7, height:7, borderRadius:"50%", background: l.shifts?.otMorning ? "#f59e0b" : "#e2e8f0"}} title="OT เช้า" />
+                                <div style={{width:7, height:7, borderRadius:"50%", background: l.shifts?.otNoon ? "#f59e0b" : "#e2e8f0"}} title="OT เที่ยง" />
+                                <div style={{width:7, height:7, borderRadius:"50%", background: l.shifts?.otEvening ? "#f59e0b" : "#e2e8f0"}} title="OT เย็น" />
+                                <div style={{width:7, height:7, borderRadius:"50%", background: l.leave?.active ? "#ef4444" : "#e2e8f0"}} title="ลา" />
+                              </div>
+                              {isExpanded ? <ChevronUp size={16} color="#94a3b8" style={{flexShrink:0}} /> : <ChevronDown size={16} color="#94a3b8" style={{flexShrink:0}} />}
+                              {(isEditingExisting && canEditWorker(l)) && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setLabor(labor.filter((item) => item.id !== l.id)); }}
+                                  style={{background:"none", border:"none", cursor:"pointer", color:"#ef4444", padding:"4px", flexShrink:0, display:"flex", alignItems:"center"}}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
+                            {isExpanded && (
+                              <div style={{borderTop:"1px solid #e2e8f0", padding:"10px 12px", display:"flex", flexDirection:"column", gap:"8px"}}>
+                                <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
+                                  <div style={{fontSize:"0.72rem", fontWeight:800, color:"#2563eb", width:62, flexShrink:0}}>ปกติ</div>
+                                  <div onClick={() => isEditingExisting && canEditWorker(l) && toggleShift(l.id, "normal")} style={{width:18, height:18, borderRadius:4, border:"2px solid #2563eb", background: l.shifts?.normal ? "#2563eb" : "#fff", display:"flex", alignItems:"center", justifyContent:"center", cursor:(isEditingExisting && canEditWorker(l)) ? "pointer" : "default", flexShrink:0}}>
+                                    {l.shifts?.normal && <CheckCircle2 size={12} color="#fff" />}
+                                  </div>
+                                  {l.shifts?.normal ? (
+                                    isInternal ? renderTimeInput(l.id, "normal", l.shiftTimes?.day || "08:00 - 17:00") : (
+                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
+                                        <Clock size={12} /> 08:00 - 17:00
+                                      </div>
+                                    )
+                                  ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
+                                </div>
+                                <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
+                                  <div style={{fontSize:"0.72rem", fontWeight:800, color:"#f59e0b", width:62, flexShrink:0}}>OT เช้า</div>
+                                  <div onClick={() => { const c = isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtMorningBlocked; if (c) toggleShift(l.id, "otMorning"); }} title={isOtMorningBlocked ? "โอทีเช้าทับกับเวลาลา" : undefined} style={{width:18, height:18, borderRadius:4, border:`2px solid ${isOtMorningBlocked ? "#fca5a5" : "#f59e0b"}`, background: l.shifts?.otMorning ? "#f59e0b" : isOtMorningBlocked ? "#fef2f2" : "#fff", display:"flex", alignItems:"center", justifyContent:"center", cursor:(isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtMorningBlocked) ? "pointer" : "not-allowed", opacity:(isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtMorningBlocked) || l.shifts?.otMorning ? 1 : 0.4, flexShrink:0}}>
+                                    {l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}
+                                  </div>
+                                  {l.shifts?.otMorning ? (
+                                    isInternal ? renderTimeInput(l.id, "otMorning", otMorningTime) : (
+                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
+                                        <Clock size={12} /> {otMorningTime}
+                                      </div>
+                                    )
+                                  ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
+                                </div>
+                                <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
+                                  <div style={{fontSize:"0.72rem", fontWeight:800, color:"#f59e0b", width:62, flexShrink:0}}>OT เที่ยง</div>
+                                  <div onClick={() => { const c = isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtNoonBlocked; if (c) toggleShift(l.id, "otNoon"); }} title={isOtNoonBlocked ? "โอทีเที่ยงทับกับเวลาลา" : undefined} style={{width:18, height:18, borderRadius:4, border:`2px solid ${isOtNoonBlocked ? "#fca5a5" : "#f59e0b"}`, background: l.shifts?.otNoon ? "#f59e0b" : isOtNoonBlocked ? "#fef2f2" : "#fff", display:"flex", alignItems:"center", justifyContent:"center", cursor:(isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtNoonBlocked) ? "pointer" : "not-allowed", opacity:(isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtNoonBlocked) || l.shifts?.otNoon ? 1 : 0.4, flexShrink:0}}>
+                                    {l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}
+                                  </div>
+                                  {l.shifts?.otNoon ? (
+                                    isInternal ? renderTimeInput(l.id, "otNoon", otNoonTime) : (
+                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
+                                        <Clock size={12} /> {otNoonTime}
+                                      </div>
+                                    )
+                                  ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
+                                </div>
+                                <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
+                                  <div style={{fontSize:"0.72rem", fontWeight:800, color:"#f59e0b", width:62, flexShrink:0}}>OT เย็น</div>
+                                  <div onClick={() => { const c = isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtEveningBlocked; if (c) toggleShift(l.id, "otEvening"); }} title={isOtEveningBlocked ? "โอทีเย็นทับกับเวลาลา" : undefined} style={{width:18, height:18, borderRadius:4, border:`2px solid ${isOtEveningBlocked ? "#fca5a5" : "#f59e0b"}`, background: l.shifts?.otEvening ? "#f59e0b" : isOtEveningBlocked ? "#fef2f2" : "#fff", display:"flex", alignItems:"center", justifyContent:"center", cursor:(isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtEveningBlocked) ? "pointer" : "not-allowed", opacity:(isEditingExisting && canEditWorker(l) && !!l.shifts?.normal && !isOtEveningBlocked) || l.shifts?.otEvening ? 1 : 0.4, flexShrink:0}}>
+                                    {l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}
+                                  </div>
+                                  {l.shifts?.otEvening ? (
+                                    isInternal ? renderTimeInput(l.id, "otEvening", otEveningTime) : (
+                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
+                                        <Clock size={12} /> {otEveningTime}
+                                      </div>
+                                    )
+                                  ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
+                                </div>
+                                <div style={{display:"flex", alignItems:"flex-start", gap:"8px"}}>
+                                  <div style={{fontSize:"0.72rem", fontWeight:800, color:"#ef4444", width:62, flexShrink:0, paddingTop:"2px"}}>ลา</div>
+                                  <div style={{display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap"}}>
+                                    <div
+                                      onClick={() => {
+                                        if (!isEditingExisting || !canEditWorker(l)) return;
+                                        setLabor((prev) => prev.map((item) => {
+                                          if (item.id === l.id) {
+                                            const leaveActive = !item.leave?.active;
+                                            const updatedTimes = item.shiftTimes ? {...item.shiftTimes} : {day: "08:00 - 17:00"};
+                                            const shiftsObj = item.shifts ? {...item.shifts} : {normal: false, otMorning: false, otNoon: false, otEvening: false};
+                                            const lt = item.leave?.time || "08:00 - 17:00";
+                                            if (leaveActive) {
+                                              if (lt === "08:00 - 12:00") { if (updatedTimes.day === "08:00 - 17:00" && shiftsObj.normal) updatedTimes.day = "13:00 - 17:00"; }
+                                              else if (lt === "13:00 - 17:00") { if (updatedTimes.day === "08:00 - 17:00" && shiftsObj.normal) updatedTimes.day = "08:00 - 12:00"; }
+                                              const rt = updatedTimes.day || "08:00 - 17:00";
+                                              if (shiftsObj.normal && isTimeOverlap(lt, rt)) { shiftsObj.normal = false; shiftsObj.otMorning = false; shiftsObj.otNoon = false; shiftsObj.otEvening = false; }
+                                            }
+                                            return {...item, shifts: shiftsObj, shiftTimes: updatedTimes, leave: {active: leaveActive, time: lt, medCertFileUrl: item.leave?.medCertFileUrl || ""}};
+                                          }
+                                          return item;
+                                        }));
+                                      }}
+                                      style={{width:18, height:18, borderRadius:4, border:"2px solid #ef4444", background: l.leave?.active ? "#ef4444" : "#fff", display:"flex", alignItems:"center", justifyContent:"center", cursor:(isEditingExisting && canEditWorker(l)) ? "pointer" : "default", opacity:(isEditingExisting && canEditWorker(l)) ? 1 : 0.6, flexShrink:0}}
+                                    >
+                                      {l.leave?.active && <CheckCircle2 size={12} color="#fff" />}
+                                    </div>
+                                    {l.leave?.active ? (
+                                      <div style={{display:"flex", alignItems:"center", gap:"4px", flexWrap:"wrap"}}>
+                                        {renderLeaveTimeInput(l.id, l.leave?.time || "08:00 - 17:00")}
+                                        <div style={{display:"flex", alignItems:"center", gap:"4px"}}>
+                                          {l.leave?.medCertFileUrl ? (
+                                            <Fragment>
+                                              <a href={l.leave.medCertFileUrl} target="_blank" rel="noreferrer" style={{display:"flex", alignItems:"center", justifyContent:"center", width:"24px", height:"24px", borderRadius:"6px", background:"#eff6ff", color:"#2563eb"}} title="ดูใบรับรองแพทย์">
+                                                <Eye size={12} />
+                                              </a>
+                                              {(isEditingExisting && canEditWorker(l)) && (
+                                                <button onClick={() => handleRemoveLeaveCert(l.id)} style={{display:"flex", alignItems:"center", justifyContent:"center", width:"24px", height:"24px", borderRadius:"6px", background:"#fef2f2", color:"#ef4444", border:"none", cursor:"pointer", padding:0}} title="ลบรูปแนบ">
+                                                  <Trash2 size={12} />
+                                                </button>
+                                              )}
+                                            </Fragment>
+                                          ) : (isEditingExisting && canEditWorker(l)) ? (
+                                            uploadingLeaveCertId === l.id ? (
+                                              <div style={{display:"flex", alignItems:"center", justifyContent:"center", width:"24px", height:"24px", borderRadius:"6px", background:"#fef3c7"}} title="กำลังอัปโหลด...">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" style={{animation:"spin 0.8s linear infinite"}}>
+                                                  <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                                                  <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="3" fill="none" strokeDasharray="31.4" strokeDashoffset="10" />
+                                                </svg>
+                                              </div>
+                                            ) : (
+                                              <label style={{display:"flex", alignItems:"center", justifyContent:"center", width:"24px", height:"24px", borderRadius:"6px", background:"#f1f5f9", color:"#64748b", cursor:"pointer"}} title="แนบใบรับรองแพทย์/หลักฐาน">
+                                                <Paperclip size={12} />
+                                                <input type="file" accept="image/*" style={{display:"none"}} onChange={(e) => handleUploadLeaveCert(l.id, e.target.files?.[0] || undefined)} />
+                                              </label>
+                                            )
+                                          ) : (
+                                            <span style={{color:"#cbd5e1", fontSize:"0.7rem"}}>ไม่มีหลักฐาน</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
               </section>{" "}
               
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(280px, 1.2fr) 2.8fr",
+                  gridTemplateColumns: gridCols(isMobile, "minmax(280px, 1.2fr) 2.8fr"),
                   gap: "2.5rem",
                 }}
               >
@@ -4097,18 +4532,21 @@ export const DailyReportDetailPane: React.FC = () => {
                               <div
                                 style={{
                                   display: "flex",
+                                  flexDirection: isMobile ? "column" : "row",
                                   justifyContent: "space-between",
-                                  alignItems: "center",
+                                  alignItems: isMobile ? "flex-start" : "center",
                                   marginBottom: "12px",
+                                  gap: isMobile ? "6px" : "0",
                                 }}
                               >
                                 {" "}
-                                
+
                                 <div
                                   style={{
                                     display: "flex",
                                     alignItems: "center",
-                                    gap: "10px",
+                                    flexWrap: "wrap",
+                                    gap: "6px",
                                   }}
                                 >
                                   {" "}
@@ -4163,7 +4601,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                   )}
                                 </div>{" "}
                                 
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
                                   <div
                                     style={{
                                       fontSize: "0.75rem",
@@ -4500,6 +4938,185 @@ export const DailyReportDetailPane: React.FC = () => {
                   </Fragment>
                 )}
             </div>
+
+            {/* Photo lightbox overlay — mobile only */}
+            {isMobile && photoPreviewOpen && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0,0,0,0.93)",
+                  zIndex: 9999,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onClick={() => setPhotoPreviewOpen(false)}
+              >
+                <button
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    right: "16px",
+                    background: "rgba(255,255,255,0.15)",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: "44px",
+                    height: "44px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    color: "#fff",
+                    fontSize: "1.2rem",
+                    fontWeight: 700,
+                  }}
+                  onClick={(e) => { e.stopPropagation(); setPhotoPreviewOpen(false); }}
+                >
+                  ✕
+                </button>
+                {photoPreviewUrl && (
+                  <img
+                    src={photoPreviewUrl}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "100%",
+                      objectFit: "contain",
+                    }}
+                    alt="Preview"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* SLA popup overlay — mobile only */}
+            {isMobile && showSLAPopup && selectedTaskInfo && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0,0,0,0.5)",
+                  zIndex: 9998,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "16px",
+                }}
+                onClick={() => setShowSLAPopup(false)}
+              >
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "16px",
+                    padding: "20px 16px 16px",
+                    width: "100%",
+                    maxWidth: "360px",
+                    maxHeight: "80vh",
+                    overflowY: "auto",
+                    position: "relative",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    style={{
+                      position: "absolute",
+                      top: "12px",
+                      right: "12px",
+                      background: "#f1f5f9",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: "32px",
+                      height: "32px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "#64748b",
+                      fontSize: "1rem",
+                      fontWeight: 700,
+                    }}
+                    onClick={() => setShowSLAPopup(false)}
+                  >
+                    ✕
+                  </button>
+                  <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0f172a", marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Clock size={14} color="#2563eb" /> SLA
+                  </div>
+                  {(() => {
+                    const slaHoursMap: Record<string, number> = {
+                      Immediately: 4,
+                      "24h": 24,
+                      "1-3d": 72,
+                      "3-7d": 168,
+                      "7-14d": 336,
+                      "14-30d": 720,
+                    };
+                    const isHelperTask = selectedTaskInfo.task.isHelper === true;
+                    const slaDuration = (selectedTaskInfo.task.slaCategory && slaHoursMap[selectedTaskInfo.task.slaCategory]) || 24;
+                    let globalDeadlineTime: number | undefined = undefined;
+                    const woId = selectedTaskInfo.wo.id;
+                    if (isHelperTask) {
+                      const helperDue = selectedTaskInfo.task.dueDate ? new Date(selectedTaskInfo.task.dueDate).getTime() : 0;
+                      if (helperDue > 0) { globalDeadlineTime = helperDue; }
+                    } else {
+                      const fullWo = workOrders.find((w) => w.id === woId);
+                      if (fullWo) {
+                        const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
+                        let maxDl = 0;
+                        fullWo.categories.forEach((cat: any) => {
+                          cat.tasks.forEach((t: any) => {
+                            if (isWoaWop && !t.slaCategory) return;
+                            const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
+                            const tDurHours = slaHoursMap[tSla] || 24;
+                            let tStart = t.startDate && typeof t.startDate === 'string'
+                              ? `${t.startDate.split('T')[0]}T08:00:00`
+                              : t.slaStartTime;
+                            if (!tStart) { tStart = fullWo.createdAt || new Date().toISOString(); }
+                            const tDeadline = new Date(tStart).getTime() + tDurHours * 60 * 60 * 1e3;
+                            if (tDeadline > maxDl) { maxDl = tDeadline; }
+                          });
+                        });
+                        if (maxDl > 0) { globalDeadlineTime = maxDl; }
+                      }
+                    }
+                    const isCompleted100 = (selectedTaskInfo.task.dailyProgress || 0) >= 100;
+                    const appointmentDateVal = selectedTaskInfo.wo.appointmentDate || selectedTaskInfo.task.startDate;
+                    let actualStartVal: string | undefined = undefined;
+                    if (selectedTaskInfo.task.history && selectedTaskInfo.task.history.length > 0) {
+                      const history = selectedTaskInfo.task.history || [];
+                      const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
+                      const sortedHistory = [...filteredHistory].filter((h) => h.date).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                      if (sortedHistory.length > 0) { actualStartVal = sortedHistory[0].date; }
+                    }
+                    return (
+                      <SLACountdown
+                        startTime={
+                          isHelperTask
+                            ? (selectedTaskInfo.task.dueDate || new Date().toISOString())
+                            : ((selectedTaskInfo.task.startDate && typeof selectedTaskInfo.task.startDate === 'string'
+                                ? `${selectedTaskInfo.task.startDate.split('T')[0]}T08:00:00`
+                                : selectedTaskInfo.task.slaStartTime) || new Date().toISOString())
+                        }
+                        durationHours={isHelperTask ? 0 : slaDuration}
+                        appointmentDate={appointmentDateVal || void 0}
+                        actualStartDate={actualStartVal || void 0}
+                        isCompleted={isCompleted100}
+                        groupDeadline={globalDeadlineTime}
+                        isHelper={isHelperTask}
+                      />
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </Fragment>
         )}
       </div>

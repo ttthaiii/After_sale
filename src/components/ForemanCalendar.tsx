@@ -7,6 +7,7 @@ import { AnalogTimePicker } from './AnalogTimePicker';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { formatDate } from '../utils/date';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface ForemanCalendarProps {
     workOrders: WorkOrder[];
@@ -72,6 +73,7 @@ const getShiftHours = (timeRange: string, defaultHours: number): number => {
 const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUserId, projects, highlightProjectId, highlightedWOId, selectedMonth, allForemenForProject }) => {
     const [currentDate] = useState(new Date());
     const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
+    const isMobile = useIsMobile();
 
 
     const year = selectedMonth ? parseInt(selectedMonth.split('-')[0]) : currentDate.getFullYear();
@@ -322,18 +324,40 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
         }, 0);
 
         calendarCells.push(
-            <div key={day} onClick={() => { if (dayEvents.length > 0) setSelectedDateStr(dateStr) }} style={{ background: isToday ? '#eff6ff' : '#ffffff', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', padding: '8px 0px', minHeight: '110px', cursor: dayEvents.length > 0 ? 'pointer' : 'default', transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }}>
+            <div key={day} onClick={() => { if (dayEvents.length > 0) setSelectedDateStr(dateStr) }} style={{ background: isToday ? '#eff6ff' : '#ffffff', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', padding: '8px 0px', minHeight: isMobile ? '58px' : '110px', cursor: dayEvents.length > 0 ? 'pointer' : 'default', transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', padding: '0 8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         {dayEvents.some((e: any) => e.type === 'Problem') && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444' }} />}
                         <span style={{ fontWeight: 800, fontSize: '0.85rem', color: isToday ? '#2563eb' : '#475569', background: isToday ? '#dbeafe' : 'none', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}>{day}</span>
                     </div>
-                    {totalDayHours > 0 && (
+                    {!isMobile && totalDayHours > 0 && (
                         <div style={{ fontSize: '0.65rem', fontWeight: 900, color: '#6366f1', background: '#f5f3ff', padding: '2px 6px', borderRadius: '6px', border: '1px solid #ddd6fe' }}>
                             {totalDayHours} ชม.
                         </div>
                     )}
                 </div>
+                {isMobile ? (
+                    dayEvents.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2px' }}>
+                            <div style={{
+                                minWidth: '22px',
+                                height: '22px',
+                                padding: '0 6px',
+                                borderRadius: '999px',
+                                fontSize: '0.8rem',
+                                fontWeight: 900,
+                                lineHeight: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#ffffff',
+                                background: dayEvents.some((e: any) => e.type === 'Problem') ? '#dc2626' : '#4f46e5'
+                            }}>
+                                {dayEvents.length}
+                            </div>
+                        </div>
+                    )
+                ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     {rowSlots.map((item: any, idx) => {
                         if (!item) return <div key={idx} style={{ height: '19px' }} />;
@@ -362,6 +386,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                         );
                     })}
                 </div>
+                )}
             </div>
         );
     }

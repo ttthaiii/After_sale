@@ -31,6 +31,7 @@ import {
     Legend,
     ResponsiveContainer,
     Bar,
+    BarChart,
     Cell,
     ReferenceLine,
     Label,
@@ -50,6 +51,9 @@ import MasterFilter from '../components/MasterFilter';
 import { DashboardStats } from '../types/dashboard';
 import { StatCard, SectionHeader } from '../components/DashboardShared';
 import DashboardComparison from './DashboardComparison';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from '../components/ui/responsiveGrid';
+import { scaleFont } from '../components/ui/responsiveText';
 const ProgressDeltaBar = ({ prev, delta, isTask = false }: any) => {
     const safePrev = Math.min(Math.max(prev, 0), 100);
     const safeDelta = Math.min(Math.max(delta, 0), 100 - safePrev);
@@ -977,6 +981,7 @@ const Dashboard = () => {
     const navigate = useNavigate();
     const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver';
     const isForeman = user?.role === 'Foreman';
+    const isMobile = useIsMobile();
 
     const [adminActiveTab] = useState<'overview' | 'comparison'>(() => {
         if (!isAdminOrManager) return 'overview';
@@ -996,6 +1001,7 @@ const Dashboard = () => {
     // T-337: year dimension — all-work mode is scoped to a selected YEAR (default current year).
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
     const [selectedBarWOs, setSelectedBarWOs] = useState<any>(null);
+    const [activeProgressIndex, setActiveProgressIndex] = useState<any>(null);
     const [statusFilters] = useState<string[]>([]);
     const [viewMode, setViewMode] = useState(isAdminOrManager ? 'insights' : 'operations');
     const [selectedForemanId, setSelectedForemanId] = useState<string | null>(null);
@@ -1252,15 +1258,15 @@ const Dashboard = () => {
 
     useEffect(() => {
         if (!user) return;
-        if (viewMode === 'operations') {
-            if (selectedSCurveProject !== '') setSelectedSCurveProject('');
-        } else {
-            const currentIsValid = selectedSCurveProject === '' || availableProjectsThisMonth.some((p: any) => p.id === selectedSCurveProject);
-            if (!currentIsValid) {
-                setSelectedSCurveProject('');
-            }
+        // Clear the project filter only when the selected project is no longer
+        // available in the current month — NOT based on the active tab. The old
+        // `viewMode === 'operations'` branch reset the selection on every change,
+        // wiping the user's choice before it could filter the operations data.
+        const currentIsValid = selectedSCurveProject === '' || availableProjectsThisMonth.some((p: any) => p.id === selectedSCurveProject);
+        if (!currentIsValid) {
+            setSelectedSCurveProject('');
         }
-    }, [availableProjectsThisMonth, selectedSCurveProject, user, viewMode]);
+    }, [availableProjectsThisMonth, selectedSCurveProject, user]);
 
     const allAccessibleWOs = useMemo(() => {
         let base = [...baseAccessibleWOs];
@@ -2112,6 +2118,64 @@ const Dashboard = () => {
 
     
 
+    const timelineData = useMemo(() => {
+        const [year, monthNum] = selectedMonth.split('-').map(Number);
+        let startDay = 1;
+        let endDay = new Date(year, monthNum, 0).getDate();
+        if (selectedWeek > 0) {
+            startDay = (selectedWeek - 1) * 7 + 1;
+            if (selectedWeek < 4) endDay = startDay + 6;
+            else if (selectedWeek === 4) endDay = 28;
+        }
+        const dataPoints = [];
+        for (let d = startDay; d <= endDay; d++) {
+            const dateStr = `${year}-${monthNum.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+
+            let openedTasksCount = 0;
+            let closedTasksCount = 0;
+            let isRelatedDay = false;
+
+            allAccessibleWOs.forEach((wo: any) => {
+                let woCreatedDate = '';
+                if (wo.createdAt) {
+                    const parsed = new Date(wo.createdAt);
+                    if (!isNaN(parsed.getTime())) {
+                        woCreatedDate = parsed.toISOString().split('T')[0];
+                    }
+                }
+                const isWOCreatedToday = woCreatedDate === dateStr;
+                const isTargetWO = wo.id?.toString().trim() === highlightedWOId?.toString().trim();
+
+                (wo.categories || []).forEach((c: any) => {
+                    (c.tasks || []).forEach((t: any) => {
+                        // Task "opened" when WO is created
+                        if (isWOCreatedToday) {
+                            openedTasksCount++;
+                            if (isTargetWO) isRelatedDay = true;
+                        }
+
+                        // Task "closed" when it reaches 100% progress
+                        const history = t.history || [];
+                        const completionUpdate = history.find((h: any) => h.progress === 100 && h.date.startsWith(dateStr));
+                        if (completionUpdate) {
+                            closedTasksCount++;
+                            if (isTargetWO) isRelatedDay = true;
+                        }
+                    });
+                });
+            });
+
+            dataPoints.push({
+                day: d,
+                name: `${String(d).padStart(2, '0')}/${String(monthNum).padStart(2, '0')}`,
+                openedCount: openedTasksCount,
+                closedCount: closedTasksCount,
+                isHighlighted: isRelatedDay
+            });
+        }
+        return dataPoints;
+    }, [allAccessibleWOs, selectedMonth, selectedWeek, highlightedWOId]);
+
     const sCurveData = useMemo(() => {
         const [year, monthNum] = selectedMonth.split('-').map(Number);
         const daysInMonth = new Date(year, monthNum, 0).getDate();
@@ -2236,12 +2300,12 @@ const Dashboard = () => {
         };
         const activeFilter = donutData.find(d => d.key === donutFilter);
         return (
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1 }}>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '1rem', alignItems: 'center', flex: 1 }}>
                 {/* donut left */}
-                <div style={{ position: 'relative', width: '270px', height: '270px', flexShrink: 0 }}>
+                <div style={{ position: 'relative', width: isMobile ? '210px' : '270px', height: isMobile ? '210px' : '270px', flexShrink: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                            <Pie data={donutData} cx="50%" cy="50%" innerRadius={82} outerRadius={128} paddingAngle={3} dataKey="value"
+                            <Pie data={donutData} cx="50%" cy="50%" innerRadius={isMobile ? 58 : 82} outerRadius={isMobile ? 92 : 128} paddingAngle={3} dataKey="value"
                                 label={renderLabel} labelLine={false}
                                 onMouseEnter={(_: any, i: number) => setActiveIdx(i)} onMouseLeave={() => setActiveIdx(null)}
                                 onClick={handleSliceClick} strokeWidth={0} style={{ cursor: 'pointer' }}>
@@ -2252,7 +2316,7 @@ const Dashboard = () => {
                         </PieChart>
                     </ResponsiveContainer>
                     <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
-                        <div style={{ fontSize: '2.6rem', fontWeight: 800, color: active ? active.color : '#0f172a', lineHeight: 1 }}>{active ? active.value : pending}</div>
+                        <div style={{ fontSize: scaleFont(isMobile, '2.6rem'), fontWeight: 800, color: active ? active.color : '#0f172a', lineHeight: 1 }}>{active ? active.value : pending}</div>
                         <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '6px', whiteSpace: 'nowrap', fontWeight: 600 }}>{active ? active.name : 'งานค้างอยู่'}</div>
                     </div>
                 </div>
@@ -2322,7 +2386,7 @@ const Dashboard = () => {
                     border: '1px solid #e2e8f0',
                     boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                     backdropFilter: 'blur(8px)',
-                    minWidth: '240px'
+                    minWidth: isMobile ? 0 : '240px'
                 }}>
                     <p style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 900, color: '#1e293b', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <BarChart3 size={16} color="#4f46e5" /> {label}
@@ -2400,10 +2464,10 @@ const Dashboard = () => {
                 }
             `}</style>
             {/* Sticky Header */}
-            <div style={{ position: 'sticky', top: '-2rem', zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 1)', backdropFilter: 'blur(12px)', paddingTop: '1rem', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', margin: '-2rem -2rem 2.5rem -2rem', paddingLeft: '2rem', paddingRight: '2rem', transition: 'all 0.3s ease' }}>
+            <div style={{ position: isMobile ? 'static' : 'sticky', top: isMobile ? undefined : '-2rem', zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 1)', backdropFilter: 'blur(12px)', paddingTop: '1rem', paddingBottom: '1rem', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '1rem' : '0', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', borderBottom: '1px solid #e2e8f0', margin: '-2rem -2rem 2.5rem -2rem', paddingLeft: '2rem', paddingRight: '2rem', transition: 'all 0.3s ease' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
-                    <div style={{ minWidth: '400px' }}>
-                        <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.04em', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ minWidth: isMobile ? 0 : '400px' }}>
+                        <h1 style={{ margin: 0, fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#0f172a', letterSpacing: '-0.04em', display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', padding: '12px', borderRadius: '20px', color: '#fff', boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.4)', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {viewMode === 'operations' ? <Activity size={32} /> : <BarChart3 size={32} />}
                             </div>
@@ -2420,33 +2484,33 @@ const Dashboard = () => {
                         </p>
                     </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : undefined, alignItems: 'flex-start', gap: '12px' }}>
                     {!isAdminOrManager && (
                     <div style={{
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        background: '#ffffff', 
-                        padding: '12px 16px', 
-                        borderRadius: '32px', 
-                        border: '1px solid #e2e8f0', 
-                        gap: '8px', 
-                        width: '200px', 
-                        height: '128px',
-                        justifyContent: 'center', 
+                        display: 'flex',
+                        flexDirection: isMobile ? 'row' : 'column',
+                        background: '#ffffff',
+                        padding: isMobile ? '6px' : '12px 16px',
+                        borderRadius: isMobile ? '18px' : '32px',
+                        border: '1px solid #e2e8f0',
+                        gap: '8px',
+                        width: isMobile ? '100%' : '200px',
+                        height: isMobile ? 'auto' : '128px',
+                        justifyContent: 'center',
                         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
                     }}>
                             {[{ id: 'operations', label: 'ปฏิบัติการ' }, { id: 'insights', label: 'ผลงาน' }].map((mode) => (
                                 <button
                                     key={mode.id}
                                     onClick={() => setViewMode(mode.id)}
-                                    style={{ width: '100%', height: '42px', borderRadius: '16px', border: 'none', background: viewMode === mode.id ? '#4f46e5' : 'transparent', color: viewMode === mode.id ? '#fff' : '#64748b', fontWeight: 900, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: viewMode === mode.id ? '0 10px 15px -3px rgba(79, 70, 229, 0.3)' : 'none' }}
+                                    style={{ width: isMobile ? 'auto' : '100%', flex: isMobile ? 1 : undefined, height: '42px', borderRadius: '16px', border: 'none', background: viewMode === mode.id ? '#4f46e5' : 'transparent', color: viewMode === mode.id ? '#fff' : '#64748b', fontWeight: 900, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: viewMode === mode.id ? '0 10px 15px -3px rgba(79, 70, 229, 0.3)' : 'none' }}
                                 >
                                     {mode.label}
                                 </button>
                             ))}
                         </div>
                     )}
-                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} allowAllTime={isAdminOrManager} isAllTime={isAllTime} setIsAllTime={setIsAllTime} selectedYear={selectedYear} setSelectedYear={setSelectedYear} style={{ height: '128px', padding: '24px' }} />
+                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} allowAllTime={isAdminOrManager} isAllTime={isAllTime} setIsAllTime={setIsAllTime} selectedYear={selectedYear} setSelectedYear={setSelectedYear} style={{ height: isMobile ? 'auto' : '128px', padding: isMobile ? '16px' : '24px', width: isMobile ? '100%' : undefined }} />
                     <div style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -2457,7 +2521,7 @@ const Dashboard = () => {
                         boxShadow: '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
                         gap: '4px',
                         justifyContent: 'center',
-                        width: isAdminOrManager ? '280px' : '260px',
+                        width: isMobile ? '100%' : (isAdminOrManager ? '280px' : '260px'),
                         height: 'auto',
                         transition: 'all 0.3s ease',
                         opacity: (isAdminOrManager && adminActiveTab === 'comparison') ? 0.4 : 1,
@@ -2609,7 +2673,7 @@ const Dashboard = () => {
                                     transform: selectedOpCategory === cat ? 'translateY(-6px)' : 'none',
                                 });
                                 return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(auto-fit, minmax(210px, 1fr))', 'repeat(2, 1fr)'), gap: isMobile ? '12px' : '1.5rem', marginBottom: '2.5rem' }}>
                                         <StatCard
                                             title="เร่งด่วน SLA"
                                             value={urgentSubtaskCount}
@@ -2655,7 +2719,7 @@ const Dashboard = () => {
                             })()}
 
                             {/* Operations Grid - Row 1 */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'minmax(0, 1.3fr) minmax(0, 1fr)'), gap: '2rem', marginBottom: '2.5rem', alignItems: 'stretch' }}>
                                 <div ref={opListRef} id="urgent-section" style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)', display: 'flex', flexDirection: 'column', scrollMarginTop: '80px' }}>
                                     <SectionHeader
                                         title={selectedOpCategory === 'urgent' ? 'รายการดูแลเร่งด่วน SLA' : selectedOpCategory === 'evaluating' ? 'รายการที่รอลูกค้าประเมิน' : selectedOpCategory === 'inProgress' ? 'งานปกติ' : selectedOpCategory === 'pendingAdmin' ? 'ใบงานรอแอดมินประเมิน' : 'ภาพรวมใบงานทั้งหมด'}
@@ -2951,7 +3015,7 @@ const Dashboard = () => {
                                 const nextUpcoming = (stats.upcomingTasks || [])[0];
                                 const circ = 2 * Math.PI * 52;
                                 return (
-                                <div style={{ background: '#fff', borderRadius: '24px', border: '0.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', padding: '1.5rem 2rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: '180px 1fr', gap: '1.5rem', alignItems: 'center' }}>
+                                <div style={{ background: '#fff', borderRadius: '24px', border: '0.5px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', padding: '1.5rem 2rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: gridCols(isMobile, '180px 1fr'), gap: '1.5rem', alignItems: 'center' }}>
 
                                     {/* LEFT: gauge */}
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
@@ -3007,7 +3071,7 @@ const Dashboard = () => {
                                             const slaOnTime = _hcMet;
                                             const slaLate = _hcTot - _hcMet;
                                             return (
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4,1fr)', 'repeat(2,1fr)'), gap: '12px' }}>
                                             {/* WO dual-number card */}
                                             <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><FileText size={120} /></div>
@@ -3016,12 +3080,12 @@ const Dashboard = () => {
                                                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '12px' }}>ใบงาน</div>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                                                         <div>
-                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.totalInMonth}</div>
+                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.totalInMonth}</div>
                                                             <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
                                                         </div>
                                                         <div style={{ width: '1px', height: '44px', background: 'rgba(255,255,255,0.3)' }} />
                                                         <div>
-                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{closedWOs}</div>
+                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{closedWOs}</div>
                                                             <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
                                                         </div>
                                                     </div>
@@ -3035,12 +3099,12 @@ const Dashboard = () => {
                                                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '12px' }}>รายการย่อย</div>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                                                         <div>
-                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{totalTasks}</div>
+                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{totalTasks}</div>
                                                             <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
                                                         </div>
                                                         <div style={{ width: '1px', height: '44px', background: 'rgba(255,255,255,0.3)' }} />
                                                         <div>
-                                                            <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.closed}</div>
+                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.closed}</div>
                                                             <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
                                                         </div>
                                                     </div>
@@ -3052,7 +3116,7 @@ const Dashboard = () => {
                                                 <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><Zap size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
                                                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เสร็จทัน SLA</div>
-                                                    <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaOnTime}</div>
+                                                    <div style={{ fontSize: scaleFont(isMobile, '3.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaOnTime}</div>
                                                     <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'onTime' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : `จาก ${slaOnTime + slaLate} รายการที่เสร็จ →`}</div>
                                                 </div>
                                             </div>
@@ -3062,7 +3126,7 @@ const Dashboard = () => {
                                                 <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><AlertTriangle size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
                                                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เลย SLA</div>
-                                                    <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaLate}</div>
+                                                    <div style={{ fontSize: scaleFont(isMobile, '3.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaLate}</div>
                                                     <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'late' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : slaLate > 0 ? 'รายการเกินกำหนด → ดูรายละเอียด' : 'ทุกงานทันกำหนด 🎉'}</div>
                                                 </div>
                                             </div>
@@ -3103,7 +3167,94 @@ const Dashboard = () => {
                                 </div>
                             )}
 
-                            
+                            {!isForeman && <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1.4fr 1fr'), gap: '2rem', marginBottom: '2.5rem' }}>
+                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                                    <SectionHeader
+                                        title="สถิติการเปิด-ปิดรายการงาน (Task Statistics)"
+                                        icon={<TrendingUp size={22} />}
+                                        subtitle={`สรุปจำนวนรายการงานที่เปิดใหม่และทำเสร็จสำเร็จราย${selectedWeek === 0 ? 'เดือน' : `สัปดาห์ที่ ${selectedWeek}`}`}
+                                        actions={
+                                            <div style={{ padding: '6px 14px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
+                                                <span style={{ color: '#f59e0b' }}>เปิด {timelineData.reduce((acc, d) => acc + d.openedCount, 0)}</span>
+                                                <span style={{ color: '#94a3b8', margin: '0 8px' }}>|</span>
+                                                <span style={{ color: '#8b5cf6' }}>ปิด {timelineData.reduce((acc, d) => acc + d.closedCount, 0)}</span>
+                                            </div>
+                                        }
+                                    />
+                                    <div style={{ height: '320px', width: '100%' }}>
+                                        <ResponsiveContainer>
+                                            <BarChart
+                                                key={`timeline-${highlightedWOId || 'none'}`}
+                                                data={timelineData}
+                                                onMouseMove={(state) => { if (state && state.activeLabel !== undefined) setActiveProgressIndex(state.activeLabel); else setActiveProgressIndex(null); }}
+                                                onMouseLeave={() => setActiveProgressIndex(null)}
+                                                onClick={(state: any) => {
+                                                    if (state && state.activeLabel !== undefined) {
+                                                        const dataPoint = timelineData.find(d => d.day === state.activeLabel);
+                                                        if (dataPoint && (dataPoint.openedCount > 0 || dataPoint.closedCount > 0)) {
+                                                            setSelectedBarWOs(dataPoint);
+                                                        }
+                                                    }
+                                                }}
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                                                <Tooltip
+                                                    cursor={{ fill: '#f8fafc' }}
+                                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                    labelFormatter={(value) => {
+                                                        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                                                        const [yr, mn] = selectedMonth.split('-');
+                                                        return `${value} ${monthNames[parseInt(mn) - 1]} ${yr}`;
+                                                    }}
+                                                />
+                                                <Legend verticalAlign="top" align="right" />
+                                                <Bar dataKey="openedCount" name="เปิดงานใหม่" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20}>
+                                                    {timelineData.map((item, index) => <Cell key={`cell-opened-${index}`} fillOpacity={highlightedWOId ? (item.isHighlighted ? 1 : 0.25) : (activeProgressIndex === null || activeProgressIndex === item.day ? 1 : 0.3)} stroke={highlightedWOId && item.isHighlighted ? '#b45309' : 'none'} strokeWidth={2} />)}
+                                                </Bar>
+                                                <Bar dataKey="closedCount" name="ปิดงานสำเร็จ" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20}>
+                                                    {timelineData.map((item, index) => <Cell key={`cell-closed-${index}`} fillOpacity={highlightedWOId ? (item.isHighlighted ? 1 : 0.25) : (activeProgressIndex === null || activeProgressIndex === item.day ? 1 : 0.3)} stroke={highlightedWOId && item.isHighlighted ? '#5b21b6' : 'none'} strokeWidth={2} />)}
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                <div style={{ background: '#fff', padding: '2rem', borderRadius: '32px', border: '1px solid #e2e8f0' }}>
+                                    <SectionHeader title="สัดส่วนการใช้แรงงาน (Efficiency)" icon={<Users size={20} />} subtitle="ชั่วโมงงานภายใน vs ผู้รับเหมา" />
+                                    <div style={{ height: '320px', position: 'relative' }}>
+                                        {/* Centered Summary Total */}
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '45%',
+                                            left: '50%',
+                                            transform: 'translate(-50%, -50%)',
+                                            textAlign: 'center',
+                                            pointerEvents: 'none',
+                                            zIndex: 10
+                                        }}>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '-5px' }}>
+                                                {highlightedWOId ? 'ใบงานที่เน้น' : 'ชั่วโมงรวม'}
+                                            </div>
+                                            <div style={{ fontSize: scaleFont(isMobile, '2.4rem'), fontWeight: 900, color: '#1e293b', lineHeight: 1.1 }}>
+                                                {((stats.internalHours || 0) + (stats.outsourceHours || 0)).toLocaleString()}
+                                            </div>
+                                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#4f46e5' }}>ชม. งาน</div>
+                                        </div>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart key={`pie-${highlightedWOId || 'none'}`}>
+                                                <Pie data={stats.laborStats} cx="50%" cy="45%" innerRadius={isMobile ? 52 : 70} outerRadius={isMobile ? 78 : 100} paddingAngle={8} dataKey="value">
+                                                    {stats.laborStats.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend verticalAlign="bottom" />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>}
 
                             {/* S-Curve Chart — T-337: hidden in all-time mode (month-anchored) */}
                             <div style={{ display: isAllTime ? 'none' : undefined, gridColumn: '1/-1', background: '#ffffff', borderRadius: '32px', padding: '2.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)', marginBottom: '2.5rem' }}>
@@ -3237,7 +3388,7 @@ const Dashboard = () => {
                             </div>
 
                             {/* Bottom Grid: SLA Cards + Category + (Project Track full-width) + Task Details */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '2rem' }}>
                                 {/* Col 1: SLA Section — overview or drill-down */}
                                 <div id="analytics-detail-section" className={highlightedSection === 'analytics-detail-section' ? 'section-highlight' : ''} style={{ background: '#fff', padding: '1.75rem', borderRadius: '32px', border: '1px solid #e2e8f0', overflow: 'hidden', transition: 'all 0.5s' }}>
                                     <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -3248,7 +3399,7 @@ const Dashboard = () => {
                                             </button>
                                         )}
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', overflowY: 'auto', maxHeight: '520px', alignItems: 'stretch' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(2, 1fr)'), gap: '10px', overflowY: 'auto', maxHeight: '520px', alignItems: 'stretch' }}>
                                         {healthCardProjects.map((p: any) => {
                                             const cases = p.cases ?? [];
                                             const caseTotal = cases.length;
@@ -3887,13 +4038,13 @@ const Dashboard = () => {
                                     });
                                 });
                                 return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(3, 1fr)', 'repeat(2,1fr)'), gap: '1.5rem', marginBottom: '2.5rem' }}>
                                         <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', padding: '24px', borderRadius: '24px', border: '1px solid #bfdbfe', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.08)' }}>
                                             <div style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Users size={14} /> จำนวนคนงานรวม
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                                                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#1e3a8a' }}>{totalW} <span style={{ fontSize: '1rem', fontWeight: 700 }}>คน</span></div>
+                                                <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#1e3a8a' }}>{totalW} <span style={{ fontSize: '1rem', fontWeight: 700 }}>คน</span></div>
                                                 {totalExt > 0 && <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2563eb', background: 'rgba(255,255,255,0.6)', padding: '2px 8px', borderRadius: '12px' }}>(ใน {totalInt} / นอก {totalExt})</div>}
                                             </div>
                                         </div>
@@ -3901,13 +4052,13 @@ const Dashboard = () => {
                                             <div style={{ fontSize: '0.8rem', color: '#15803d', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Clock size={14} /> ชั่วโมงงานปกติ
                                             </div>
-                                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#064e3b' }}>{totalN} <span style={{ fontSize: '1rem', fontWeight: 700 }}>ชม.</span></div>
+                                            <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#064e3b' }}>{totalN} <span style={{ fontSize: '1rem', fontWeight: 700 }}>ชม.</span></div>
                                         </div>
                                         <div style={{ background: 'linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%)', padding: '24px', borderRadius: '24px', border: '1px solid #fbcfe8', boxShadow: '0 4px 12px rgba(236, 72, 153, 0.08)' }}>
                                             <div style={{ fontSize: '0.8rem', color: '#be185d', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Zap size={14} /> ชั่วโมง OT
                                             </div>
-                                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#831843' }}>{totalO} <span style={{ fontSize: '1rem', fontWeight: 700 }}>ชม.</span></div>
+                                            <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#831843' }}>{totalO} <span style={{ fontSize: '1rem', fontWeight: 700 }}>ชม.</span></div>
                                         </div>
                                     </div>
                                 );

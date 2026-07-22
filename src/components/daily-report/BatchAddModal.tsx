@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Clock, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { AvailableItem, BatchConfig, BatchAddModalProps, ModalTimeTarget } from "../../types/dailyReport.types";
 import { AnalogTimePicker } from "../AnalogTimePicker";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 export const BatchAddModal: React.FC<BatchAddModalProps> = ({
   type,
@@ -9,6 +10,7 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
   onClose,
   onAdd,
 }) => {
+  const isMobile = useIsMobile();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const filteredItems = useMemo(() => {
@@ -218,6 +220,7 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              flexWrap: isMobile ? "wrap" : "nowrap",
               marginBottom: "1rem",
               gap: "12px",
             }}
@@ -270,7 +273,8 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
                 border: "1px solid #cbd5e1",
                 fontSize: "0.8rem",
                 outline: "none",
-                width: "180px",
+                width: isMobile ? "100%" : "180px",
+                boxSizing: "border-box",
                 fontWeight: 700,
               }}
             />

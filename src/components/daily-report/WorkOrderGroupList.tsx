@@ -18,6 +18,9 @@ import { useDailyReport } from "../../context/DailyReportContext";
 import { GroupSLACountdown } from "./SLACountdowns";
 import { WorkTask, WorkOrder } from "../../types/dailyReport.types";
 import { useWorkOrders } from "../../context/WorkOrderContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { identifierStyle } from "../ui/responsiveText";
+import { chipScrollRow } from "../ui/layout";
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
@@ -99,6 +102,7 @@ export const WorkOrderGroupList: React.FC = () => {
     setModalAlert,
     draftedTaskIds,
   } = useDailyReport();
+  const isMobile = useIsMobile();
 
   // Real staff (users, systemCode='AS') — used to resolve foreman display names by id/employeeId
   const { staff } = useWorkOrders();
@@ -895,6 +899,8 @@ export const WorkOrderGroupList: React.FC = () => {
                 padding: "6px 8px",
                 borderRadius: "12px",
                 border: "1px solid #e2e8f0",
+                // Mobile: chips scroll horizontally at natural width (mockup S3) — desktop unchanged
+                ...(isMobile ? chipScrollRow : {}),
               }}
             >
               {[
@@ -909,7 +915,9 @@ export const WorkOrderGroupList: React.FC = () => {
                     onClick={() => setSortBy(opt.id as any)}
                     title={opt.title}
                     style={{
-                      flex: 1,
+                      // Mobile: natural width + nowrap so the row scrolls (mockup S3); desktop keeps equal flex:1
+                      flex: isMobile ? "0 0 auto" : 1,
+                      whiteSpace: "nowrap",
                       padding: "6px 4px",
                       borderRadius: "8px",
                       border: "none",
@@ -1024,9 +1032,9 @@ export const WorkOrderGroupList: React.FC = () => {
                               display: 'flex', flexDirection: 'column', gap: '6px', cursor: 'pointer',
                             }}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', ...(isMobile ? { flexWrap: 'wrap', rowGap: '8px' } : {}) }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a' }}>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a', ...(isMobile ? identifierStyle : {}) }}>
                                   {wo.id}
                                 </span>
                                 {maxRevNum > 0 && (
@@ -1035,7 +1043,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                   </span>
                                 )}
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', ...(isMobile ? { flexWrap: 'wrap', flex: '1 1 100%', justifyContent: 'space-between' } : {}) }}>
                                 <span style={{
                                   fontSize: '0.62rem', fontWeight: 900,
                                   color: wo.status === 'Complete' ? '#059669' : wo.status === 'Rejected' ? '#dc2626' : hasReassigned ? '#d97706' : allDone ? '#059669' : '#0891b2',
@@ -1076,11 +1084,13 @@ export const WorkOrderGroupList: React.FC = () => {
                                         border: 'none', padding: '3px 8px', borderRadius: '6px',
                                         cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px',
                                         boxShadow: '0 2px 4px rgba(0,0,0,0.15)', transition: 'all 0.2s',
+                                        // Mobile: full-width button on its own row (mockup S3) — order:2 pushes it below badge/chevron
+                                        ...(isMobile ? { flex: '1 1 100%', order: 2, justifyContent: 'center', fontSize: '0.82rem', padding: '10px 12px' } : {}),
                                       }}
                                       onMouseOver={(el) => (el.currentTarget.style.transform = 'scale(1.05)')}
                                       onMouseOut={(el) => (el.currentTarget.style.transform = 'scale(1)')}
                                     >
-                                      <QrCode size={10} /> {canShowQr ? 'ดู QR ส่งมอบ' : 'สร้าง QR ส่งมอบ'}
+                                      <QrCode size={isMobile ? 16 : 10} /> {canShowQr ? 'ดู QR ส่งมอบ' : 'สร้าง QR ส่งมอบ'}
                                     </button>
                                   );
                                 })()}
@@ -1291,6 +1301,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                 display: "flex",
                                 justifyContent: "space-between",
                                 alignItems: "center",
+                                ...(isMobile ? { flexWrap: "wrap", rowGap: "8px" } : {}),
                               }}
                             >
                               <span
@@ -1298,6 +1309,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                   fontSize: "0.78rem",
                                   fontWeight: 900,
                                   color: "#0f172a",
+                                  ...(isMobile ? identifierStyle : {}),
                                 }}
                               >
                                 {wo.id}
@@ -1308,6 +1320,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "6px",
+                                  ...(isMobile ? { flexWrap: "wrap", flex: "1 1 100%", justifyContent: "space-between" } : {}),
                                 }}
                               >
                                 <span
@@ -1386,11 +1399,13 @@ export const WorkOrderGroupList: React.FC = () => {
                                       alignItems: "center",
                                       gap: "3px",
                                       transition: "all 0.2s",
+                                      // Mobile: full-width button on its own row (mockup S3)
+                                      ...(isMobile ? { flex: "1 1 100%", order: 2, justifyContent: "center", fontSize: "0.82rem", padding: "10px 12px" } : {}),
                                     }}
                                     onMouseOver={(el) => (el.currentTarget.style.transform = "scale(1.05)")}
                                     onMouseOut={(el) => (el.currentTarget.style.transform = "scale(1)")}
                                   >
-                                    <QrCode size={10} /> สร้าง QR Code
+                                    <QrCode size={isMobile ? 16 : 10} /> สร้าง QR Code
                                   </button>
                                 )}
                               </div>
@@ -1850,6 +1865,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                       fontSize: "0.78rem",
                                       fontWeight: 900,
                                       color: "#0f172a",
+                                      ...(isMobile ? identifierStyle : {}),
                                     }}
                                   >
                                     {wo.id}

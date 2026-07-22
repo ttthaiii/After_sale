@@ -3,6 +3,7 @@ import { WorkOrder, MasterTask } from '../types';
 import WorkOrderCard from './WorkOrderCard';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { formatDateTime } from '../utils/date';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 
 interface WorkOrderDetailModalProps {
@@ -23,6 +24,7 @@ const WorkOrderDetailModal = ({
     onPreHandoverAssign
 }: WorkOrderDetailModalProps) => {
     const { staff } = useWorkOrders();
+    const isMobile = useIsMobile();
 
 
     if (!isOpen) return null;
@@ -44,7 +46,7 @@ const WorkOrderDetailModal = ({
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            padding: '2rem'
+            padding: isMobile ? '12px' : '2rem'
         }} onClick={onClose}>
 
             <div
@@ -64,11 +66,13 @@ const WorkOrderDetailModal = ({
             >
                 {/* Header */}
                 <div style={{
-                    padding: '1.75rem 2.5rem',
+                    padding: isMobile ? '1rem' : '1.75rem 2.5rem',
                     background: '#ffffff',
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
                     justifyContent: 'space-between',
+                    gap: isMobile ? '12px' : undefined,
                     borderBottom: '1px solid #f1f5f9',
                     position: 'relative'
                 }}>
@@ -91,16 +95,16 @@ const WorkOrderDetailModal = ({
 
                     {/* Foreman Info Section */}
                     {reporter && (
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '12px', 
-                            padding: '10px 16px', 
-                            background: '#f8fafc', 
-                            borderRadius: '16px', 
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '10px 16px',
+                            background: '#f8fafc',
+                            borderRadius: '16px',
                             border: '1px solid #e2e8f0',
-                            marginLeft: 'auto',
-                            marginRight: '24px'
+                            marginLeft: isMobile ? 0 : 'auto',
+                            marginRight: isMobile ? 0 : '24px'
                         }}>
                             <div style={{ 
                                 width: '40px', 
@@ -147,7 +151,8 @@ const WorkOrderDetailModal = ({
                             color: '#000000',
                             transition: 'all 0.2s',
                             boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
-                            padding: 0
+                            padding: 0,
+                            alignSelf: isMobile ? 'flex-end' : undefined
                         }}
                         onMouseOver={e => {
                             e.currentTarget.style.background = '#000000';
@@ -168,7 +173,7 @@ const WorkOrderDetailModal = ({
                 </div>
 
                 {/* Content */}
-                <div style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+                <div style={{ padding: isMobile ? '12px' : '2rem', overflowY: 'auto', flex: 1 }}>
 
                     {/* Customer Inspection Metrics Drawer */}
                     {(() => {
@@ -185,7 +190,7 @@ const WorkOrderDetailModal = ({
                         return (
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: hasTimeline && hasSurvey ? '1fr 1fr' : '1fr',
+                                gridTemplateColumns: isMobile ? '1fr' : (hasTimeline && hasSurvey ? '1fr 1fr' : '1fr'),
                                 gap: '1.5rem',
                                 marginBottom: '2rem',
                                 animation: 'fadeIn 0.3s ease-out'

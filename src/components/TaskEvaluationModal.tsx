@@ -7,6 +7,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import ImageOverlay from './ImageOverlay';
 import CustomDateInput from './CustomDateInput';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface TaskEvaluationModalProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ interface TaskEvaluationModalProps {
 }
 
 const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: TaskEvaluationModalProps) => {
+    const isMobile = useIsMobile();
     const [overlayImage, setOverlayImage] = useState<string | null>(null);
     const [staffList, setStaffList] = useState<Staff[]>([]);
     const { sendNotification } = useNotifications();
@@ -210,7 +212,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
             top: 0,
             right: 0, // Moved to Right
             bottom: 0,
-            width: '450px', // Fixed width for panel
+            width: '100%', maxWidth: '450px', // panel width (responsive)
             background: '#ffffff',
             boxShadow: '-10px 0 25px rgba(0,0,0,0.1)', // Shadow on left
             zIndex: 10000,
@@ -523,7 +525,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                             borderRadius: '24px',
                             width: '90%',
                             maxWidth: '460px',
-                            padding: '2rem',
+                            padding: isMobile ? '12px' : '2rem',
                             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
                             display: 'flex',
                             flexDirection: 'column',

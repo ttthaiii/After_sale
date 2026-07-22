@@ -17,8 +17,12 @@ import { formatDate } from '../utils/date';
 import CustomDateInput from '../components/CustomDateInput';
 import { db } from '../lib/firebase';
 import { collection, query as fsQuery, where, onSnapshot as fsOnSnapshot, collectionGroup } from 'firebase/firestore';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from '../components/ui/responsiveGrid';
+import { scaleFont } from '../components/ui/responsiveText';
 
 const Evaluation = () => {
+    const isMobile = useIsMobile();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
     const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin, approveRetroactiveRequest, rejectRetroactiveRequest, approvePreHandoverWO, approvePhRetroactiveRequest, rejectPhRetroactiveRequest, reviewRejectedPhWO } = useWorkOrders();
@@ -645,7 +649,7 @@ const Evaluation = () => {
                     <CheckSquare size={36} />
                 </div>
                 <div>
-                    <h1 style={{ margin: 0, fontSize: '2.25rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em' }}>ระบบประเมินและอนุมัติ</h1>
+                    <h1 style={{ margin: 0, fontSize: scaleFont(isMobile, '2.25rem'), fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em' }}>ระบบประเมินและอนุมัติ</h1>
                     <span style={{ color: '#64748b', fontSize: '1.1rem', marginTop: '6px', display: 'block', fontWeight: 500 }}>ตรวจสอบและรับรองรายการแจ้งซ่อม</span>
                 </div>
             </div>
@@ -721,7 +725,7 @@ const Evaluation = () => {
 
             {/* Filters */}
             <div style={{ background: '#ffffff', padding: '24px 32px', borderRadius: '24px', marginBottom: '2rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', marginLeft: '4px', marginRight: '4px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4, 1fr)', 'repeat(2,1fr)'), gap: '1.5rem' }}>
 
                     <div style={{ position: 'relative' }}>
                         <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', display: 'flex', color: '#94a3b8' }}>
@@ -785,7 +789,7 @@ const Evaluation = () => {
             {/* Grid List */}
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
+                gridTemplateColumns: gridCols(isMobile, 'repeat(3, 1fr)'),
                 gap: '1.5rem',
                 padding: '4px'
             }}>

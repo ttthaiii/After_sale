@@ -1,5 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { chipScrollRow } from './ui/layout';
 
 interface MasterFilterProps {
     selectedMonth: string;
@@ -30,6 +32,8 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
     setSelectedYear
 }) => {
     const nowYear = new Date().getFullYear();
+    const isMobile = useIsMobile();
+
     const handleMonthChange = (delta: number) => {
         let year, month;
         if (selectedMonth === 'all') {
@@ -57,12 +61,12 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
             flexDirection: 'column', 
             gap: '12px', 
             background: minimal ? 'transparent' : '#ffffff', 
-            padding: minimal ? '0' : '24px', 
-            borderRadius: minimal ? '0' : '32px', 
-            border: minimal ? 'none' : '1px solid #e2e8f0', 
-            boxShadow: minimal ? 'none' : '0 4px 20px -4px rgba(0, 0, 0, 0.05)', 
+            padding: minimal ? '0' : (isMobile ? '16px' : '24px'),
+            borderRadius: minimal ? '0' : '32px',
+            border: minimal ? 'none' : '1px solid #e2e8f0',
+            boxShadow: minimal ? 'none' : '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
             flex: 1,
-            height: '124px',
+            height: isMobile ? 'auto' : '124px',
             justifyContent: 'center',
             alignItems: 'stretch',
             ...style
@@ -90,7 +94,7 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
                     >
                         <ChevronLeft size={20} strokeWidth={3} />
                     </button>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', letterSpacing: '-0.01em', textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', letterSpacing: '-0.01em', textAlign: 'center', whiteSpace: isMobile ? 'nowrap' : undefined }}>
                         {/* T-337: all-work mode shows a YEAR selector; month mode shows the month. */}
                         {isAllTime ? `ทั้งปี ${selectedYear}` : monthName}
                     </div>
@@ -139,7 +143,7 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
             {/* Week Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', opacity: isAllTime ? 0.5 : 1, pointerEvents: isAllTime ? 'none' : 'auto', transition: 'all 0.3s ease' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#94a3b8' }}>สัปดาห์</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={isMobile ? { ...chipScrollRow, flex: 1, minWidth: 0 } : { display: 'flex', gap: '8px', flexWrap: 'wrap', rowGap: '8px' }}>
                     {weeks.map((w) => (
                         <button
                             key={w}
@@ -147,6 +151,7 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
                             style={{
                                 height: '38px',
                                 minWidth: w === 0 ? '76px' : '38px',
+                                flex: isMobile ? '0 0 auto' : undefined,
                                 borderRadius: '14px',
                                 background: selectedWeek === w ? '#4f46e5' : '#f8fafc',
                                 color: selectedWeek === w ? '#fff' : '#64748b',

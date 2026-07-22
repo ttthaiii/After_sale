@@ -12,6 +12,8 @@ import { Project, WorkOrder, Category, WorkOrderType, MasterTask } from '../type
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import LoadingOverlay from './LoadingOverlay';
 import CustomDateInput from './CustomDateInput';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from './ui/responsiveGrid';
 
 // Helper to get all categories for dropdown
 const CATEGORIES_LIST = [
@@ -72,6 +74,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     const { addWorkOrder, cancelRejectedTask } = useWorkOrders();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
+    const isMobile = useIsMobile();
     const [allProjects, setAllProjects] = useState<Project[]>([]);
 
     // ✅ Real-time Sync Projects from Firestore
@@ -614,7 +617,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         history: item.history || []
                     } as any;
                 })
-            })).filter(c => c.tasks.length > 0);
+            }));
+            // For non-draft submissions only: remove categories with no items —
+            // draft saves keep empty category headers so reopening a draft still shows them (fix(draft) 2181ea2).
+            if (!isDraft) categories = categories.filter(c => c.tasks.length > 0);
 
             // Re-merge cancelled (taskArchived) tasks the FM removed from the live form —
             // preserves their Rejected history/audit trail instead of deleting them (see archiveRejectedItem).
@@ -772,7 +778,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                 <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <div style={{ width: '4px', height: '16px', background: '#4f46e5', borderRadius: '4px' }}></div> รายละเอียดโครงการ
                                 </h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '16px' }}>
                                     <div>
                                         <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '4px' }}>โครงการ</div>
                                         <div style={{ fontWeight: 700, color: '#0f172a' }}>{projects.find(p => p.id === formState.projectId)?.name || '-'}</div>
@@ -860,10 +866,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             )}
                         </div>
 
-                        <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+                        <div style={{ padding: isMobile ? '16px' : '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'stretch', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: isMobile ? '10px' : '16px' }}>
                             <button
                                 onClick={() => setStep('form')}
-                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '10px 24px', background: '#ffffff', border: '1px solid #d1d5db', color: '#374151', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
                             >
                                 ย้อนกลับ (Edit)
                             </button>
@@ -881,7 +887,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px'
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    whiteSpace: 'nowrap'
                                 }}
                             >
                                 {isSubmitting && <Loader2 className="animate-spin" size={20} />}
@@ -957,7 +965,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                 <div style={{ background: '#f9fafb', padding: '32px', borderRadius: '16px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '28px' }}>
                                     {/* Project & Date Row */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '2fr 1fr'), gap: '24px' }}>
                                         <div>
                                             <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>โครงการ (Project) *</label>
                                             <div style={{ position: 'relative' }}>
@@ -1003,7 +1011,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     {/* Symmetrical Location Row */}
                                     <div>
                                         <label style={{ display: 'block', marginBottom: '12px', fontSize: '0.9rem', color: '#1f2937', fontWeight: 700 }}>สถานที่ (Location Details)</label>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr 1fr'), gap: '24px' }}>
                                             <div>
                                                 <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>อาคาร (Bldg)</label>
                                                 <input
@@ -1048,7 +1056,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     </div>
 
                                     {/* Reporter Info Row */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '2fr 1fr'), gap: '24px' }}>
                                         <div>
                                             <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>ชื่อผู้แจ้ง (Reporter)</label>
                                             <input
@@ -1077,7 +1085,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                     {/* PreHandover: Document attachment + SLA */}
                                     {!isAfterSale && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '24px', alignItems: 'flex-start' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '3fr 2fr'), gap: '24px', alignItems: 'flex-start' }}>
                                             {/* PDF Documents */}
                                             <div>
                                                 <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>
@@ -1139,14 +1147,14 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                 {!isAfterSale && (
                                     <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                                         {/* Column headers */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: '12px', padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 76px 34px' : '1fr 160px 40px', gap: isMobile ? '8px' : '12px', padding: isMobile ? '10px 12px' : '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                                             <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>หมวดงาน (Category)</span>
                                             <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, textAlign: 'center' }}>จำนวนจุดที่พบ</span>
                                             <span />
                                         </div>
                                         {/* Data rows — no labels, uniform height */}
                                         {groups.map((group, idx) => (
-                                            <div key={group.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: '12px', padding: '10px 16px', alignItems: 'center', borderBottom: idx < groups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                            <div key={group.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 76px 34px' : '1fr 160px 40px', gap: isMobile ? '8px' : '12px', padding: isMobile ? '10px 12px' : '10px 16px', alignItems: 'center', borderBottom: idx < groups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                                                 <div style={{ position: 'relative' }}>
                                                     <select
                                                         value={group.category}
@@ -1319,7 +1327,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 )
                                                             )}
                                                             {/* SYMMETRICAL GRID: Updated for 5 columns */}
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr', gap: '16px', marginBottom: '20px' }}>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr'), gap: '16px', marginBottom: '20px' }}>
                                                             <div>
                                                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จุดที่พบ (Position)</label>
                                                                 <input
@@ -1544,7 +1552,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                         />
 
                         {/* Footer */}
-                        <div style={{ padding: '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+                        <div style={{ padding: isMobile ? '16px' : '24px 32px', borderTop: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'stretch', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: isMobile ? '10px' : '16px' }}>
                             <button
                                 // Nothing left to edit once every task is decided/cancelled — everything is
                                 // already persisted, so closing has nothing unsaved to warn about.

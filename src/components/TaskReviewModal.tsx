@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { WorkOrder, MasterTask } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
     Camera,
     Copy, Check, FileText,
@@ -19,6 +20,7 @@ export default function TaskReviewModal({
     workOrder,
     task
 }: TaskReviewModalProps) {
+    const isMobile = useIsMobile();
     const [copied, setCopied] = useState(false);
     const [afterPhotoIndex, setAfterPhotoIndex] = useState(0);
 
@@ -173,7 +175,7 @@ export default function TaskReviewModal({
                 <div style={{ overflowY: 'auto', flex: 1, padding: '1.5rem 2rem', background: '#f8fafc' }}>
                     
                     {/* Before & After Photo Comparison */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
                         
                         {/* Before Photo Card */}
                         <div style={{ background: '#ffffff', borderRadius: '20px', padding: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
@@ -271,7 +273,7 @@ export default function TaskReviewModal({
 
                     {/* Task details & Info Grid */}
                     <div style={{ background: '#ffffff', borderRadius: '24px', padding: '1.25rem', border: '1px solid #e2e8f0', marginBottom: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', fontSize: '0.85rem' }}>
                             <div>
                                 <span style={{ fontWeight: 800, color: '#94a3b8' }}>ชื่อรายการงาน:</span>{' '}
                                 <span style={{ fontWeight: 900, color: '#1e293b' }}>{task.name}</span>

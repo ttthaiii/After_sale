@@ -1,0 +1,803 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+<symbol id="i-check-circle-2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+<symbol id="i-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/></symbol>
+<symbol id="i-alert-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></symbol>
+<symbol id="i-alert-triangle" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="i-building-2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+<symbol id="i-clipboard-list" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></symbol>
+<symbol id="i-user-check" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol>
+<symbol id="i-hard-hat" viewBox="0 0 24 24"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></symbol>
+<!-- Group 3 additions (real lucide v0.469.0) -->
+<symbol id="i-log-in" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol>
+<symbol id="i-user-search" viewBox="0 0 24 24"><circle cx="10" cy="7" r="4"/><path d="M10.3 15H7a4 4 0 0 0-4 4v2"/><circle cx="17" cy="17" r="3"/><path d="m21 21-1.9-1.9"/></symbol>
+<symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+<symbol id="i-loader-2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+<symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></symbol>
+<symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+</svg>
+
+<style>
+  :root {
+    --font: "Noto Sans Thai","IBM Plex Sans Thai","Sarabun",-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
+    --mono: "SF Mono","JetBrains Mono","Roboto Mono",ui-monospace,monospace;
+    --bg:#eef0f7; --surface:#fff; --surface-2:#f7f8fc;
+    --ink:#171a2b; --ink-2:#545a75; --ink-3:#8b90a8; --line:#e3e6f0; --line-2:#eceef5;
+    --brand:#4f46c9; --brand-2:#6d5ef0; --brand-soft:#ece9fd;
+    --ok:#16a34a; --danger:#dc2626;
+    --radius:18px;
+    --shadow:0 1px 2px rgba(23,26,43,.04),0 8px 28px -12px rgba(23,26,43,.18);
+    --shadow-sm:0 1px 2px rgba(23,26,43,.05),0 4px 12px -8px rgba(23,26,43,.15);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0d0f1a;--surface:#171a29;--surface-2:#1e2233;--ink:#eceefb;--ink-2:#a6abc7;--ink-3:#71768f;
+    --line:#2a2f45;--line-2:#222639;--brand-soft:#241f4a;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -12px rgba(0,0,0,.6);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.35),0 6px 16px -10px rgba(0,0,0,.5);
+  }}
+  :root[data-theme="light"]{--bg:#eef0f7;--surface:#fff;--surface-2:#f7f8fc;--ink:#171a2b;--ink-2:#545a75;--ink-3:#8b90a8;--line:#e3e6f0;--line-2:#eceef5;--brand-soft:#ece9fd;--shadow:0 1px 2px rgba(23,26,43,.04),0 8px 28px -12px rgba(23,26,43,.18);}
+  :root[data-theme="dark"]{--bg:#0d0f1a;--surface:#171a29;--surface-2:#1e2233;--ink:#eceefb;--ink-2:#a6abc7;--ink-3:#71768f;--line:#2a2f45;--line-2:#222639;--brand-soft:#241f4a;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -12px rgba(0,0,0,.6);}
+
+  *{box-sizing:border-box}
+  body{margin:0}
+  .page{font-family:var(--font);background:radial-gradient(1200px 600px at 80% -10%,rgba(109,94,240,.10),transparent 60%),var(--bg);color:var(--ink);min-height:100vh;padding:clamp(20px,4vw,52px) clamp(14px,4vw,44px) 90px;line-height:1.5}
+  .wrap{max-width:1200px;margin:0 auto}
+
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--brand-2);background:var(--brand-soft);padding:6px 12px;border-radius:999px}
+  .mast h1{font-size:clamp(27px,5vw,44px);line-height:1.05;margin:18px 0 10px;letter-spacing:-.02em;font-weight:800;text-wrap:balance}
+  .mast h1 span{color:var(--brand-2)}
+  .mast p.lead{font-size:clamp(15px,2vw,18px);color:var(--ink-2);max-width:64ch;margin:0}
+  .rules{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .rule{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;box-shadow:var(--shadow-sm)}
+  .rule svg{width:16px;height:16px;color:var(--brand-2)}
+
+  .section{margin-top:54px}
+  .section>.head{margin-bottom:22px}
+  .section .tag{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--brand-2);letter-spacing:.03em}
+  .section h2{font-size:clamp(20px,3vw,26px);margin:6px 0;letter-spacing:-.01em;font-weight:800}
+  .section h2+p{margin:0;color:var(--ink-2);font-size:15px;max-width:70ch}
+  .divider{height:1px;background:var(--line);margin:54px 0 0;border:0}
+
+  .screen{display:grid;grid-template-columns:375px 1fr;gap:38px;align-items:start}
+  .screen.two{grid-template-columns:375px 375px 1fr}
+  @media (max-width:1080px){.screen.two{grid-template-columns:375px 1fr}}
+  @media (max-width:900px){.screen,.screen.two{grid-template-columns:1fr;gap:26px;justify-items:center}}
+  .notes{padding-top:4px}
+  @media (max-width:900px){.notes{max-width:375px}}
+  .notes h3{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .fix{display:flex;gap:11px;margin-bottom:14px;align-items:flex-start}
+  .fix .ba{flex-shrink:0;width:42px;font-size:10.5px;font-weight:800;text-align:center;padding-top:2px;letter-spacing:.02em}
+  .fix .keep{color:var(--brand-2)} .fix .after{color:var(--ok)}
+  .fix .txt{font-size:13.5px;color:var(--ink-2)}
+  .fix .txt b{color:var(--ink);font-weight:700}
+  .fix .txt .old{color:var(--danger);text-decoration:line-through;text-decoration-color:rgba(220,38,38,.5)}
+  .fix .txt code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:5px;border:1px solid var(--line)}
+
+  .device{width:375px;flex-shrink:0;background:var(--surface);border:1px solid var(--line);border-radius:40px;padding:10px;box-shadow:var(--shadow);position:relative;margin-top:34px}
+  .device .cap{position:absolute;top:-30px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink-3);white-space:nowrap}
+  .device .screenframe{border-radius:30px;overflow:hidden;border:1px solid var(--line-2);height:722px;overflow-y:auto;position:relative;scrollbar-width:thin;background:#f3f3fb}
+  .device .screenframe::-webkit-scrollbar{width:5px}
+  .device .screenframe::-webkit-scrollbar-thumb{background:rgba(120,120,150,.35);border-radius:3px}
+  .device .measure{position:absolute;bottom:-26px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+
+  /* ============ APP (light UI, faithful) ============ */
+  .app{
+    --a-bg:#f3f3fb;--a-surface:#fff;--a-ink:#1c2033;--a-ink-2:#626985;--a-ink-3:#9aa0b8;
+    --a-line:#e9eaf3;--a-brand:#4f46e5;--a-brand-2:#6366f1;--a-brand-soft:#eeebfd;
+    --a-ok:#16a34a;--a-ok-soft:#dcfce7;--a-danger:#ef4444;--a-danger-soft:#fdeaea;
+    --a-emerald:#10b981;--a-emerald-soft:#d5f5e8;--a-teal:#0d9488;--a-teal-soft:#d6f1ed;
+    --a-amber:#f59e0b;--a-amber-soft:#fdf0dc;--a-blue:#3b82f6;--a-blue-soft:#e5efff;
+    --a-indigo:#6366f1;--a-indigo-soft:#e7e7fd;--a-sky:#0ea5e9;--a-sky-soft:#e0f2fe;
+    --a-purple:#7c3aed;--a-purple-soft:#efe7fd;--a-violet:#8b5cf6;
+    background:var(--a-bg);color:var(--a-ink);min-height:100%;font-family:var(--font);font-size:14px
+  }
+  .app *{box-sizing:border-box}
+  .ic{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;width:20px;height:20px;flex-shrink:0;display:block}
+  .ic.s10{width:10px;height:10px} .ic.s12{width:12px;height:12px} .ic.s13{width:13px;height:13px}
+  .ic.s14{width:14px;height:14px} .ic.s16{width:16px;height:16px} .ic.s18{width:18px;height:18px}
+  .ic.s22{width:22px;height:22px} .ic.s24{width:24px;height:24px} .ic.s26{width:26px;height:26px} .ic.s28{width:28px;height:28px} .ic.s40{width:40px;height:40px} .ic.s48{width:48px;height:48px}
+  .ic.fill{fill:currentColor;stroke:none}
+  .app .body{padding:14px 13px 26px}
+
+  .app .card{background:var(--a-surface);border:1px solid var(--a-line);border-radius:16px;padding:13px;margin-bottom:11px;box-shadow:var(--shadow-sm)}
+  .app .code{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;color:var(--a-ink)}
+  .app .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+  .app .b-rev{background:var(--a-amber-soft);color:#b45309}
+  .app .b-indigo{background:var(--a-indigo-soft);color:var(--a-indigo)}
+
+  .app .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;border-radius:12px;border:0;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;padding:0 16px}
+  .app .btn.sm{height:38px;font-size:13px;padding:0 12px}
+  .app .btn-full{width:100%}
+  .app .btn-ghost{background:var(--a-surface);border:1px solid var(--a-line);color:var(--a-ink)}
+  .app .btn-ok{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff}
+  .app .btn-danger{background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff}
+  .app .btn-primary{background:var(--a-brand);color:#fff}
+  .app .btn-teal{background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff}
+
+  /* form fields */
+  .app .field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .app .field>label{font-size:12.5px;font-weight:700;color:var(--a-ink-2)}
+  .app .field .req{color:var(--a-danger)}
+  .app .inp{min-height:44px;border:1px solid var(--a-line);border-radius:11px;padding:11px 12px;font:inherit;font-size:13.5px;background:var(--a-surface);color:var(--a-ink);display:flex;align-items:center;gap:9px}
+  .app .inp.ph{color:var(--a-ink-3)}
+  .app .inp.ta{min-height:82px;align-items:flex-start}
+
+  /* ===== LOGIN ===== */
+  .app.login{background:linear-gradient(160deg,#4338ca 0%,#4f46e5 45%,#6d5ef0 100%);min-height:100%;display:flex;align-items:center;justify-content:center;padding:26px 20px}
+  .app.login .card{width:100%;max-width:420px;border-radius:22px;padding:26px 22px;border:0;box-shadow:0 24px 60px -20px rgba(0,0,0,.5);margin:0}
+  .app.login .logo{width:60px;height:60px;border-radius:17px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;display:grid;place-items:center;margin:0 auto 16px}
+  .app.login h1{font-size:23px;font-weight:800;text-align:center;margin:0;letter-spacing:-.01em}
+  .app.login .sub{font-size:13px;color:var(--a-ink-2);text-align:center;margin:6px 0 22px}
+  .app.login .errbox{display:flex;align-items:center;gap:9px;background:var(--a-danger-soft);color:#b91c1c;border:1px solid #f5c2c2;border-radius:11px;padding:11px 13px;font-size:12.5px;font-weight:600;margin-bottom:14px}
+  .app.login .pwd{position:relative}
+  .app.login .pwd .toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--a-ink-3);cursor:pointer}
+  .app.login .roles{display:flex;justify-content:center;gap:9px;margin-top:20px;flex-wrap:wrap}
+  .app.login .roles .rl{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:999px;background:var(--a-bg)}
+  .app.login .foot{text-align:center;font-size:11px;color:var(--a-ink-3);margin-top:20px}
+
+  /* ===== CUSTOMER / OWNER portal ===== */
+  .app .portal{max-width:640px;margin:0 auto}
+  .app .rvw-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:6px 12px;border-radius:999px;margin-bottom:12px}
+  .app .rvw-eyebrow.indigo{background:var(--a-indigo-soft);color:var(--a-indigo)}
+  .app .rvw-eyebrow.teal{background:var(--a-teal-soft);color:var(--a-teal)}
+  .app .rvw-eyebrow.blue{background:var(--a-blue-soft);color:#2563eb}
+  .app .ptitle{font-size:20px;font-weight:800;letter-spacing:-.01em;line-height:1.2;margin:0}
+  .app .psub{font-size:13px;color:var(--a-ink-2);margin:7px 0 16px;line-height:1.4}
+  .app .frow{display:flex;align-items:flex-start;gap:9px;font-size:13px;padding:7px 0;border-bottom:1px dashed var(--a-line)}
+  .app .frow:last-child{border-bottom:0}
+  .app .frow .fi{color:var(--a-ink-3);flex-shrink:0;margin-top:1px}
+  .app .frow .fk{color:var(--a-ink-2);font-weight:700}
+  .app .frow .fv{color:var(--a-ink);font-weight:600;margin-left:auto;text-align:right}
+  .app .photolab{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;margin:2px 0 9px}
+  .app .photo{border:1.5px dashed var(--a-line);border-radius:13px;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--a-ink-3);font-size:12px;background:var(--a-bg)}
+  .app .photo.ph-img{border-style:solid;border-color:transparent}
+  .app .banner{display:flex;gap:9px;border-radius:13px;padding:12px 13px;font-size:12.5px;line-height:1.45;margin-bottom:13px}
+  .app .banner .bi{flex-shrink:0;margin-top:1px}
+  .app .banner.info{background:var(--a-indigo-soft);color:#4338ca}
+  .app .banner.teal{background:var(--a-teal-soft);color:#0f766e}
+  .app .banner.warn{background:var(--a-amber-soft);color:#b45309}
+  .app .banner.blue{background:var(--a-blue-soft);color:#1d4ed8}
+
+  /* pass/reject task rows */
+  .app .seclabel{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;color:var(--a-ink);margin:16px 2px 11px}
+  .app .seclabel .cnt{margin-left:auto;font-size:12px;background:var(--a-brand-soft);color:var(--a-brand);border-radius:20px;padding:2px 9px;font-weight:800}
+  .app .trow{border:1px solid var(--a-line);border-radius:14px;background:var(--a-surface);margin-bottom:10px;box-shadow:var(--shadow-sm);overflow:hidden}
+  .app .trow .th{display:flex;align-items:center;gap:9px;padding:12px 13px}
+  .app .trow .th .nm{font-size:13.5px;font-weight:700;flex:1;min-width:0}
+  .app .trow .th .cx{color:var(--a-ink-3);flex-shrink:0}
+  .app .pr{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 13px;border-radius:9px;font-size:12.5px;font-weight:800;border:1.5px solid var(--a-line);background:var(--a-surface);color:var(--a-ink-2);cursor:pointer;gap:5px}
+  .app .pr.pass.on{background:var(--a-ok-soft);border-color:var(--a-ok);color:#15803d}
+  .app .pr.rej.on{background:var(--a-danger-soft);border-color:var(--a-danger);color:#b91c1c}
+  .app .texp{border-top:1px solid var(--a-line);padding:12px 13px;background:var(--a-bg)}
+  .app .photogrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  @media (max-width:420px){.app .photogrid{grid-template-columns:1fr}}
+  .app .carousel{position:relative}
+  .app .carousel .nav{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;display:grid;place-items:center;cursor:pointer}
+  .app .carousel .nav.l{left:7px} .app .carousel .nav.r{right:7px}
+  .app .carousel .pgbadge{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .app .tag-ov{position:absolute;top:8px;left:8px;font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px;color:#fff}
+
+  /* defect diagnostics */
+  .app .defbox{border:1px solid var(--a-danger);background:var(--a-danger-soft);border-radius:12px;padding:12px;margin-top:11px}
+  .app .defbox .dh{font-size:12.5px;font-weight:800;color:#b91c1c;margin-bottom:10px}
+  .app .defchips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:11px}
+  .app .defchips .dc{font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:9px;border:1.5px solid var(--a-line);background:var(--a-surface);color:var(--a-ink-2);cursor:pointer}
+  .app .defchips .dc.on{background:var(--a-danger);border-color:var(--a-danger);color:#fff}
+
+  /* satisfaction survey */
+  .app .survey{background:var(--a-surface);border:1px solid var(--a-line);border-radius:16px;padding:14px;margin-bottom:11px;box-shadow:var(--shadow-sm)}
+  .app .survey .sh{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:13px}
+  .app .rate{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px dashed var(--a-line)}
+  .app .rate:last-child{border-bottom:0}
+  .app .rate .rl{font-size:12.5px;font-weight:600;color:var(--a-ink)}
+  .app .stars{display:flex;gap:4px;flex-shrink:0}
+  .app .stars .ic{color:#e2e4ee;width:22px;height:22px}
+  .app .stars .ic.on{color:#f59e0b;fill:#f59e0b}
+
+  /* success state */
+  .app .success{max-width:420px;margin:0 auto;padding:40px 8px;text-align:center;display:flex;flex-direction:column;align-items:center}
+  .app .success .big{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;margin-bottom:20px}
+  .app .success h2{font-size:21px;font-weight:800;margin:0 0 12px;letter-spacing:-.01em}
+  .app .success p{font-size:13.5px;color:var(--a-ink-2);line-height:1.55;margin:0;max-width:38ch}
+  .app .success .note{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--a-ink-3);margin-top:22px}
+
+  /* full-screen simulation modal */
+  .app .fsmodal{position:absolute;inset:0;background:rgba(15,23,42,.62);z-index:20;display:flex;align-items:flex-end}
+  .app .fsmodal .panel{background:var(--a-bg);border-radius:20px 20px 0 0;width:100%;max-height:97%;display:flex;flex-direction:column;overflow:hidden}
+  .app .fsmodal .ph{background:linear-gradient(135deg,#312e81,#4f46e5);color:#fff;padding:15px 15px 14px;display:flex;align-items:flex-start;gap:10px}
+  .app .fsmodal .ph .pt{flex:1;min-width:0}
+  .app .fsmodal .ph .eb{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:999px;margin-bottom:8px}
+  .app .fsmodal .ph b{font-size:15px;font-weight:800;display:block;line-height:1.25}
+  .app .fsmodal .ph .x{color:#fff;cursor:pointer;flex-shrink:0;font-size:20px;font-weight:700;line-height:1}
+  .app .fsmodal .pb{overflow-y:auto;padding:14px;scrollbar-width:thin}
+  .app .fsmodal .pf{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--a-line);background:var(--a-surface)}
+  .app .grip{width:38px;height:4px;border-radius:3px;background:rgba(255,255,255,.4);margin:0 auto 10px}
+
+  .foot{margin-top:40px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow-sm)}
+  .foot h3{margin:0 0 8px;font-size:16px}
+  .foot p{margin:0 0 6px;color:var(--ink-2);font-size:14px}
+  .pill-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .pill-list .pill{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
+  .pill-list .pill.done{background:#dcfce7;border-color:transparent;color:#15803d}
+  @media (prefers-color-scheme:dark){.pill-list .pill.done{background:#14331f;color:#4ade80}}
+</style>
+
+<div class="page">
+<div class="wrap">
+
+  <header class="mast">
+    <span class="eyebrow">◆ T-010 · Group 3 — Login · Owner Review · Customer Handover</span>
+    <h1>เข้าสู่ระบบ + <span>พอร์ทัลตรวจรับลูกค้า</span> บนมือถือ</h1>
+    <p class="lead">กลุ่มหน้าที่ลูกค้า/เจ้าของบ้านเปิดจากลิงก์ QR (ไร้ล็อกอิน) + หน้า Login เจ้าหน้าที่ + โมดัลจำลองฝั่งแอดมิน ·
+      หัวข้อ · label · ปุ่ม · ไอคอน (lucide ตัวจริง) ยึด desktop เป๊ะ แก้เฉพาะ layout / ฟอนต์ / การตกบรรทัดสำหรับมือถือ</p>
+    <div class="rules">
+      <div class="rule"><svg class="ic"><use href="#i-check"/></svg> Login · การ์ดกลางจอ + ปุ่มโชว์รหัส</div>
+      <div class="rule"><svg class="ic"><use href="#i-check"/></svg> Owner Review · ฟอร์มอนุมัติ/ตีกลับ</div>
+      <div class="rule"><svg class="ic"><use href="#i-check"/></svg> Customer Handover · 2 สาขา + แบบประเมิน</div>
+    </div>
+  </header>
+
+  <!-- ==================== S8 LOGIN ==================== -->
+  <section class="section">
+    <div class="head">
+      <span class="tag">S8 · Login.tsx</span>
+      <h2>เข้าสู่ระบบ — การ์ดกลางจอบนพื้นไล่เฉด</h2>
+      <p>โลโก้ LogIn · หัวข้อ Master Task System · ช่อง Username/Password + ปุ่มโชว์รหัส (Eye/EyeOff) · ชิปบทบาท 3 อัน (Foreman/Back Office/Approver) · แสดงสถานะ error</p>
+    </div>
+    <div class="screen two">
+      <!-- normal -->
+      <div class="device"><span class="cap">S8a · ปกติ</span>
+        <div class="screenframe"><div class="app login">
+          <div class="card">
+            <div class="logo"><svg class="ic s28"><use href="#i-log-in"/></svg></div>
+            <h1>Master Task System</h1>
+            <div class="sub">กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่</div>
+            <div class="field">
+              <label>ชื่อผู้ใช้ (Username)</label>
+              <div class="inp ph"><svg class="ic s18" style="color:var(--a-ink-3)"><use href="#i-user"/></svg> Username</div>
+            </div>
+            <div class="field">
+              <label>รหัสผ่าน (Password)</label>
+              <div class="pwd">
+                <div class="inp ph"><svg class="ic s18" style="color:var(--a-ink-3)"><use href="#i-lock"/></svg> ••••••••</div>
+                <div class="toggle"><svg class="ic s18"><use href="#i-eye"/></svg></div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-full" style="margin-top:4px">เข้าสู่ระบบ</button>
+            <div class="roles">
+              <span class="rl" style="color:#4f46e5"><svg class="ic s14"><use href="#i-hard-hat"/></svg> Foreman</span>
+              <span class="rl" style="color:#0ea5e9"><svg class="ic s14"><use href="#i-user-search"/></svg> Back Office</span>
+              <span class="rl" style="color:#8b5cf6"><svg class="ic s14"><use href="#i-shield-check"/></svg> Approver</span>
+            </div>
+            <div class="foot">© 2026 Property Management Solution</div>
+          </div>
+        </div></div>
+        <span class="measure">375 × 812</span>
+      </div>
+      <!-- error -->
+      <div class="device"><span class="cap">S8b · error + โชว์รหัส</span>
+        <div class="screenframe"><div class="app login">
+          <div class="card">
+            <div class="logo"><svg class="ic s28"><use href="#i-log-in"/></svg></div>
+            <h1>Master Task System</h1>
+            <div class="sub">กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่</div>
+            <div class="errbox"><svg class="ic s16"><use href="#i-alert-circle"/></svg> ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</div>
+            <div class="field">
+              <label>ชื่อผู้ใช้ (Username)</label>
+              <div class="inp"><svg class="ic s18" style="color:var(--a-ink-3)"><use href="#i-user"/></svg> somchai.t</div>
+            </div>
+            <div class="field">
+              <label>รหัสผ่าน (Password)</label>
+              <div class="pwd">
+                <div class="inp"><svg class="ic s18" style="color:var(--a-ink-3)"><use href="#i-lock"/></svg> pass1234</div>
+                <div class="toggle"><svg class="ic s18"><use href="#i-eye-off"/></svg></div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-full" style="margin-top:4px">กำลังเข้าสู่ระบบ...</button>
+            <div class="roles">
+              <span class="rl" style="color:#4f46e5"><svg class="ic s14"><use href="#i-hard-hat"/></svg> Foreman</span>
+              <span class="rl" style="color:#0ea5e9"><svg class="ic s14"><use href="#i-user-search"/></svg> Back Office</span>
+              <span class="rl" style="color:#8b5cf6"><svg class="ic s14"><use href="#i-shield-check"/></svg> Approver</span>
+            </div>
+            <div class="foot">© 2026 Property Management Solution</div>
+          </div>
+        </div></div>
+        <span class="measure">error state + toggle = EyeOff</span>
+      </div>
+      <div class="notes">
+        <h3><svg class="ic s16" style="color:var(--brand-2)"><use href="#i-alert-circle"/></svg> จุดที่แก้</h3>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">โลโก้ <b>LogIn</b> · หัวข้อ <b>Master Task System</b> · <b>กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่</b> · label <b>ชื่อผู้ใช้ (Username)</b> / <b>รหัสผ่าน (Password)</b> · ปุ่ม <b>เข้าสู่ระบบ</b> (loading <b>กำลังเข้าสู่ระบบ...</b>)</div></div>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">ชิปบทบาท <b>Foreman</b> (HardHat) · <b>Back Office</b> (UserSearch) · <b>Approver</b> (ShieldCheck) · ปุ่มโชว์รหัส <b>Eye/EyeOff</b> · error <b>ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</b> (AlertCircle)</div></div>
+        <div class="fix"><div class="ba after">มือถือ</div><div class="txt">หน้านี้ไม่มี isMobile อยู่แล้ว — การ์ด <code>maxWidth:420px</code> จัดกลางจอ พื้นไล่เฉดเต็ม เป็น fluid โดยธรรมชาติ · เพิ่ม touch target ปุ่ม ≥44px</div></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider"/>
+
+  <!-- ==================== S9 OWNER REVIEW ==================== -->
+  <section class="section">
+    <div class="head">
+      <span class="tag">S9 · OwnerReview.tsx — หน้าหลัก + ฟอร์ม</span>
+      <h2>Owner Review — ตรวจรับงานรายการเดียว (ลิงก์ QR ไร้ล็อกอิน)</h2>
+      <p>Eyebrow TTS ENGINEERING · การ์ดรายละเอียดงาน (โครงการ/พื้นที่/ปริมาณ/ช่าง) · ภาพ Before/After · หมายเหตุช่าง · ปุ่มอนุมัติ/ตีกลับ → ฟอร์มยืนยัน</p>
+    </div>
+    <div class="screen two">
+      <!-- main review -->
+      <div class="device"><span class="cap">S9a · หน้าตรวจรับหลัก</span>
+        <div class="screenframe"><div class="app">
+          <div class="body">
+            <div class="portal">
+              <span class="rvw-eyebrow indigo"><svg class="ic s14"><use href="#i-building-2"/></svg> TTS ENGINEERING</span>
+              <h1 class="ptitle">ระบบตรวจรับงานสำหรับลูกค้า (Owner Review)</h1>
+              <p class="psub">โปรดตรวจสอบผลงานและระบุผลตรวจรับของท่าน</p>
+
+              <div class="card">
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:9px">
+                  <span class="code badge b-indigo">TSK-00417</span>
+                  <span class="badge b-rev">REV. 0 (ครั้งแรก)</span>
+                </div>
+                <div style="font-size:16px;font-weight:800;line-height:1.25;margin-bottom:10px">ซ่อมรอยรั่วฝ้าเพดานห้องนอนใหญ่</div>
+                <div class="frow"><svg class="ic s16 fi"><use href="#i-building-2"/></svg><span class="fk">โครงการ:</span><span class="fv">Live Ramintra</span></div>
+                <div class="frow"><svg class="ic s16 fi"><use href="#i-map-pin"/></svg><span class="fk">พื้นที่หน้างาน:</span><span class="fv">A-1203 (งานสถาปัตยกรรม)</span></div>
+                <div class="frow"><svg class="ic s16 fi"><use href="#i-package"/></svg><span class="fk">ปริมาณงาน:</span><span class="fv">1 จุด (ฝ้าเพดาน)</span></div>
+                <div class="frow"><svg class="ic s16 fi"><use href="#i-user-check"/></svg><span class="fk">ช่างผู้รับผิดชอบ:</span><span class="fv">สมชาย ทองดี</span></div>
+              </div>
+
+              <div class="card">
+                <div class="photolab"><svg class="ic s18" style="color:var(--a-ink-3)"><use href="#i-camera"/></svg> ภาพก่อนดำเนินงาน (BEFORE)</div>
+                <div class="photogrid">
+                  <div class="photo ph-img" style="background:linear-gradient(135deg,#cbd5e1,#94a3b8)"></div>
+                  <div class="photo ph-img" style="background:linear-gradient(135deg,#cbd5e1,#94a3b8)"></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="photolab" style="color:var(--a-ok)"><svg class="ic s18"><use href="#i-camera"/></svg> ภาพหลังดำเนินงานเสร็จสิ้น (AFTER)</div>
+                <div class="photogrid">
+                  <div class="photo ph-img" style="background:linear-gradient(135deg,#86efac,#22c55e)"></div>
+                  <div class="photo ph-img" style="background:linear-gradient(135deg,#86efac,#22c55e)"></div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="photolab"><svg class="ic s16" style="color:var(--a-indigo)"><use href="#i-file-text"/></svg> บันทึกการทำงานล่าสุดจากช่างประจำวัน (12/07/2026):</div>
+                <div style="font-size:13px;color:var(--a-ink-2);line-height:1.5">"ดำเนินการเก็บงานสีรอบฝ้าและตรวจสอบรอยรั่วเรียบร้อยแล้ว ทิ้งให้แห้งสนิท 24 ชม."</div>
+              </div>
+
+              <button class="btn btn-ok btn-full" style="margin-bottom:10px"><svg class="ic s18"><use href="#i-check-circle-2"/></svg> อนุมัติผ่านงาน (Approve)</button>
+              <button class="btn btn-danger btn-full"><svg class="ic s18"><use href="#i-x-circle"/></svg> ส่งกลับแก้ไข (Reject)</button>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">375 × 812</span>
+      </div>
+
+      <!-- approve + reject forms -->
+      <div class="device"><span class="cap">S9b · ฟอร์มอนุมัติ / ตีกลับ</span>
+        <div class="screenframe"><div class="app">
+          <div class="body">
+            <div class="portal">
+              <div class="card">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                  <svg class="ic s22" style="color:var(--a-ok)"><use href="#i-check-circle-2"/></svg>
+                  <b style="font-size:15px">ยืนยันอนุมัติผ่านงานตรวจรับ (Approve Form)</b>
+                </div>
+                <div style="font-size:12.5px;color:var(--a-brand);font-weight:700;margin:2px 0 13px;cursor:pointer">‹ ย้อนกลับ</div>
+                <div class="field">
+                  <label>ชื่อผู้แทนลูกค้า / เจ้าของบ้านผู้ลงนามตรวจรับ <span class="req">*</span></label>
+                  <div class="inp ph">กรอกชื่อ-นามสกุล ของท่าน...</div>
+                </div>
+                <div class="field">
+                  <label>คำติชม หรือ ข้อความหมายเหตุเพิ่มเติม (ถ้ามี)</label>
+                  <div class="inp ta ph">ระบุข้อความคำติชม หรือ หมายเหตุเพิ่มเติมเกี่ยวกับงาน...</div>
+                </div>
+                <button class="btn btn-ok btn-full"><svg class="ic s18"><use href="#i-check-circle-2"/></svg> ยืนยันปิดงานโดยสมบูรณ์</button>
+              </div>
+
+              <div class="card">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                  <svg class="ic s22" style="color:var(--a-danger)"><use href="#i-x-circle"/></svg>
+                  <b style="font-size:15px">ยืนยันตีกลับเพื่อแก้ไขงาน (Reject Form)</b>
+                </div>
+                <div style="font-size:12.5px;color:var(--a-brand);font-weight:700;margin:2px 0 12px;cursor:pointer">‹ ย้อนกลับ</div>
+                <div class="banner warn"><svg class="ic s18 bi"><use href="#i-alert-triangle"/></svg> การส่งกลับแก้ไขจะส่งผลให้โปรเกรสลดเหลือ 0% เพื่อให้ช่างเริ่มดำเนินการปรับปรุงและรายงานข้อมูลเข้ามาอีกครั้ง</div>
+                <div class="field">
+                  <label>ระบุสาเหตุที่ไม่ผ่านการตรวจรับ / จุดบกพร่องที่ต้องแก้ไข <span class="req">*</span></label>
+                  <div class="inp ta ph">ระบุจุดที่ชำรุด งานไม่เรียบร้อย เพื่อให้ช่างนำไปแก้ไขได้ถูกต้อง...</div>
+                </div>
+                <button class="btn btn-danger btn-full"><svg class="ic s18"><use href="#i-x-circle"/></svg> ส่งกลับแก้ไข (Create Revision)</button>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">2 ฟอร์ม (สลับด้วย actionType)</span>
+      </div>
+
+      <div class="notes">
+        <h3><svg class="ic s16" style="color:var(--brand-2)"><use href="#i-alert-circle"/></svg> จุดที่แก้</h3>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">Eyebrow <b>TTS ENGINEERING</b> · หัวข้อ <b>ระบบตรวจรับงานสำหรับลูกค้า (Owner Review)</b> · field <b>โครงการ:/พื้นที่หน้างาน:/ปริมาณงาน:/ช่างผู้รับผิดชอบ:</b> ไอคอน Building2/MapPin/Package/UserCheck เป๊ะ</div></div>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">Revision chip <b>REV. 0 (ครั้งแรก)</b> · ภาพ <b>ก่อนดำเนินงาน (BEFORE)</b>/<b>หลังดำเนินงานเสร็จสิ้น (AFTER)</b> · ปุ่ม <b>อนุมัติผ่านงาน (Approve)</b>/<b>ส่งกลับแก้ไข (Reject)</b> ไอคอน CheckCircle2/XCircle</div></div>
+        <div class="fix"><div class="ba after">มือถือ</div><div class="txt">หน้านี้ mobile-first อยู่แล้ว (<code>maxWidth:640px</code>) → ในกรอบ 375px ยึดคอลัมน์เดียว · ภาพ Before/After grid <code>1fr 1fr</code> ยุบเป็นคอลัมน์เดียวเมื่อแคบมาก · ปุ่มยืนยันเต็มกว้าง</div></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider"/>
+
+  <!-- ==================== S9c SUCCESS STATES ==================== -->
+  <section class="section">
+    <div class="head">
+      <span class="tag">S9c · OwnerReview.tsx — สถานะหลังส่ง (submitted)</span>
+      <h2>หน้าผลลัพธ์ — อนุมัติสำเร็จ / ส่งกลับแก้ไข</h2>
+      <p>สองสถานะปิดจบ (ไม่มีปุ่มต่อ) — โชว์ไอคอนวงกลมใหญ่ + ข้อความยืนยัน + footer note "ปิดหน้านี้บนมือถือได้เลย"</p>
+    </div>
+    <div class="screen two">
+      <div class="device"><span class="cap">S9c-1 · อนุมัติสำเร็จ</span>
+        <div class="screenframe"><div class="app">
+          <div class="success">
+            <div class="big" style="background:var(--a-ok-soft);color:var(--a-ok)"><svg class="ic s48"><use href="#i-check-circle-2"/></svg></div>
+            <h2>อนุมัติและตรวจรับงานสำเร็จ!</h2>
+            <p>ขอบคุณสำหรับการสละเวลาตรวจงาน ระบบได้ทำการบันทึกข้อมูลและปิดรายการงานเรียบร้อยแล้ว โฟร์แมนและช่างโครงการจะได้รับแจ้งการปิดงานทันที</p>
+            <span class="note"><svg class="ic s14"><use href="#i-sparkles"/></svg> ท่านสามารถปิดหน้านี้บนมือถือของท่านได้เลย</span>
+          </div>
+        </div></div>
+        <span class="measure">actionType approve · submitted</span>
+      </div>
+      <div class="device"><span class="cap">S9c-2 · ส่งกลับแก้ไข</span>
+        <div class="screenframe"><div class="app">
+          <div class="success">
+            <div class="big" style="background:var(--a-danger-soft);color:var(--a-danger)"><svg class="ic s48"><use href="#i-x-circle"/></svg></div>
+            <h2>บันทึกการส่งกลับแก้ไขเรียบร้อย</h2>
+            <p>ระบบได้ส่งตีกลับงานนี้เรียบร้อยแล้ว รายการจะถูกย้อนความคืบหน้ากลับเป็น 0% และปรับเป็นรุ่น (Revision) ถัดไป ช่างจะได้รับแจ้งและเริ่มเข้าไปทำการแก้ไขจุดชำรุดทันที</p>
+            <span class="note"><svg class="ic s14"><use href="#i-sparkles"/></svg> ท่านสามารถปิดหน้านี้บนมือถือของท่านได้เลย</span>
+          </div>
+        </div></div>
+        <span class="measure">actionType reject · submitted</span>
+      </div>
+      <div class="notes">
+        <h3><svg class="ic s16" style="color:var(--brand-2)"><use href="#i-alert-circle"/></svg> จุดที่แก้</h3>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">ข้อความยืนยันทั้งสองสถานะ verbatim · ไอคอน <b>CheckCircle2</b> (เขียว) / <b>XCircle</b> (แดง) · footer <b>ท่านสามารถปิดหน้านี้บนมือถือของท่านได้เลย</b> (Sparkles)</div></div>
+        <div class="fix"><div class="ba after">มือถือ</div><div class="txt">จัดกึ่งกลางแนวตั้ง · ไอคอนวงกลมใหญ่ · ความกว้างข้อความจำกัด ~38ch อ่านง่ายบนจอแคบ</div></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider"/>
+
+  <!-- ==================== S10 CUSTOMER HANDOVER — After-Sale ==================== -->
+  <section class="section">
+    <div class="head">
+      <span class="tag">S10 · CustomerHandover.tsx — Branch B (After-Sale)</span>
+      <h2>พอร์ทัลส่งมอบงานลูกค้า — หลายรายการ + แบบประเมิน</h2>
+      <p>Eyebrow HANDOVER PORTAL · info banner · รายการงานย่อยกด "ผ่าน"/"แก้ไข" (ขยายดูภาพ Before/After + ฟอร์มแจ้งจุดชำรุด) · แบบประเมินความพึงพอใจ 5 ดาว เมื่อผ่านครบ</p>
+    </div>
+    <div class="screen two">
+      <!-- list + expanded -->
+      <div class="device"><span class="cap">S10a · รายการ + ขยาย</span>
+        <div class="screenframe"><div class="app">
+          <div class="body">
+            <div class="portal">
+              <span class="rvw-eyebrow blue"><svg class="ic s14"><use href="#i-building-2"/></svg> HANDOVER PORTAL</span>
+              <h1 class="ptitle">แบบฟอร์มตรวจรับและประเมินผลงานลูกค้า</h1>
+              <p class="psub"><svg class="ic s14" style="display:inline;vertical-align:-2px;color:var(--a-ink-3)"><use href="#i-map-pin"/></svg> โครงการ: Live Ramintra | สถานที่: A-1203</p>
+              <div class="banner blue"><svg class="ic s18 bi"><use href="#i-sparkles"/></svg> เรียน คุณลูกค้าตรวจรับงาน โปรดประเมินรายการงานย่อยด้านล่างโดยกด "ผ่าน" หรือ "ส่งแก้ไข" และทำแบบสอบถามก่อนยืนยันค่ะ</div>
+
+              <div class="seclabel">รายการงานที่ส่งมอบ <span class="cnt">3</span></div>
+
+              <!-- row passed -->
+              <div class="trow">
+                <div class="th"><span class="nm">ซ่อมรอยรั่วฝ้าเพดานห้องนอนใหญ่</span>
+                  <span class="pr pass on"><svg class="ic s14"><use href="#i-check"/></svg> ผ่าน</span>
+                  <svg class="ic s18 cx"><use href="#i-chevron-down"/></svg>
+                </div>
+              </div>
+
+              <!-- row expanded (reject) -->
+              <div class="trow">
+                <div class="th"><span class="nm">เปลี่ยนก๊อกน้ำอ่างล้างหน้า</span>
+                  <span class="pr rej on">แก้ไข</span>
+                  <svg class="ic s18 cx"><use href="#i-chevron-up"/></svg>
+                </div>
+                <div class="texp">
+                  <div class="photolab"><svg class="ic s16" style="color:var(--a-ink-3)"><use href="#i-camera"/></svg> รูปถ่ายก่อนทำ (BEFORE)</div>
+                  <div class="photogrid" style="margin-bottom:11px">
+                    <div class="photo ph-img" style="position:relative;background:linear-gradient(135deg,#cbd5e1,#94a3b8)"><span class="tag-ov" style="background:rgba(15,23,42,.75)">BEFORE</span></div>
+                    <div class="photo ph-img" style="position:relative;background:linear-gradient(135deg,#cbd5e1,#94a3b8)"><span class="tag-ov" style="background:rgba(15,23,42,.75)">BEFORE</span></div>
+                  </div>
+                  <div class="photolab" style="color:var(--a-ok)"><svg class="ic s16"><use href="#i-camera"/></svg> รูปถ่ายหลังทำ (AFTER)</div>
+                  <div class="photogrid" style="margin-bottom:11px">
+                    <div class="photo ph-img" style="position:relative;background:linear-gradient(135deg,#86efac,#22c55e)"><span class="tag-ov" style="background:var(--a-ok)">AFTER</span></div>
+                    <div class="photo ph-img" style="position:relative;background:linear-gradient(135deg,#86efac,#22c55e)"><span class="tag-ov" style="background:var(--a-ok)">AFTER</span></div>
+                  </div>
+                  <div class="defbox">
+                    <div class="dh">ระบุจุดชำรุดและวิธีติดต่อ:</div>
+                    <div class="field"><div class="inp ta ph">ระบุจุดที่ชำรุด/ต้องการให้แก้ไข...</div></div>
+                    <div class="field" style="margin-bottom:8px"><div class="inp ph"><svg class="ic s16" style="color:var(--a-ink-3)"><use href="#i-user"/></svg> ชื่อติดต่อ...</div></div>
+                    <div class="field" style="margin-bottom:0"><div class="inp ph"><svg class="ic s16" style="color:var(--a-ink-3)"><use href="#i-phone"/></svg> เบอร์โทร...</div></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="trow">
+                <div class="th"><span class="nm">ทาสีเก็บงานผนังห้องรับแขก</span>
+                  <span class="pr pass"><svg class="ic s14"><use href="#i-check"/></svg> ผ่าน</span>
+                  <svg class="ic s18 cx"><use href="#i-chevron-down"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">375 × 812</span>
+      </div>
+
+      <!-- survey + submit -->
+      <div class="device"><span class="cap">S10b · แบบประเมิน + ส่ง</span>
+        <div class="screenframe"><div class="app">
+          <div class="body">
+            <div class="portal">
+              <div class="survey">
+                <div class="sh"><svg class="ic s18" style="color:var(--a-amber)"><use href="#i-sparkles"/></svg> แบบประเมินความพึงพอใจ</div>
+                <div class="rate"><span class="rl">คุณภาพงานซ่อมแซม</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความสะอาดหน้างาน</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความเป็นมืออาชีพของทีมงาน</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความถูกต้องตรงตามสเปก</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความเอาใจใส่ในการส่งมอบ</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+              </div>
+              <button class="btn btn-primary btn-full" style="margin-bottom:9px">ยืนยันและส่งมอบงานตรวจรับ</button>
+              <div style="text-align:center;font-size:11.5px;color:var(--a-ink-3)">* มีรายการสั่งแก้ไข → ปุ่มเปลี่ยนเป็น "ส่งจุดที่ต้องแก้ไขกลับให้โฟร์แมน"</div>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">โผล่เมื่อประเมินครบทุกรายการ</span>
+      </div>
+
+      <div class="notes">
+        <h3><svg class="ic s16" style="color:var(--brand-2)"><use href="#i-alert-circle"/></svg> จุดที่แก้</h3>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">Eyebrow <b>HANDOVER PORTAL</b> (Building2) · info banner verbatim (Sparkles) · หัวข้อ <b>รายการงานที่ส่งมอบ (N)</b> · ปุ่ม <b>ผ่าน</b>/<b>แก้ไข</b> · ฟอร์ม reject <b>ระบุจุดชำรุดและวิธีติดต่อ:</b> + <b>ชื่อติดต่อ.../เบอร์โทร...</b> (User/Phone)</div></div>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">แบบประเมิน 5 หัวข้อ: <b>คุณภาพงานซ่อมแซม · ความสะอาดหน้างาน · ความเป็นมืออาชีพของทีมงาน · ความถูกต้องตรงตามสเปก · ความเอาใจใส่ในการส่งมอบ</b> · ปุ่ม <b>ยืนยันและส่งมอบงานตรวจรับ</b></div></div>
+        <div class="fix"><div class="ba after">มือถือ</div><div class="txt">แถวรายการ = แถวแตะขยาย (accordion) · ภาพ Before/After <code>1fr 1fr</code> · ดาวประเมินขนาด 22px แตะง่าย · ปุ่มส่งเต็มกว้าง</div></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider"/>
+
+  <!-- ==================== S11 CUSTOMER HANDOVER — PreHandover ==================== -->
+  <section class="section">
+    <div class="head">
+      <span class="tag">S11 · CustomerHandover.tsx — Branch A (PreHandover)</span>
+      <h2>ตรวจรับก่อนโอน — รายหมวดงาน + แบบประเมิน</h2>
+      <p>สาขาที่ render เมื่อ <code>workOrder.type === 'PreHandover'</code> · Eyebrow PRE-HANDOVER INSPECTION (teal) · รายการ "หมวดงาน" กด ผ่าน/ส่งแก้ไข · แบบประเมินคนละชุด label กับ After-Sale</p>
+    </div>
+    <div class="screen">
+      <div class="device"><span class="cap">S11 · ตรวจรับก่อนโอน</span>
+        <div class="screenframe"><div class="app">
+          <div class="body">
+            <div class="portal">
+              <span class="rvw-eyebrow teal"><svg class="ic s14"><use href="#i-clipboard-list"/></svg> PRE-HANDOVER INSPECTION</span>
+              <h1 class="ptitle">แบบฟอร์มตรวจรับก่อนโอน</h1>
+              <p class="psub"><svg class="ic s14" style="display:inline;vertical-align:-2px;color:var(--a-ink-3)"><use href="#i-map-pin"/></svg> โครงการ: The Rich Rama9 B-0808</p>
+              <div class="banner teal"><svg class="ic s18 bi"><use href="#i-clipboard-list"/></svg> กรุณาตรวจสอบรายการหมวดงานด้านล่าง และกด "ผ่าน" หรือ "ส่งแก้ไข" ทุกรายการก่อนยืนยันรับมอบงาน</div>
+
+              <div class="seclabel">หมวดงานทั้งหมด <span class="cnt">4</span></div>
+
+              <div class="trow">
+                <div class="th">
+                  <div style="flex:1;min-width:0">
+                    <div class="nm">งานสถาปัตยกรรม</div>
+                    <div style="font-size:11px;color:var(--a-ink-3);margin-top:3px">รายงานล่าสุด: 12/07/2026 · ความคืบหน้า 100%</div>
+                  </div>
+                  <span class="pr pass on"><svg class="ic s14"><use href="#i-check"/></svg> ผ่าน</span>
+                  <svg class="ic s18 cx"><use href="#i-chevron-down"/></svg>
+                </div>
+              </div>
+
+              <div class="trow">
+                <div class="th">
+                  <div style="flex:1;min-width:0">
+                    <div class="nm">งานระบบไฟฟ้า</div>
+                    <div style="font-size:11px;color:var(--a-ink-3);margin-top:3px">รายงานล่าสุด: 11/07/2026 · ความคืบหน้า 90%</div>
+                  </div>
+                  <span class="pr rej on">ส่งแก้ไข</span>
+                  <svg class="ic s18 cx"><use href="#i-chevron-up"/></svg>
+                </div>
+                <div class="texp">
+                  <div class="photolab"><svg class="ic s16" style="color:var(--a-ink-3)"><use href="#i-camera"/></svg> รูปถ่ายจากรายงานล่าสุด</div>
+                  <div class="photogrid" style="margin-bottom:11px">
+                    <div class="photo ph-img" style="background:linear-gradient(135deg,#cbd5e1,#94a3b8)"></div>
+                    <div class="photo ph-img" style="background:linear-gradient(135deg,#cbd5e1,#94a3b8)"></div>
+                  </div>
+                  <div class="field" style="margin-bottom:0">
+                    <label>ระบุเหตุผลที่ส่งแก้ไข <span class="req">*</span></label>
+                    <div class="inp ta ph">เช่น งานฉาบปูนไม่เรียบ, สีไม่สม่ำเสมอ...</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="trow">
+                <div class="th">
+                  <div style="flex:1;min-width:0">
+                    <div class="nm">งานระบบประปา/สุขาภิบาล</div>
+                    <div style="font-size:11px;color:var(--a-ink-3);margin-top:3px">ไม่มีข้อมูลรายงาน · ความคืบหน้า 0%</div>
+                  </div>
+                  <span class="pr pass"><svg class="ic s14"><use href="#i-check"/></svg> ผ่าน</span>
+                  <svg class="ic s18 cx"><use href="#i-chevron-down"/></svg>
+                </div>
+              </div>
+
+              <div class="survey" style="margin-top:14px">
+                <div class="sh"><svg class="ic s18" style="color:var(--a-amber)"><use href="#i-sparkles"/></svg> แบบประเมินความพึงพอใจ</div>
+                <div class="rate"><span class="rl">คุณภาพงาน</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความสะอาดหน้างาน</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความเป็นมืออาชีพของโฟรแมน</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความถูกต้องตามสเปก</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                <div class="rate"><span class="rl">ความระมัดระวังในการส่งมอบ</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+              </div>
+              <button class="btn btn-teal btn-full">ยืนยันรับมอบงาน</button>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">375 × 812</span>
+      </div>
+      <div class="notes">
+        <h3><svg class="ic s16" style="color:var(--brand-2)"><use href="#i-alert-circle"/></svg> จุดที่แก้</h3>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">Eyebrow <b>PRE-HANDOVER INSPECTION</b> (ClipboardList teal) · หัวข้อ <b>แบบฟอร์มตรวจรับก่อนโอน</b> · หัวข้อลิสต์ <b>หมวดงานทั้งหมด (N)</b> · sub-line <b>รายงานล่าสุด: {date}</b> / <b>ไม่มีข้อมูลรายงาน</b> + <b>· ความคืบหน้า N%</b> · ปุ่ม <b>ผ่าน/ส่งแก้ไข</b> · reject <b>ระบุเหตุผลที่ส่งแก้ไข *</b></div></div>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">แบบประเมินสาขานี้ label ต่างจาก After-Sale: <b>คุณภาพงาน · ความสะอาดหน้างาน · ความเป็นมืออาชีพของโฟรแมน · ความถูกต้องตามสเปก · ความระมัดระวังในการส่งมอบ</b> · ปุ่ม <b>ยืนยันรับมอบงาน</b></div></div>
+        <div class="fix"><div class="ba after">มือถือ</div><div class="txt">โครงสร้างเดียวกับ After-Sale (คอลัมน์เดียว, accordion) — เปลี่ยนแค่ label ตาม branch · ปุ่มธีม teal ตาม eyebrow</div></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider"/>
+
+  <!-- ==================== S12 CUSTOMER INSPECTION MOCKUP MODAL ==================== -->
+  <section class="section">
+    <div class="head">
+      <span class="tag">S12 · CustomerInspectionMockup.tsx — โมดัลจำลอง (ฝั่งแอดมิน)</span>
+      <h2>โมดัลจำลองหน้าตรวจรับของลูกค้า — เต็มจอ + ฟอร์มวินิจฉัยจุดชำรุด</h2>
+      <p>โมดัลเต็มจอ (แอดมินจำลองการตรวจรับแทนลูกค้า) · หัวข้อ dark gradient · per-task ขยายดูภาพ + carousel · ฟอร์ม defect (chips 4 ประเภท) · แบบประเมิน 5 ข้อแบบมีเลขกำกับ</p>
+    </div>
+    <div class="screen two">
+      <!-- modal body -->
+      <div class="device"><span class="cap">S12a · โมดัล + ฟอร์ม defect</span>
+        <div class="screenframe"><div class="app">
+          <div class="body" style="filter:blur(1px);opacity:.5">
+            <div class="portal"><div class="card" style="height:80px"></div><div class="card" style="height:120px"></div></div>
+          </div>
+          <div class="fsmodal">
+            <div class="panel">
+              <div class="ph">
+                <div class="pt">
+                  <div class="grip"></div>
+                  <span class="eb"><svg class="ic s12"><use href="#i-building-2"/></svg> TTS After Sale Portal</span>
+                  <b>หน้าจอจำลองการส่งมอบงานของลูกค้า (Customer Review Simulation)</b>
+                </div>
+                <span class="x">✕</span>
+              </div>
+              <div class="pb">
+                <div class="banner info"><svg class="ic s18 bi"><use href="#i-sparkles"/></svg><span><b>สแกนคิวอาร์โค้ดหน้างาน:</b> หน้านี้คือระบบหน้าตรวจรับของลูกค้า (Secure Customer Link) แบบไร้ล็อกอิน จำลองแสดงเพื่อส่งผลการตรวจรับย้อนกลับสู่ระบบทันที (แยกสิทธิ์การประเมินจากแอดมินโดยตรง)</span></div>
+                <div class="seclabel">รายการส่งมอบ <span class="cnt">2 รายการ</span></div>
+
+                <div class="trow">
+                  <div class="th"><span class="code badge b-indigo" style="flex-shrink:0">TSK-00417</span><span class="nm">ซ่อมรอยรั่วฝ้าเพดาน</span>
+                    <span class="pr pass"><svg class="ic s14"><use href="#i-check"/></svg> ผ่าน (Approve)</span>
+                  </div>
+                </div>
+
+                <div class="trow">
+                  <div class="th"><span class="code badge b-indigo" style="flex-shrink:0">TSK-00418</span><span class="nm">เปลี่ยนก๊อกน้ำ</span>
+                    <span class="pr rej on">แก้ (Reject)</span>
+                    <svg class="ic s18 cx"><use href="#i-chevron-up"/></svg>
+                  </div>
+                  <div class="texp">
+                    <div style="font-size:11.5px;font-weight:700;color:var(--a-ink-2);margin-bottom:6px">ภาพก่อนซ่อม (BEFORE):</div>
+                    <div class="carousel" style="margin-bottom:11px">
+                      <div class="photo ph-img" style="height:150px;background:linear-gradient(135deg,#cbd5e1,#94a3b8)"></div>
+                    </div>
+                    <div style="font-size:11.5px;font-weight:700;color:var(--a-ok);margin-bottom:6px">ภาพหลังซ่อมเสร็จ (AFTER):</div>
+                    <div class="carousel" style="margin-bottom:11px">
+                      <div class="photo ph-img" style="height:150px;background:linear-gradient(135deg,#86efac,#22c55e)"></div>
+                      <div class="nav l"><svg class="ic s16"><use href="#i-chevron-left"/></svg></div>
+                      <div class="nav r"><svg class="ic s16"><use href="#i-chevron-right"/></svg></div>
+                      <span class="pgbadge">2/3 รูป</span>
+                    </div>
+                    <div class="defbox">
+                      <div class="dh">📝 ระบุรายละเอียดเพื่อส่งช่างแก้ไขใหม่</div>
+                      <div class="defchips">
+                        <span class="dc on">Cosmetic (ผิวสัมผัส/ความงาม)</span>
+                        <span class="dc">Functional (การใช้งาน)</span>
+                        <span class="dc">Cleanliness (ความสะอาด)</span>
+                        <span class="dc">SpecMismatch (ไม่ตรงสเปก)</span>
+                      </div>
+                      <div class="field"><label style="color:#b91c1c">ชื่อผู้แจ้ง / ติดต่อกลับ <span class="req">*</span></label><div class="inp ph">ระบุชื่อผู้แจ้ง...</div></div>
+                      <div class="field"><label style="color:#b91c1c">เบอร์โทรติดต่อกลับ <span class="req">*</span></label><div class="inp ph">ระบุเบอร์โทรศัพท์...</div></div>
+                      <div class="field" style="margin-bottom:0"><div class="inp ta ph">ระบุจุดบกพร่องที่ต้องแก้ไขให้ช่างรับทราบด่วน... (ห้ามว่าง)</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="pf">
+                <button class="btn btn-ghost" style="flex:1">ย้อนกลับ</button>
+                <button class="btn btn-primary" style="flex:1.4">ส่งผลการประเมิน</button>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">โมดัลเต็มจอ z3000 · ปุ่มปิด ✕</span>
+      </div>
+
+      <!-- survey numbered -->
+      <div class="device"><span class="cap">S12b · แบบประเมิน 5 มิติ (มีเลข)</span>
+        <div class="screenframe"><div class="app">
+          <div class="fsmodal" style="background:var(--a-bg)">
+            <div class="panel" style="max-height:100%">
+              <div class="ph">
+                <div class="pt">
+                  <div class="grip"></div>
+                  <span class="eb"><svg class="ic s12"><use href="#i-building-2"/></svg> TTS After Sale Portal</span>
+                  <b>หน้าจอจำลองการส่งมอบงานของลูกค้า (Customer Review Simulation)</b>
+                </div>
+                <span class="x">✕</span>
+              </div>
+              <div class="pb">
+                <div class="survey">
+                  <div class="sh"><svg class="ic s18" style="color:var(--a-amber)"><use href="#i-sparkles"/></svg> แบบประเมินความพึงพอใจ 5 มิติหลัก (Satisfaction Survey)</div>
+                  <div class="rate"><span class="rl">1. คุณภาพงานซ่อมแซม (Work Quality)</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                  <div class="rate"><span class="rl">2. ความเรียบร้อยและความสะอาด (Cleanliness)</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+                  <div class="rate"><span class="rl">3. ความเป็นมืออาชีพของโฟร์แมน (Professionalism)</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                  <div class="rate"><span class="rl">4. ความถูกต้องตามข้อกำหนดสเปก (Spec Accuracy)</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div>
+                  <div class="rate"><span class="rl">5. การดูแลระมัดระวังทรัพย์สิน (Handover Care)</span><span class="stars"><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg><svg class="ic on"><use href="#i-star"/></svg></span></div>
+                </div>
+                <div style="font-size:11px;color:var(--a-ink-3);text-align:center;padding:4px 8px">โผล่เมื่อทุกรายการกด "ผ่าน" ครบ · ยังมี Lightbox ซ้อน (z4000) ตอนแตะรูป: "รูปที่ N จาก M"</div>
+              </div>
+              <div class="pf">
+                <button class="btn btn-ghost" style="flex:1">ย้อนกลับ</button>
+                <button class="btn btn-primary" style="flex:1.4">ส่งผลการประเมิน</button>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <span class="measure">survey มีเลข 1–5 + English</span>
+      </div>
+
+      <div class="notes">
+        <h3><svg class="ic s16" style="color:var(--brand-2)"><use href="#i-alert-circle"/></svg> จุดที่แก้</h3>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">Eyebrow <b>TTS After Sale Portal</b> · หัวข้อ <b>หน้าจอจำลองการส่งมอบงานของลูกค้า (Customer Review Simulation)</b> · info banner (bold lead <b>สแกนคิวอาร์โค้ดหน้างาน:</b>) · chips defect 4 อัน verbatim · header <b>📝 ระบุรายละเอียด...</b> (emoji ตาม source)</div></div>
+        <div class="fix"><div class="ba keep">คงเดิม</div><div class="txt">ปุ่ม <b>ผ่าน (Approve)</b>/<b>แก้ (Reject)</b> · label <b>ชื่อผู้แจ้ง / ติดต่อกลับ *</b> / <b>เบอร์โทรติดต่อกลับ *</b> · survey มีเลขกำกับ 1–5 + ภาษาอังกฤษในวงเล็บ · footer <b>ย้อนกลับ / ส่งผลการประเมิน</b> · carousel <b>{i}/{n} รูป</b></div></div>
+        <div class="fix"><div class="ba after">มือถือ</div><div class="txt">โมดัล desktop (<code>maxWidth:780px</code>, 2-col) → <b>bottom-sheet เต็มจอ</b> หัว dark gradient · grid ภาพ <code>1fr 1fr</code> → carousel เดี่ยว · footer ปุ่มปักล่าง</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <h3>Group 3 — สรุปความครบถ้วน</h3>
+    <p>7 สกรีน / 12 device: Login (ปกติ + error) · Owner Review (หน้าหลัก + ฟอร์มอนุมัติ/ตีกลับ + 2 สถานะสำเร็จ) · Customer Handover After-Sale (ลิสต์+ขยาย + แบบประเมิน) · Customer Handover PreHandover · Customer Inspection โมดัลจำลอง (ฟอร์ม defect + survey มีเลข).</p>
+    <div class="pill-list">
+      <span class="pill done">✓ Login + error</span>
+      <span class="pill done">✓ Owner Review หลัก</span>
+      <span class="pill done">✓ Approve / Reject form</span>
+      <span class="pill done">✓ Success states ×2</span>
+      <span class="pill done">✓ Handover After-Sale</span>
+      <span class="pill done">✓ Handover PreHandover</span>
+      <span class="pill done">✓ Inspection modal + survey</span>
+    </div>
+  </div>
+
+</div>
+</div>

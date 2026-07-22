@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, X, ChevronLeft, ChevronRight, Image as ImageIcon, Info, FileText } from 'lucide-react';
+import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, X, ChevronLeft, ChevronRight, ChevronDown, Image as ImageIcon, Info, FileText } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
@@ -13,11 +13,15 @@ import TaskReviewModal from '../components/TaskReviewModal';
 import DateRangePicker from '../components/DateRangePicker';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { gridCols } from '../components/ui/responsiveGrid';
+import { scaleFont } from '../components/ui/responsiveText';
 
 const SLAMonitor = () => {
     const { user } = useAuth();
     const { workOrders, updateWorkOrderStatus, updateTask, projects, staff, contractors, saveEvaluation } = useWorkOrders();
     const [searchParams] = useSearchParams();
+    const isMobile = useIsMobile();
 
     useEffect(() => {
         if (user) {
@@ -29,6 +33,13 @@ const SLAMonitor = () => {
     const currentUserId = user?.id || '';
 
     const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+    // Mobile: kanban columns collapse to headers by default; tap header to expand (mockup S7 "แถวพับได้")
+    const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set());
+    const toggleCol = (key: string) => setExpandedCols((prev) => {
+        const n = new Set(prev);
+        if (n.has(key)) { n.delete(key); } else { n.add(key); }
+        return n;
+    });
     const [zoomImage, setZoomImage] = useState<string | null>(null);
     const [closingWorkOrder, setClosingWorkOrder] = useState<any | null>(null);
     const [verifyingTaskId, setVerifyingTaskId] = useState<string | null>(null);
@@ -401,21 +412,21 @@ const SLAMonitor = () => {
                 </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-                    <div style={{ background: '#0f172a', padding: '14px', borderRadius: '18px', color: 'white', boxShadow: '0 10px 15px -3px rgba(15, 23, 42, 0.2)' }}>
-                        <LayoutDashboard size={28} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: isMobile ? '1.5rem' : '2.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.75rem' : '1.25rem' }}>
+                    <div style={{ background: '#0f172a', padding: isMobile ? '10px' : '14px', borderRadius: isMobile ? '14px' : '18px', color: 'white', boxShadow: '0 10px 15px -3px rgba(15, 23, 42, 0.2)' }}>
+                        <LayoutDashboard size={isMobile ? 22 : 28} />
                     </div>
                     <div>
-                        <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.025em' }}>ติดตามสถานะงาน (Real-time Tracking)</h1>
-                        <span style={{ color: '#64748b', fontSize: '0.95rem', marginTop: '4px', display: 'block', fontWeight: 500 }}>มอนิเตอร์ความคืบหน้าและประเมินผลงานตาม SLA</span>
+                        <h1 style={{ margin: 0, fontSize: scaleFont(isMobile, '1.8rem'), fontWeight: 900, color: '#0f172a', letterSpacing: '-0.025em' }}>ติดตามสถานะงาน (Real-time Tracking)</h1>
+                        <span style={{ color: '#64748b', fontSize: scaleFont(isMobile, '0.95rem'), marginTop: '4px', display: 'block', fontWeight: 500 }}>มอนิเตอร์ความคืบหน้าและประเมินผลงานตาม SLA</span>
                     </div>
                 </div>
             </div>
 
             <div style={{ background: 'white', padding: '1.25rem', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', marginBottom: '1.25rem', border: '1px solid #f1f5f9' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.2fr) 0.8fr 1fr 1fr 1fr 1fr auto', gap: '0.8rem', alignItems: 'center' }}>
-                    <div style={{ position: 'relative' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'minmax(200px, 1.2fr) 0.8fr 1fr 1fr 1fr 1fr auto', 'minmax(0, 1fr) minmax(0, 1fr)'), gap: '0.8rem', alignItems: 'center' }}>
+                    <div style={{ position: 'relative', gridColumn: isMobile ? '1 / -1' : undefined }}>
                         <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} size={18} />
                         <input type="text" placeholder="ค้นหาเลขที่งาน หรือ บ้านเลขที่..." style={{ ...commonInputStyle, paddingLeft: '44px', width: '100%', boxSizing: 'border-box' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
@@ -441,7 +452,8 @@ const SLAMonitor = () => {
                         </select>
                     ) : <div />}
 
-                    <div style={{ display: 'flex', background: '#f8fafc', padding: '4px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: isMobile ? 'flex' : 'contents', gap: '8px', alignItems: 'center', gridColumn: isMobile ? '1 / -1' : undefined }}>
+                    <div style={{ display: 'flex', background: '#f8fafc', padding: '4px', borderRadius: '14px', border: '1px solid #e2e8f0', flex: isMobile ? 1 : undefined, minWidth: isMobile ? 0 : undefined }}>
                         <button
                             onClick={() => {
                                 if (sortBy === 'urgency') {
@@ -500,9 +512,10 @@ const SLAMonitor = () => {
                         </button>
                     </div>
 
-                    <button onClick={clearFilters} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '10px 14px', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontWeight: 600 }}>
+                    <button onClick={clearFilters} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '10px 14px', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#64748b', fontWeight: 600, flexShrink: isMobile ? 0 : undefined, whiteSpace: isMobile ? 'nowrap' : undefined }}>
                         <RotateCw size={16} /> ล้าง
                     </button>
+                    </div>
                 </div>
             </div>
 
@@ -510,21 +523,21 @@ const SLAMonitor = () => {
                 <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#94a3b8', marginRight: '4px' }}>แสดง:</span>
                 <button
                     onClick={() => setViewMode('afterSale')}
-                    style={{ padding: '8px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: viewMode === 'afterSale' ? '#0f172a' : '#f1f5f9', color: viewMode === 'afterSale' ? '#fff' : '#64748b', fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ padding: '8px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: viewMode === 'afterSale' ? '#0f172a' : '#f1f5f9', color: viewMode === 'afterSale' ? '#fff' : '#64748b', fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: isMobile ? 1 : undefined }}
                 >
                     🔧 งานหลังขาย
                     <span style={{ background: viewMode === 'afterSale' ? 'rgba(255,255,255,0.2)' : '#e2e8f0', color: viewMode === 'afterSale' ? '#fff' : '#64748b', fontSize: '0.7rem', fontWeight: 900, padding: '1px 7px', borderRadius: '100px' }}>{flattenedTasks.length}</span>
                 </button>
                 <button
                     onClick={() => setViewMode('preHandover')}
-                    style={{ padding: '8px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: viewMode === 'preHandover' ? '#0d9488' : '#f1f5f9', color: viewMode === 'preHandover' ? '#fff' : '#64748b', fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ padding: '8px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: viewMode === 'preHandover' ? '#0d9488' : '#f1f5f9', color: viewMode === 'preHandover' ? '#fff' : '#64748b', fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: isMobile ? 1 : undefined }}
                 >
                     🏗️ ตรวจรับก่อนโอน
                     <span style={{ background: viewMode === 'preHandover' ? 'rgba(255,255,255,0.2)' : '#e2e8f0', color: viewMode === 'preHandover' ? '#fff' : '#64748b', fontSize: '0.7rem', fontWeight: 900, padding: '1px 7px', borderRadius: '100px' }}>{phWorkOrders.reduce((acc: number, wo: any) => acc + (wo.categories?.length || 0), 0)}</span>
                 </button>
             </div>
 
-            <div style={{ display: viewMode === 'afterSale' ? 'flex' : 'none', gap: '24px', overflowX: 'auto', paddingBottom: '16px' }}>
+            <div style={{ display: viewMode === 'afterSale' ? 'flex' : 'none', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '12px' : '24px', overflowX: isMobile ? 'visible' : 'auto', paddingBottom: '16px' }}>
                 {[
                     { id: 'pending-eval', label: 'งานรอประเมิน', color: '#ef4444' },
                     { id: 'assigned-unstarted', label: 'มอบหมายแล้วยังไม่ทำ', color: '#3b82f6' },
@@ -552,14 +565,17 @@ const SLAMonitor = () => {
                         })
                         : columnTasks;
 
+                    const colKey = `as:${column.id}`;
+                    const colCollapsed = isMobile && !expandedCols.has(colKey);
                     return (
-                        <div key={column.id} style={{ minWidth: 340, width: 340, background: '#f4f6f8', borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                        <div key={column.id} style={{ minWidth: isMobile ? 0 : 340, width: isMobile ? '100%' : 340, background: '#f4f6f8', borderRadius: isMobile ? '18px' : '24px', padding: isMobile ? '14px' : '20px', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0' }}>
+                            <div onClick={isMobile ? () => toggleCol(colKey) : undefined} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: colCollapsed ? 0 : '20px', cursor: isMobile ? 'pointer' : 'default' }}>
                                 <div style={{ width: 6, height: 20, background: column.color, borderRadius: 4 }} />
-                                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1c1e2b' }}>{column.label}</div>
+                                <div style={{ fontSize: scaleFont(isMobile, '1.1rem'), fontWeight: 900, color: '#1c1e2b' }}>{column.label}</div>
                                 <div style={{ background: '#e2e8f0', color: '#475569', fontSize: '0.8rem', fontWeight: 900, padding: '2px 10px', borderRadius: '12px', marginLeft: 'auto' }}>{columnTasks.length}</div>
+                                {isMobile && <ChevronDown size={18} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: colCollapsed ? 'none' : 'rotate(180deg)' }} />}
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 200 }}>
+                            <div style={{ display: colCollapsed ? 'none' : 'flex', flexDirection: 'column', gap: '16px', minHeight: isMobile ? 'auto' : 200 }}>
                                 {displayTasks.length === 0 ? (
                                     <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700, padding: '32px 0', border: '2px dashed #e2e8f0', borderRadius: '16px' }}>No Tasks</div>
                                 ) : (
@@ -848,7 +864,7 @@ const SLAMonitor = () => {
             </div>
 
             {viewMode === 'preHandover' && (
-                <div style={{ display: 'flex', gap: '24px', overflowX: 'auto', paddingBottom: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '12px' : '24px', overflowX: isMobile ? 'visible' : 'auto', paddingBottom: '16px' }}>
                     {[
                         { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived },
                         { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
@@ -861,14 +877,17 @@ const SLAMonitor = () => {
                                 .filter((cat: any) => col.test(cat, wo))
                                 .map((cat: any) => ({ ...cat, _wo: wo }))
                         );
+                        const colKey = `ph:${col.id}`;
+                        const colCollapsed = isMobile && !expandedCols.has(colKey);
                         return (
-                            <div key={col.id} style={{ minWidth: 340, width: 340, background: '#f4f6f8', borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                            <div key={col.id} style={{ minWidth: isMobile ? 0 : 340, width: isMobile ? '100%' : 340, background: '#f4f6f8', borderRadius: isMobile ? '18px' : '24px', padding: isMobile ? '14px' : '20px', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0' }}>
+                                <div onClick={isMobile ? () => toggleCol(colKey) : undefined} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: colCollapsed ? 0 : '20px', cursor: isMobile ? 'pointer' : 'default' }}>
                                     <div style={{ width: 6, height: 20, background: col.color, borderRadius: 4 }} />
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1c1e2b' }}>{col.label}</div>
+                                    <div style={{ fontSize: scaleFont(isMobile, '1.1rem'), fontWeight: 900, color: '#1c1e2b' }}>{col.label}</div>
                                     <div style={{ background: '#e2e8f0', color: '#475569', fontSize: '0.8rem', fontWeight: 900, padding: '2px 10px', borderRadius: '12px', marginLeft: 'auto' }}>{items.length}</div>
+                                    {isMobile && <ChevronDown size={18} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: colCollapsed ? 'none' : 'rotate(180deg)' }} />}
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 200 }}>
+                                <div style={{ display: colCollapsed ? 'none' : 'flex', flexDirection: 'column', gap: '16px', minHeight: isMobile ? 'auto' : 200 }}>
                                     {items.length === 0 ? (
                                         <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700, padding: '32px 0', border: '2px dashed #e2e8f0', borderRadius: '16px' }}>No Tasks</div>
                                     ) : items.map((item: any) => {
@@ -1333,7 +1352,7 @@ const SLAMonitor = () => {
                                 </button>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '28px', alignItems: 'start' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1.6fr'), gap: '28px', alignItems: 'start' }}>
 
                                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1437,14 +1456,14 @@ const SLAMonitor = () => {
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '16px' }}>
 
                                                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6' }}>
                                                         <Users size={16} />
                                                         <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#475569' }}>แรงงาน (DC)</span>
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', textAlign: 'center', marginTop: '4px' }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '8px', textAlign: 'center', marginTop: '4px' }}>
                                                         <div style={{ borderRight: '1px solid #e2e8f0' }}>
                                                             <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>SITE</div>
                                                             <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', marginTop: '2px' }}>{siteWorkers} <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>คน</span></div>
@@ -1461,7 +1480,7 @@ const SLAMonitor = () => {
                                                         <Clock size={16} />
                                                         <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#475569' }}>ชั่วโมงการทำงานทั้งหมด</span>
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', textAlign: 'center', marginTop: '4px' }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr'), gap: '8px', textAlign: 'center', marginTop: '4px' }}>
                                                         <div style={{ borderRight: '1px solid #e2e8f0' }}>
                                                             <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8' }}>SITE</div>
                                                             <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', marginTop: '2px' }}>{siteHours} <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>ชม.</span></div>
