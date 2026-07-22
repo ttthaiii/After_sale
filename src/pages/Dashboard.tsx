@@ -1031,7 +1031,7 @@ const Dashboard = () => {
             const hours = Math.floor(absHours % 24);
             const minutes = Math.floor(absHours * 60 % 60);
             const timeStr = days > 0 ? `${days}ว ${hours}ชม.` : `${hours}ชม. ${minutes}น.`;
-            return { text: `เกินกำหนด ${timeStr}`, color: '#ef4444', bg: '#fee2e2', level: 'critical', taskName: urgentTaskName, categoryName: urgentCategoryName };
+            return { text: `เกินกำหนด ${timeStr}`, color: '#ef4444', bg: '#fee2e2', level: 'critical', hoursLeft: minHoursLeft, taskName: urgentTaskName, categoryName: urgentCategoryName };
         } else {
             const days = Math.floor(minHoursLeft / 24);
             const hours = Math.floor(minHoursLeft % 24);

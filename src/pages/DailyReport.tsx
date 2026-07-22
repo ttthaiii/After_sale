@@ -121,10 +121,11 @@ const DailyReportContent: React.FC = () => {
                   setSelectedTaskInfo(null);
                   setSelectedPhCatInfo(null);
                 }}
-                aria-label="ปิด"
+                aria-label="ย้อนกลับ"
                 style={{
                   width: "44px",
                   height: "44px",
+                  padding: 0,
                   borderRadius: "12px",
                   border: "1px solid #cbd5e1",
                   background: "#fff",
@@ -136,7 +137,9 @@ const DailyReportContent: React.FC = () => {
                   flexShrink: 0,
                 }}
               >
-                <ChevronLeft size={22} strokeWidth={2.5} />
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
               </button>
               <div
                 style={{ fontSize: "1rem", fontWeight: 800, color: "#0f172a" }}
