@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROLLBACK — 2026-07-23. The Phase 1 hardening rules (see git history /
+// project memory "firestore-rules-hardening") broke LaborManagementSystem's
+// live collectionGroup('subtasks') listener in production ("[Subtasks
+// Realtime Error]: Missing or insufficient permissions") and the After_sale
+// dashboard couldn't pull data either. Reverted immediately to the original
+// fully-open rule to restore service for live users. DO NOT re-attempt the
+// Phase 1 rules until the exact collectionGroup path Labor queries has been
+// identified and explicitly allowed — this file's history has the drafted
+// hardening rules for reference when that's revisited.
+// ─────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -6,6 +6,7 @@ import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
 import { computeJobSLA } from '../utils/jobSla';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { logService } from '../services/logService';
 import CloseJobModal from '../components/CloseJobModal';
 import AdminAssignModal from '../components/AdminAssignModal';
@@ -22,6 +23,7 @@ const SLAMonitor = () => {
     const { workOrders, updateWorkOrderStatus, updateTask, projects, staff, contractors, saveEvaluation } = useWorkOrders();
     const [searchParams] = useSearchParams();
     const isMobile = useIsMobile();
+    const showAlert = useAlert();
 
     useEffect(() => {
         if (user) {
@@ -168,7 +170,7 @@ const SLAMonitor = () => {
             }
         } catch (err) {
             console.error('Failed to save task evaluation:', err);
-            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+            await showAlert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         }
 
         setIsEvalModalOpen(false);

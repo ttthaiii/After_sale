@@ -15,6 +15,7 @@ import { BatchAddModal } from "../components/daily-report/BatchAddModal";
 import { AnalogTimePicker } from "../components/AnalogTimePicker";
 import TaskReviewModal from "../components/TaskReviewModal";
 import CustomerInspectionMockup from "../components/CustomerInspectionMockup";
+import LoadingOverlay from "../components/LoadingOverlay";
 import { useIsMobile } from "../hooks/useIsMobile";
 
 const DailyReportContent: React.FC = () => {
@@ -51,6 +52,8 @@ const DailyReportContent: React.FC = () => {
     modalAlert,
     setModalAlert,
     setReportDate,
+    isSubmitting,
+    isUploading,
   } = useDailyReport();
   const isMobile = useIsMobile();
 
@@ -374,6 +377,11 @@ const DailyReportContent: React.FC = () => {
           onSubmitInspection={(approvals, survey) => submitCustomerInspection(mockupWorkOrder.id, approvals, survey)}
         />
       )}
+
+      {/* Full-page loading overlay: covers draft-save, final-submit, and retroactive-request
+          writes (WOA + WOP) — button-level spinners already existed but didn't block the
+          rest of the screen while a Firestore write was in flight (user-flagged 2026-07-23). */}
+      <LoadingOverlay isVisible={isSubmitting || isUploading} />
     </div>
   );
 };

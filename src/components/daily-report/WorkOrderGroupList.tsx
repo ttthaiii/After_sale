@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { useDailyReport } from "../../context/DailyReportContext";
+import { useAlert } from "../../context/AlertContext";
 import { GroupSLACountdown } from "./SLACountdowns";
 import { WorkTask, WorkOrder } from "../../types/dailyReport.types";
 import { useWorkOrders } from "../../context/WorkOrderContext";
@@ -101,6 +102,7 @@ export const WorkOrderGroupList: React.FC = () => {
     setModalAlert,
     draftedTaskIds,
   } = useDailyReport();
+  const showAlert = useAlert();
   const isMobile = useIsMobile();
 
   // Real staff (users, systemCode='AS') — used to resolve foreman display names by id/employeeId
@@ -242,7 +244,7 @@ export const WorkOrderGroupList: React.FC = () => {
     return (
       <div
         key={task.id}
-        onClick={(e) => {
+        onClick={async (e) => {
           e.stopPropagation();
           if (isTaskDisabledInRejectedWo) {
             setModalAlert({
@@ -263,11 +265,11 @@ export const WorkOrderGroupList: React.FC = () => {
               wo.reporterId === user?.id ||
               (user?.employeeId && wo.reporterId === user.employeeId);
             if (isWoOwner) {
-              alert(
+              await showAlert(
                 "คุณเห็นงานนี้ในฐานะผู้ดูแลภาพรวมใบงาน (Owner) เท่านั้น ไม่สามารถแก้ไขหรือบันทึกรายงานได้ (เฉพาะช่างผู้มาช่วยเท่านั้นที่อัปเดตได้)",
               );
             } else {
-              alert(
+              await showAlert(
                 "คุณไม่ได้เป็นผู้รับผิดชอบงานย่อยนี้ในรอบการแก้งานปัจจุบัน จึงสามารถดูข้อมูลได้อย่างเดียวเท่านั้น",
               );
             }
@@ -571,7 +573,7 @@ export const WorkOrderGroupList: React.FC = () => {
           </div>
           {isCompleted100 &&
             (() => {
-              const isHelper = wo.id.includes("202G") || wo.id.includes("G-WO");
+              const isHelper = task.isHelper === true;
               const isWoOwner =
                 !isHelper &&
                 (wo.woOwnerId === user?.id ||
@@ -1042,7 +1044,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                         try {
                                           let token = wo.deliveryQrToken;
                                           if (!token) {
-                                            if (!isPhWoOwner) { alert('เฉพาะโฟรแมนที่รับผิดชอบหมวดงานนี้เท่านั้นที่สร้าง QR ได้'); return; }
+                                            if (!isPhWoOwner) { await showAlert('เฉพาะโฟรแมนที่รับผิดชอบหมวดงานนี้เท่านั้นที่สร้าง QR ได้'); return; }
                                             if (window.confirm('สร้าง QR Code ส่งมอบงานให้ลูกค้าตรวจรับใช่หรือไม่?')) {
                                               token = await generateDeliveryQrToken(wo.id, user?.employeeId || user?.id || 'unknown');
                                             } else return;
@@ -1050,7 +1052,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                           setQrModalWo(wo);
                                           setShowQrModal(true);
                                         } catch (err) {
-                                          alert('เกิดข้อผิดพลาดในการสร้าง QR');
+                                          await showAlert('เกิดข้อผิดพลาดในการสร้าง QR');
                                         }
                                       }}
                                       style={{
@@ -1348,7 +1350,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                               wo.id,
                                               user?.employeeId || user?.id || "unknown"
                                             );
-                                            alert("สร้าง QR Code สำหรับส่งมอบเรียบร้อย!");
+                                            await showAlert("สร้าง QR Code สำหรับส่งมอบเรียบร้อย!");
                                           } else {
                                             return;
                                           }
@@ -1357,7 +1359,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                         setShowQrModal(true);
                                       } catch (err) {
                                         console.error(err);
-                                        alert("เกิดข้อผิดพลาดในการเปิดการส่งมอบ");
+                                        await showAlert("เกิดข้อผิดพลาดในการเปิดการส่งมอบ");
                                       }
                                     }}
                                     style={{
@@ -1872,7 +1874,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                                           user?.id ||
                                                           "unknown",
                                                       );
-                                                    alert(
+                                                    await showAlert(
                                                       "สร้าง QR Code สำหรับส่งมอบเรียบร้อย!",
                                                     );
                                                   } else {
@@ -1883,7 +1885,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                                 setShowQrModal(true);
                                               } catch (err) {
                                                 console.error(err);
-                                                alert(
+                                                await showAlert(
                                                   "เกิดข้อผิดพลาดในการเปิดการส่งมอบ",
                                                 );
                                               }
@@ -2268,9 +2270,9 @@ export const WorkOrderGroupList: React.FC = () => {
 
                   <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         navigator.clipboard.writeText(`${qrBaseUrl}/handover?woId=${qrModalWo.id}`);
-                        alert('คัดลอกลิงก์ส่งมอบเรียบร้อย!');
+                        await showAlert('คัดลอกลิงก์ส่งมอบเรียบร้อย!');
                       }}
                       style={{
                         width: '100%', padding: '10px', background: '#f1f5f9', border: '1px solid #cbd5e1',

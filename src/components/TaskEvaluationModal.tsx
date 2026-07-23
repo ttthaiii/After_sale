@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import ImageOverlay from './ImageOverlay';
 import CustomDateInput from './CustomDateInput';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -23,6 +24,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
     const [staffList, setStaffList] = useState<Staff[]>([]);
     const { sendNotification } = useNotifications();
     const { user } = useAuth();
+    const showAlert = useAlert();
 
     // ✅ Real-time Sync Staff from Firestore (Unified users collection)
     useEffect(() => {
@@ -82,18 +84,18 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
 
     if (!isOpen) return null;
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!formData.assigneeId) {
-            alert('กรุณาระบุผู้รับผิดชอบ (Assignee)');
+            await showAlert('กรุณาระบุผู้รับผิดชอบ (Assignee)');
             return;
         }
         setSummaryType('Approve');
         setShowSummary(true);
     };
 
-    const handleReject = () => {
+    const handleReject = async () => {
         if (!formData.rootCause || formData.rootCause.trim() === '') {
-            alert('กรุณาระบุสาเหตุที่ปฏิเสธในช่อง "สาเหตุ / หมายเหตุ" ก่อนทำการปฏิเสธครับ');
+            await showAlert('กรุณาระบุสาเหตุที่ปฏิเสธในช่อง "สาเหตุ / หมายเหตุ" ก่อนทำการปฏิเสธครับ');
             return;
         }
         setSummaryType('Reject');
@@ -139,7 +141,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
             onClose();
         } catch (err) {
             console.error("Failed to save evaluation:", err);
-            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            await showAlert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
         } finally {
             setIsSubmitting(false);
         }
@@ -177,7 +179,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
             onClose();
         } catch (err) {
             console.error("Failed to reject evaluation:", err);
-            alert('เกิดข้อผิดพลาดในการปฏิเสธการอนุมัติ');
+            await showAlert('เกิดข้อผิดพลาดในการปฏิเสธการอนุมัติ');
         } finally {
             setIsSubmitting(false);
         }

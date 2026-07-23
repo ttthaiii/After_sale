@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import {
     TrendingUp,
     AlertTriangle,
@@ -74,6 +75,7 @@ const ProgressDeltaBar = ({ prev, delta, isTask = false }: any) => {
 const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onUpdate }: any) => {
     const { user } = useAuth();
     const { addTaskUpdate, workOrders } = useWorkOrders();
+    const showAlert = useAlert();
     const [isLaborExpanded, setIsLaborExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [tempLabor, setTempLabor] = useState<any[]>([]);
@@ -128,10 +130,10 @@ const TaskItemCard = ({ task, isSingleTask = false, reportDate, workOrderId, onU
             
             setIsEditing(false);
             if (onUpdate) onUpdate(); // Refresh the list if possible
-            alert("บันทึกการปรับปรุงค่าแรงเรียบร้อยแล้ว");
+            await showAlert("บันทึกการปรับปรุงค่าแรงเรียบร้อยแล้ว");
         } catch (error) {
             console.error("Error saving labor:", error);
-            alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+            await showAlert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
         } finally {
             setIsSubmitting(false);
         }

@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Save, Camera, ClipboardCheck, Wrench, ChevronDown, Loa
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useAlert } from '../context/AlertContext';
 import { db, storage } from '../lib/firebase';
 import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -74,6 +75,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     const { addWorkOrder, cancelRejectedTask } = useWorkOrders();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
+    const showAlert = useAlert();
     const isMobile = useIsMobile();
     const [allProjects, setAllProjects] = useState<Project[]>([]);
 
@@ -317,7 +319,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 }
             } catch (err) {
                 console.error('Failed to cancel rejected task(s):', err);
-                alert('ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (err instanceof Error ? err.message : String(err)) + ')');
+                await showAlert('ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (err instanceof Error ? err.message : String(err)) + ')');
                 setIsSubmitting(false);
                 return;
             }
@@ -356,7 +358,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 await cancelRejectedTask(editWorkOrder.id, groupId, itemId);
             } catch (err) {
                 console.error('Failed to cancel rejected task:', err);
-                alert('ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (err instanceof Error ? err.message : String(err)) + ')');
+                await showAlert('ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (err instanceof Error ? err.message : String(err)) + ')');
                 setIsSubmitting(false);
                 return;
             }
@@ -430,7 +432,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             }));
         } catch (error) {
             console.error('Upload failed:', error);
-            alert('อัปโหลดรูปภาพไม่สำเร็จ');
+            await showAlert('อัปโหลดรูปภาพไม่สำเร็จ');
         } finally {
             setIsUploading(false);
             setUploadTarget(null);
@@ -460,7 +462,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             }
         } catch (error) {
             console.error('PDF upload failed:', error);
-            alert('อัปโหลดเอกสารไม่สำเร็จ');
+            await showAlert('อัปโหลดเอกสารไม่สำเร็จ');
         } finally {
             setIsUploadingDoc(false);
             if (e.target) e.target.value = '';
@@ -539,6 +541,60 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 const projectCode = selectedProject?.projectCode || selectedProject?.id || 'WO';
                 const jobCode = formState.type === 'AfterSale' ? 'WOA' : 'WOP';
                 finalId = `${projectCode}-${currentYear}-${jobCode}-${Date.now().toString().slice(-4)}`;
+            }
+        }
+
+        // General Information section (shared by AfterSale + PreHandover) — previously
+        // only project selection was enforced; building/floor/room/reporter
+        // name/phone could all be left blank on a real submit (user-confirmed
+        // 2026-07-23: require every field here).
+        if (!isDraft) {
+            const missingGeneral: string[] = [];
+            if (!formState.building?.trim()) missingGeneral.push('อาคาร (Bldg)');
+            if (!formState.floor?.trim()) missingGeneral.push('ชั้น (Floor)');
+            if (!formState.room?.trim()) missingGeneral.push('ห้อง (Room)');
+            if (!formState.reporterName?.trim()) missingGeneral.push('ชื่อผู้แจ้ง (Reporter)');
+            if (!formState.reporterPhone?.trim()) missingGeneral.push('เบอร์โทร (Phone)');
+            if (!formState.description?.trim()) missingGeneral.push('รายละเอียดเพิ่มเติม');
+            if (missingGeneral.length > 0) {
+                await showAlert(`กรุณากรอกข้อมูลทั่วไปให้ครบก่อนส่ง:\n- ${missingGeneral.join('\n- ')}`);
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
+        // PreHandover (WOP): require at least 1 attached document before a real submit.
+        if (!isDraft && formState.type === 'PreHandover' && phDocuments.length === 0) {
+            await showAlert('กรุณาแนบไฟล์เอกสารอย่างน้อย 1 ไฟล์');
+            setIsSubmitting(false);
+            return;
+        }
+
+        // Require complete, sane data before a real (non-draft) submit — previously
+        // any item could be submitted blank (no position/detail, no photo, amount
+        // left at/below 0). PreHandover items have no per-item position/detail/amount
+        // (defectCount-based instead), so this only applies to AfterSale.
+        if (!isDraft && formState.type !== 'PreHandover') {
+            const invalidItems: string[] = [];
+            groups.forEach(group => {
+                group.items.forEach(item => {
+                    if (isItemDecided(item)) return; // already-decided items are locked/read-only, not re-validated
+                    const label = `${group.category} - ${item.position || item.detail || 'รายการที่ไม่มีชื่อ'}`;
+                    if (!item.position?.trim() || !item.detail?.trim()) {
+                        invalidItems.push(`${label}: กรุณากรอกจุดที่พบและรายละเอียด`);
+                    }
+                    if (!item.amount || item.amount <= 0) {
+                        invalidItems.push(`${label}: จำนวนต้องมากกว่า 0`);
+                    }
+                    if (!item.images || item.images.length === 0) {
+                        invalidItems.push(`${label}: กรุณาแนบรูปอย่างน้อย 1 รูป`);
+                    }
+                });
+            });
+            if (invalidItems.length > 0) {
+                await showAlert(`กรุณากรอกข้อมูลให้ครบก่อนส่ง:\n- ${invalidItems.join('\n- ')}`);
+                setIsSubmitting(false);
+                return;
             }
         }
 
@@ -649,7 +705,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             await addWorkOrder(newWorkOrder);
         } catch (saveError) {
             console.error('Failed to save work order:', saveError);
-            alert('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (saveError instanceof Error ? saveError.message : String(saveError)) + ')');
+            await showAlert('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง\n(' + (saveError instanceof Error ? saveError.message : String(saveError)) + ')');
             setIsSubmitting(false);
             return;
         }
@@ -1013,7 +1069,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                         <label style={{ display: 'block', marginBottom: '12px', fontSize: '0.9rem', color: '#1f2937', fontWeight: 700 }}>สถานที่ (Location Details)</label>
                                         <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1fr 1fr'), gap: '24px' }}>
                                             <div>
-                                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>อาคาร (Bldg)</label>
+                                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>อาคาร (Bldg) <span style={{ color: '#ef4444' }}>*</span></label>
                                                 <input
                                                     type="text"
                                                     placeholder="อาคาร..."
@@ -1023,7 +1079,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                 />
                                             </div>
                                             <div>
-                                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>ชั้น (Floor)</label>
+                                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>ชั้น (Floor) <span style={{ color: '#ef4444' }}>*</span></label>
                                                 <input
                                                     type="text"
                                                     placeholder="ชั้น..."
@@ -1033,7 +1089,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                 />
                                             </div>
                                             <div>
-                                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>ห้อง (Room)</label>
+                                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>ห้อง (Room) <span style={{ color: '#ef4444' }}>*</span></label>
                                                 <input
                                                     type="text"
                                                     placeholder="ห้อง..."
@@ -1044,7 +1100,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             </div>
                                         </div>
                                         <div style={{ marginTop: '20px' }}>
-                                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>รายละเอียดเพิ่มเติม</label>
+                                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>รายละเอียดเพิ่มเติม <span style={{ color: '#ef4444' }}>*</span></label>
                                             <input
                                                 type="text"
                                                 placeholder="รายละเอียดเพิ่มเติม..."
@@ -1058,7 +1114,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     {/* Reporter Info Row */}
                                     <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '2fr 1fr'), gap: '24px' }}>
                                         <div>
-                                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>ชื่อผู้แจ้ง (Reporter)</label>
+                                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>ชื่อผู้แจ้ง (Reporter) <span style={{ color: '#ef4444' }}>*</span></label>
                                             <input
                                                 type="text"
                                                 style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', outline: 'none' }}
@@ -1070,7 +1126,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             />
                                         </div>
                                         <div>
-                                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>เบอร์โทร (Phone)</label>
+                                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>เบอร์โทร (Phone) <span style={{ color: '#ef4444' }}>*</span></label>
                                             <input
                                                 type="tel"
                                                 style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', outline: 'none' }}
@@ -1089,7 +1145,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             {/* PDF Documents */}
                                             <div>
                                                 <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>
-                                                    เอกสารแนบ (Documents)
+                                                    เอกสารแนบ (Documents) <span style={{ color: '#ef4444' }}>*</span>
                                                 </label>
                                                 <div style={{ background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     {phDocuments.map((doc, idx) => (
@@ -1329,7 +1385,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                             {/* SYMMETRICAL GRID: Updated for 5 columns */}
                                                         <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1.2fr 1.2fr 0.5fr 0.6fr 1.2fr'), gap: '16px', marginBottom: '20px' }}>
                                                             <div>
-                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จุดที่พบ (Position)</label>
+                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จุดที่พบ (Position) <span style={{ color: '#ef4444' }}>*</span></label>
                                                                 <input
                                                                     type="text"
                                                                     value={item.position}
@@ -1352,7 +1408,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 />
                                                             </div>
                                                             <div>
-                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>รายละเอียด (Detail)</label>
+                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>รายละเอียด (Detail) <span style={{ color: '#ef4444' }}>*</span></label>
                                                                 <input
                                                                     type="text"
                                                                     value={item.detail}
@@ -1375,11 +1431,12 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                                 />
                                                             </div>
                                                             <div>
-                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จำนวน</label>
+                                                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '6px', fontWeight: 600 }}>จำนวน <span style={{ color: '#ef4444' }}>*</span></label>
                                                                 <input
                                                                     type="number"
+                                                                    min={0}
                                                                     value={item.amount}
-                                                                    onChange={(e) => updateItem(group.id, item.id, 'amount', parseFloat(e.target.value) || 0)}
+                                                                    onChange={(e) => updateItem(group.id, item.id, 'amount', Math.max(0, parseFloat(e.target.value) || 0))}
                                                                     disabled={isItemReadOnly}
                                                                     style={{ 
                                                                         width: '100%', 
@@ -1453,7 +1510,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                         {/* Image Attachment - Simple clean box */}
                                                         <div style={{ background: '#f9fafb', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', border: '1px dashed #e5e7eb' }}>
                                                             <label style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500 }}>
-                                                                <Camera size={18} /> รูปภาพประกอบ (Evidence)
+                                                                <Camera size={18} /> รูปภาพประกอบ (Evidence) <span style={{ color: '#ef4444' }}>*</span>
                                                             </label>
                                                             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
                                                                 {item.images.map((img, imgIdx) => (
@@ -1566,10 +1623,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                             {hasEditableTask && (
                                 <>
                                     <button
-                                        onClick={() => {
+                                        onClick={async () => {
                                             if (!formState.projectId) {
                                                 setShowProjectError(true);
-                                                alert('กรุณาเลือกโครงการ (Please select a project)');
+                                                await showAlert('กรุณาเลือกโครงการ (Please select a project)');
                                                 return;
                                             }
                                             setIsPreviewDraft(true);
@@ -1582,10 +1639,10 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                         บันทึกแบบร่าง (Save Draft)
                                     </button>
                                     <button
-                                        onClick={() => {
+                                        onClick={async () => {
                                             if (!formState.projectId) {
                                                 setShowProjectError(true);
-                                                alert('กรุณาเลือกโครงการ (Please select a project)');
+                                                await showAlert('กรุณาเลือกโครงการ (Please select a project)');
                                                 return;
                                             }
                                             setIsPreviewDraft(false);

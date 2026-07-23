@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import ForemanReportModal from '../components/ForemanReportModal';
 import { WorkOrder, WorkOrderType } from '../types';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -28,6 +29,7 @@ import { ts } from '../components/ui/responsiveText';
 
 const Entry = () => {
     const { user } = useAuth();
+    const showAlert = useAlert();
     const { workOrders, deleteWorkOrder } = useWorkOrders();
     const location = useLocation();
     const navigate = useNavigate();
@@ -125,10 +127,10 @@ const Entry = () => {
         setIsCreateModalOpen(true);
     };
 
-    const handleEditDraftOrEvaluating = (order: WorkOrder) => {
+    const handleEditDraftOrEvaluating = async (order: WorkOrder) => {
         // Eval-lock: while an admin has this WO open for review, FM cannot edit until a decision (reject).
         if (order.evalLocked === true) {
-            alert('แอดมินกำลังตรวจสอบใบสั่งงานนี้อยู่ — แก้ไขไม่ได้จนกว่าแอดมินจะตีกลับงาน (reject)');
+            await showAlert('แอดมินกำลังตรวจสอบใบสั่งงานนี้อยู่ — แก้ไขไม่ได้จนกว่าแอดมินจะตีกลับงาน (reject)');
             return;
         }
         setSelectedOrder(order);

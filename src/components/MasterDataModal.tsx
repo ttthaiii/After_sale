@@ -5,6 +5,7 @@ import { storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
 import LoadingOverlay from './LoadingOverlay';
+import { useAlert } from '../context/AlertContext';
 
 interface MasterDataModalProps {
     isOpen: boolean;
@@ -16,6 +17,7 @@ interface MasterDataModalProps {
 }
 
 const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], onSave }: MasterDataModalProps) => {
+    const showAlert = useAlert();
     const [formData, setFormData] = useState<any>({});
     const [showStaffPassword, setShowStaffPassword] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -76,7 +78,7 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
             if (type === 'Projects') handleChange('imageUrl', downloadURL);
         } catch (error) {
             console.error('Upload failed:', error);
-            alert('อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+            await showAlert('อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
         } finally {
             setIsUploading(false);
         }
@@ -97,7 +99,7 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
             onClose();
         } catch (error) {
             console.error('Save failed:', error);
-            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            await showAlert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
         } finally {
             setIsSubmitting(false);
         }

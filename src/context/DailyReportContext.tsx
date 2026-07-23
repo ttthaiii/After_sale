@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
 import { db, storage } from "../lib/firebase";
 import { todayTH } from "../lib/dateUtils";
-import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc, updateDoc, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc, updateDoc, getDocs, runTransaction } from "firebase/firestore";
 import { useWorkOrders } from "./WorkOrderContext";
 import { useAuth } from "./AuthContext";
 import { useNotifications } from "./NotificationContext";
+import { useAlert } from "./AlertContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/imageCompression";
 import { formatDate } from "../utils/date";
@@ -319,6 +320,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const workOrders = _workOrders as any[];
   const { user } = useAuth();
   const { sendNotification } = useNotifications();
+  const showAlert = useAlert();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1350,6 +1352,97 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  // Atomically claims per-worker/date/shift slots via a Firestore transaction —
+  // closes the race window the pre-submit client-side duplicate check cannot:
+  // that check reads possibly-stale in-memory `workOrders` state, so two
+  // foremen submitting for the same worker at nearly the same time could both
+  // pass it. This re-checks + reserves the slots inside one transaction right
+  // before the real write, so whichever submit commits second sees the
+  // first's claim and is rejected. Shared by both WOA (handleFinalSubmit) and
+  // WOP (submitPhDailyReport) — user-confirmed both must enforce this equally.
+  // Throws an Error with code 'LABOR_DAY_LOCK_CONFLICT' (message = Thai alert
+  // text) on conflict; callers must catch it and showAlert(error.message).
+  const claimLaborDayLocks = async (
+    laborList: LaborEntry[],
+    reportDate: string,
+    workOrderId: string,
+    taskId: string,
+    taskName: string,
+  ) => {
+    const DEFAULT_SHIFT_TIME: Record<string, string> = {
+      normal: "08:00 - 17:00",
+      otMorning: "06:00 - 08:00",
+      otNoon: "12:00 - 13:00",
+      otEvening: "18:00 - 21:00",
+    };
+    const SHIFT_TIME_KEY: Record<string, keyof NonNullable<LaborEntry["shiftTimes"]>> = {
+      normal: "day",
+      otMorning: "otMorning",
+      otNoon: "otNoon",
+      otEvening: "otEvening",
+    };
+    const SHIFT_LABEL: Record<string, string> = {
+      normal: "กะปกติ",
+      otMorning: "OT เช้า",
+      otNoon: "OT เที่ยง",
+      otEvening: "OT เย็น",
+    };
+    const getShiftTime = (entry: any, shiftKey: string) =>
+      entry.shiftTimes?.[SHIFT_TIME_KEY[shiftKey]] || DEFAULT_SHIFT_TIME[shiftKey];
+
+    const claimants = laborList
+      .map((l) => ({
+        workerId: l.staffId || l.contractorId,
+        workerName: l.staffName || (l as any).name || l.affiliation || l.staffId || l.contractorId || "",
+        shifts: (["normal", "otMorning", "otNoon", "otEvening"] as const)
+          .filter((k) => l.shifts?.[k])
+          .map((k) => ({ shiftKey: k, timeRange: getShiftTime(l, k) })),
+      }))
+      .filter((c) => c.workerId && c.shifts.length > 0);
+
+    if (claimants.length === 0) return;
+
+    await runTransaction(db, async (transaction) => {
+      const conflicts: string[] = [];
+      const writes: { ref: any; claims: any[] }[] = [];
+
+      for (const claimant of claimants) {
+        const lockRef = doc(db, "laborDayLocks", `${claimant.workerId}_${reportDate}`);
+        const snap = await transaction.get(lockRef);
+        const existingClaims: any[] = (snap.exists() ? (snap.data() as any).claims : []) || [];
+
+        // Drop this same task's own previous claims first — re-submitting/
+        // editing this task's own report replaces its slot, not a collision.
+        const otherTaskClaims = existingClaims.filter(
+          (c) => !(c.workOrderId === workOrderId && c.taskId === taskId)
+        );
+
+        claimant.shifts.forEach(({ shiftKey, timeRange }) => {
+          const collision = otherTaskClaims.find((c) => isTimeOverlap(c.timeRange, timeRange));
+          if (collision) {
+            conflicts.push(`${claimant.workerName} (${SHIFT_LABEL[shiftKey]}) ซ้ำกับงาน "${collision.taskName}"`);
+          }
+        });
+
+        const newClaims = [
+          ...otherTaskClaims,
+          ...claimant.shifts.map(({ shiftKey, timeRange }) => ({ workOrderId, taskId, taskName, shiftKey, timeRange })),
+        ];
+        writes.push({ ref: lockRef, claims: newClaims });
+      }
+
+      if (conflicts.length > 0) {
+        const err: any = new Error(
+          `ไม่สามารถบันทึกรายงานได้ เนื่องจากมีคนงานปฏิบัติงานซ้ำซ้อนในวันและกะเวลาเดียวกัน:\n- ${conflicts.join("\n- ")}`
+        );
+        err.code = "LABOR_DAY_LOCK_CONFLICT";
+        throw err;
+      }
+
+      writes.forEach(({ ref, claims }) => transaction.set(ref, { claims, updatedAt: new Date().toISOString() }));
+    });
+  };
+
   const toggleShift = (id: string, shiftKey: keyof ShiftConfig) => {
     if (!isEditingExisting) return;
     setLabor((prev) =>
@@ -1654,7 +1747,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } catch (error) {
       console.error("Upload failed:", error);
-      alert("อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      await showAlert("อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsUploading(false);
       if (e.target) e.target.value = "";
@@ -1696,7 +1789,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       );
     } catch (error) {
       console.error("Leave cert upload failed:", error);
-      alert("อัปโหลดใบรับรองแพทย์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      await showAlert("อัปโหลดใบรับรองแพทย์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setUploadingLeaveCertId(null);
     }
@@ -1816,11 +1909,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         details: `Foreman rejected SLA (${selectedTaskInfo?.task.slaCategory}) and requested re-evaluation. Expected: ${selectedTaskInfo?.task.estimatedSla}`,
         targetId: taskId,
       });
-      alert("ตีกลับใบงานเรียบร้อยแล้ว");
+      await showAlert("ตีกลับใบงานเรียบร้อยแล้ว");
       setSelectedTaskInfo(null);
     } catch (err) {
       console.error("Bounce back error:", err);
-      alert("เกิดข้อผิดพลาดในการตีกลับใบงาน");
+      await showAlert("เกิดข้อผิดพลาดในการตีกลับใบงาน");
     } finally {
       setIsSubmitting(false);
     }
@@ -1829,47 +1922,56 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const handleSubmit = async () => {
     if (submittingRef.current || isSubmitting) return;
     if (!selectedTaskInfo) return;
-    if (labor.length === 0)
-      return alert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
+    if (labor.length === 0) {
+      await showAlert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
+      return;
+    }
     if (!selectedTaskInfo.task.isHelper) {
-      if (sitePhotos.filter(Boolean).length < 2)
-        return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+      if (sitePhotos.filter(Boolean).length < 2) {
+        await showAlert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+        return;
+      }
       const isRegularActive = labor.some((l) => l.shifts?.normal);
       if (isRegularActive) {
         const requiredCount = getRequiredRegularPhotoCount(labor);
         const uploadedCount = laborRegularPhotos.filter(Boolean).length;
         if (uploadedCount < requiredCount) {
           if (requiredCount === 2) {
-            return alert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+            await showAlert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+            return;
           } else {
-            return alert(
+            await showAlert(
               "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
             );
+            return;
           }
         }
       }
       const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
       if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
-        return alert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+        await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+        return;
       }
       const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
       if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
-        return alert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+        await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+        return;
       }
       const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
       if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
-        return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+        await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+        return;
       }
     }
     const allowedMinVal = progressBounds.min > 0 ? progressBounds.min : -1;
     if (progress <= allowedMinVal) {
-      alert(
+      await showAlert(
         `ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${progressBounds.min}% (ตามประวัติก่อนหน้า)`,
       );
       return;
     }
     if (progress > progressBounds.max) {
-      alert(
+      await showAlert(
         `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`,
       );
       return;
@@ -1883,7 +1985,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     );
     if (existingHistory && !isEditingExisting) {
-      alert(
+      await showAlert(
         `คุณเคยส่งรายงานของวันที่ ${formatDate(reportDate)} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`,
       );
       return;
@@ -1950,7 +2052,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
 
     if (sameTaskDuplicates.length > 0) {
-      alert(`พบรายการแรงงานซ้ำซ้อนในรายงานนี้ กรุณาลบรายการที่ซ้ำก่อนบันทึก:\n- ${sameTaskDuplicates.join('\n- ')}`);
+      await showAlert(`พบรายการแรงงานซ้ำซ้อนในรายงานนี้ กรุณาลบรายการที่ซ้ำก่อนบันทึก:\n- ${sameTaskDuplicates.join('\n- ')}`);
       return;
     }
 
@@ -1993,7 +2095,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
 
     if (duplicateWorkers.length > 0) {
-      alert(`ไม่สามารถบันทึกรายงานได้ เนื่องจากมีคนงานปฏิบัติงานซ้ำซ้อนในวันและกะเวลาเดียวกัน:\n- ${duplicateWorkers.join('\n- ')}`);
+      await showAlert(`ไม่สามารถบันทึกรายงานได้ เนื่องจากมีคนงานปฏิบัติงานซ้ำซ้อนในวันและกะเวลาเดียวกัน:\n- ${duplicateWorkers.join('\n- ')}`);
       return;
     }
 
@@ -2133,7 +2235,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           : `h-${Date.now()}`;
       const newUpdate = {
         id: updateId,
-        date: `${reportDate}T${new Date().toISOString().split("T")[1]}`,
+        // reportDate is a Thai-calendar date string; pairing it with a raw UTC
+        // clock time (old code) mislabels the timestamp whenever submitted
+        // 00:00-06:59 Thai time (still "yesterday evening" in UTC), shifting
+        // it a full day off for anything that reads this via new Date(...).getTime()
+        // (Dashboard.tsx, ForemanCalendar.tsx, History.tsx). Use the same
+        // Thai-shifted-clock convention as lib/dateUtils.ts's todayTH() instead,
+        // so both halves of the string agree on the same timezone.
+        date: `${reportDate}T${new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split("T")[1]}`,
         note,
         progress,
         photos: photosPayload,
@@ -2206,6 +2315,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         } catch (_) {}
         return;
       }
+      await claimLaborDayLocks(
+        labor,
+        reportDate,
+        selectedTaskInfo.wo.id,
+        selectedTaskInfo.task.id,
+        (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName || selectedTaskInfo.task.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim(),
+      );
+
       await addTaskUpdate(
         selectedTaskInfo.wo.id,
         selectedTaskInfo.categoryId,
@@ -2244,7 +2361,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         console.error("Failed to delete draft:", deleteErr);
       }
 
-      alert("บันทึกรายงานเรียบร้อยแล้ว");
+      await showAlert("บันทึกรายงานเรียบร้อยแล้ว");
       setDraftedTaskIds(prev => {
         const next = new Set(prev);
         next.delete(selectedTaskInfo.task.id);
@@ -2269,12 +2386,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } catch (error: any) {
       console.error("Submit failed:", error);
-      if (error?.message === 'DUPLICATE_PENDING') {
-        alert("มีคำขอรับรองสำหรับวันนี้รออยู่แล้ว กรุณารอการรับรองก่อน");
+      if (error?.code === 'LABOR_DAY_LOCK_CONFLICT') {
+        await showAlert(error.message);
+      } else if (error?.message === 'DUPLICATE_PENDING') {
+        await showAlert("มีคำขอรับรองสำหรับวันนี้รออยู่แล้ว กรุณารอการรับรองก่อน");
         setRetroactiveSubmitDone(true);
         setShowSummaryModal(false);
       } else {
-        alert("บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+        await showAlert("บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
       }
     } finally {
       submittingRef.current = false;
@@ -2340,10 +2459,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         sessionStorage.setItem('draftedTaskIds', JSON.stringify([...next]));
         return next;
       });
-      alert("บันทึกแบบร่างเรียบร้อยแล้ว");
+      await showAlert("บันทึกแบบร่างเรียบร้อยแล้ว");
     } catch (error) {
       console.error("Save draft failed:", error);
-      alert("บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      await showAlert("บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsSubmitting(false);
     }
@@ -2729,54 +2848,65 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const submitPhDailyReport = async (noteType?: string): Promise<void> => {
-    if (!selectedPhCatInfo || isSubmitting) return;
+    if (submittingRef.current || isSubmitting) return;
+    if (!selectedPhCatInfo) return;
     // Same mandatory-evidence checks as AfterSale's handleSubmit — WOA and WOP
     // must enforce identical requirements (user-confirmed 2026-07-23).
-    if (labor.length === 0)
-      return alert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
-    if (sitePhotos.filter(Boolean).length < 2)
-      return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+    if (labor.length === 0) {
+      await showAlert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
+      return;
+    }
+    if (sitePhotos.filter(Boolean).length < 2) {
+      await showAlert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+      return;
+    }
     const isRegularActive = labor.some((l) => l.shifts?.normal);
     if (isRegularActive) {
       const requiredCount = getRequiredRegularPhotoCount(labor);
       const uploadedCount = laborRegularPhotos.filter(Boolean).length;
       if (uploadedCount < requiredCount) {
         if (requiredCount === 2) {
-          return alert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+          await showAlert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+          return;
         } else {
-          return alert(
+          await showAlert(
             "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
           );
+          return;
         }
       }
     }
     const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
     if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
-      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+      await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+      return;
     }
     const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
     if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
-      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+      await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+      return;
     }
     const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
     if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
-      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+      await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+      return;
     }
     const existingHistReport = phDailyHistory.find((h: any) => h.id === reportDate || h.date === reportDate);
     if (existingHistReport && !isPhEditingExisting) {
-      alert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
+      await showAlert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
       return;
     }
     // Progress bounds validation (same as AfterSale)
     const allowedMinVal = phProgressBounds.min > 0 ? phProgressBounds.min : -1;
     if (progress <= allowedMinVal) {
-      alert(`ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${phProgressBounds.min}% (ตามประวัติก่อนหน้า)`);
+      await showAlert(`ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${phProgressBounds.min}% (ตามประวัติก่อนหน้า)`);
       return;
     }
     if (progress > phProgressBounds.max) {
-      alert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`);
+      await showAlert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`);
       return;
     }
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const { wo, cat } = selectedPhCatInfo;
@@ -2848,6 +2978,13 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId);
       const subtaskRef = doc(taskRef, 'subtasks', phSubtaskId);
       const progressUpdate = { dailyProgress: progress, lastProgressUpdate: new Date().toISOString() };
+      await claimLaborDayLocks(
+        labor,
+        reportDate,
+        wo.id,
+        phTaskId,
+        (cat.name || (cat as any).categoryName || phTaskId),
+      );
       await setDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReports', reportDate), payload);
       await Promise.all([
         updateDoc(subtaskRef, progressUpdate),
@@ -2864,7 +3001,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setPhDailyHistory(hist);
       // ── Post-submit success (mirrors WOA flow) ──
       setShowPhSummaryModal(false);
-      alert('บันทึกรายงานเรียบร้อยแล้ว');
+      await showAlert('บันทึกรายงานเรียบร้อยแล้ว');
       if (!isPhEditingExisting) {
         // New report: full reset + close pane (same as WOA setSelectedTaskInfo(null))
         setSelectedPhCatInfo(null);
@@ -2881,11 +3018,16 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         // Editing: just exit edit mode
         setIsPhEditingExisting(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       setShowPhSummaryModal(false);
-      alert('บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      if (err?.code === 'LABOR_DAY_LOCK_CONFLICT') {
+        await showAlert(err.message);
+      } else {
+        await showAlert('บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      }
       console.error('submitPhDailyReport failed:', err);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -2918,10 +3060,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
       await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReportsDraft', reportDate), draftPayload);
       setPhDraftedDates(prev => new Set([...prev, reportDate]));
-      alert('บันทึกแบบร่างเรียบร้อยแล้ว');
+      await showAlert('บันทึกแบบร่างเรียบร้อยแล้ว');
     } catch (err) {
       console.error('savePhDraft failed:', err);
-      alert('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      await showAlert('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsSubmitting(false);
     }

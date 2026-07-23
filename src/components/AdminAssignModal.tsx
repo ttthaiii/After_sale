@@ -3,6 +3,7 @@ import { X, User, HardHat, Clock, Save, CheckCircle2, Calendar } from 'lucide-re
 import { MasterTask, Staff, Contractor } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import CustomDateInput from './CustomDateInput';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from './ui/responsiveGrid';
@@ -29,13 +30,14 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { sendNotification } = useNotifications();
     const { user } = useAuth();
+    const showAlert = useAlert();
     const isMobile = useIsMobile();
 
     if (!isOpen || !task) return null;
 
     const handleSubmit = async () => {
         if (selectedStaffIds.length === 0 && !selectedContractorId) {
-            alert('กรุณาเลือกเจ้าหน้าที่หรือผู้รับเหมาอย่างน้อย 1 ราย');
+            await showAlert('กรุณาเลือกเจ้าหน้าที่หรือผู้รับเหมาอย่างน้อย 1 ราย');
             return;
         }
 
@@ -99,7 +101,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
             onClose();
         } catch (error) {
             console.error('Assignment failed:', error);
-            alert('เกิดข้อผิดพลาดในการมอบหมายงาน');
+            await showAlert('เกิดข้อผิดพลาดในการมอบหมายงาน');
         } finally {
             setIsSubmitting(false);
         }

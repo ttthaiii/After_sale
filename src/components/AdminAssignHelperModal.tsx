@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, User, Save, Search } from 'lucide-react';
 import { MasterTask, Staff } from '../types';
+import { useAlert } from '../context/AlertContext';
 
 interface AdminAssignHelperModalProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface AdminAssignHelperModalProps {
 }
 
 const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList, onAssign }: AdminAssignHelperModalProps) => {
+    const showAlert = useAlert();
     const [selectedForemanIds, setSelectedForemanIds] = useState<string[]>(() => {
         if (task?.helperForemanIds && task.helperForemanIds.length > 0) {
             return task.helperForemanIds;
@@ -39,7 +41,7 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
 
     const handleSubmit = async () => {
         if (selectedForemanIds.length === 0) {
-            alert('กรุณาเลือกโฟร์แมนผู้ช่วยอย่างน้อย 1 ท่าน');
+            await showAlert('กรุณาเลือกโฟร์แมนผู้ช่วยอย่างน้อย 1 ท่าน');
             return;
         }
 
@@ -49,7 +51,7 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
             onClose();
         } catch (error) {
             console.error('Helper assignment failed:', error);
-            alert('เกิดข้อผิดพลาดในการมอบหมายงานช่วย');
+            await showAlert('เกิดข้อผิดพลาดในการมอบหมายงานช่วย');
         } finally {
             setIsSubmitting(false);
         }

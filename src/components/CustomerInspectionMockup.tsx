@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { useAlert } from '../context/AlertContext';
 import { WorkOrder } from '../types';
 import { Star, Sparkles, Building2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -54,6 +55,7 @@ export default function CustomerInspectionMockup({
     workOrder,
     onSubmitInspection
 }: CustomerInspectionMockupProps) {
+    const showAlert = useAlert();
     // approvals state: key is taskId, value is decision
     const [approvals, setApprovals] = useState<Record<string, { 
         status: 'approved' | 'rejected'; 
@@ -125,7 +127,7 @@ export default function CustomerInspectionMockup({
         })
     );
 
-    const handleSelectAction = (taskId: string, status: 'approved' | 'rejected') => {
+    const handleSelectAction = async (taskId: string, status: 'approved' | 'rejected') => {
         const incompleteRejectTask = eligibleTasks.find(t => 
             approvals[t.id]?.status === 'rejected' && (
                 !rejectReasons[t.id]?.trim() || 
@@ -135,7 +137,7 @@ export default function CustomerInspectionMockup({
         );
         
         if (incompleteRejectTask && incompleteRejectTask.id !== taskId) {
-            alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ "${incompleteRejectTask.name || incompleteRejectTask.taskName}" ก่อนทำการประเมินรายการอื่น`);
+            await showAlert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ "${incompleteRejectTask.name || incompleteRejectTask.taskName}" ก่อนทำการประเมินรายการอื่น`);
             return;
         }
 
@@ -163,7 +165,7 @@ export default function CustomerInspectionMockup({
         }
     };
 
-    const handleToggleExpand = (taskId: string) => {
+    const handleToggleExpand = async (taskId: string) => {
         const incompleteRejectTask = eligibleTasks.find(t => 
             approvals[t.id]?.status === 'rejected' && (
                 !rejectReasons[t.id]?.trim() || 
@@ -174,10 +176,10 @@ export default function CustomerInspectionMockup({
         
         if (incompleteRejectTask) {
             if (incompleteRejectTask.id !== taskId) {
-                alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนจึงจะสามารถเปิดรายการอื่นได้`);
+                await showAlert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) รายการ ${incompleteRejectTask.id} ก่อนจึงจะสามารถเปิดรายการอื่นได้`);
                 return;
             } else {
-                alert('กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) ให้เรียบร้อยก่อนปิดรายการนี้');
+                await showAlert('กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับการสั่งแก้ไข (Reject) ให้เรียบร้อยก่อนปิดรายการนี้');
                 return;
             }
         }
@@ -244,7 +246,7 @@ export default function CustomerInspectionMockup({
         // Validation: Verify all eligible tasks have an action selected
         const unactedTasks = eligibleTasks.filter(t => !approvals[t.id]);
         if (unactedTasks.length > 0) {
-            alert('กรุณาทำการประเมิน (ผ่าน / แก้ไข) ให้ครบถ้วนทุกรายการก่อนกดส่งมอบงาน');
+            await showAlert('กรุณาทำการประเมิน (ผ่าน / แก้ไข) ให้ครบถ้วนทุกรายการก่อนกดส่งมอบงาน');
             return;
         }
 
@@ -257,7 +259,7 @@ export default function CustomerInspectionMockup({
             )
         );
         if (invalidRejects.length > 0) {
-            alert('กรุณาระบุสาเหตุ ชื่อผู้แจ้ง และเบอร์โทรติดต่อกลับ สำหรับรายการที่สั่งแก้ไข (Reject)');
+            await showAlert('กรุณาระบุสาเหตุ ชื่อผู้แจ้ง และเบอร์โทรติดต่อกลับ สำหรับรายการที่สั่งแก้ไข (Reject)');
             return;
         }
 
@@ -274,14 +276,14 @@ export default function CustomerInspectionMockup({
 
             await onSubmitInspection(approvals, surveyPayload);
             if (hasRejections) {
-                alert('เราได้รับข้อมูลจุดที่ต้องแก้ไขเรียบร้อยแล้ว ทางทีมงานจะรีบดำเนินการแก้ไขให้เสร็จสิ้นโดยเร็วที่สุดค่ะ');
+                await showAlert('เราได้รับข้อมูลจุดที่ต้องแก้ไขเรียบร้อยแล้ว ทางทีมงานจะรีบดำเนินการแก้ไขให้เสร็จสิ้นโดยเร็วที่สุดค่ะ');
             } else {
-                alert('บันทึกการประเมินและตรวจรับงานเรียบร้อยแล้ว ขอบคุณที่ไว้วางใจเลือกใช้บริการของเราค่ะ');
+                await showAlert('บันทึกการประเมินและตรวจรับงานเรียบร้อยแล้ว ขอบคุณที่ไว้วางใจเลือกใช้บริการของเราค่ะ');
             }
             onClose();
         } catch (err) {
             console.error(err);
-            alert('เกิดข้อผิดพลาดในการบันทึกการตรวจรับงาน');
+            await showAlert('เกิดข้อผิดพลาดในการบันทึกการตรวจรับงาน');
         } finally {
             setIsSubmitting(false);
         }

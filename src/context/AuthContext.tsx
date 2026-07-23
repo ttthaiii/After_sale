@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { logService } from '../services/logService';
 import bcrypt from 'bcryptjs';
+import { useAlert } from './AlertContext';
 
 // After Sale owns the user role as a full name (Admin/Manager/Approver/Foreman).
 // Read `role` directly from the DB; fall back to legacy Labor codes only for old
@@ -30,6 +31,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
+    const showAlert = useAlert();
     const [loading, setLoading] = useState(true);
 
     // ✅ Force new session reset to prevent multi-tab jumping issues
@@ -132,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 // Block deactivated (soft-deleted) users from logging in.
                 if (userData.isActive === false) {
                     console.warn("Login blocked — user is deactivated:", cleanUsername);
-                    alert('บัญชีนี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ');
+                    await showAlert('บัญชีนี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ');
                     return false;
                 }
 
@@ -184,7 +186,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         // Block deactivated (soft-deleted) users from logging in.
                         if (userData.isActive === false) {
                             console.warn("Login blocked — user is deactivated:", cleanUsername);
-                            alert('บัญชีนี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ');
+                            await showAlert('บัญชีนี้ถูกปิดการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ');
                             return false;
                         }
                         const mappedRole = resolveUserRole(userData);
@@ -208,7 +210,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
         } catch (error: any) {
             console.error('Login error detail:', error);
-            alert(`เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ${error.message || 'Unknown error'}`);
+            await showAlert(`เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ${error.message || 'Unknown error'}`);
             return false;
         } finally {
             setLoading(false);

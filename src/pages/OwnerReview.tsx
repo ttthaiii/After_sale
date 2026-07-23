@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { useAlert } from '../context/AlertContext';
 import {
     CheckCircle2, XCircle, Camera, AlertTriangle,
     Building2, MapPin, Package, UserCheck, FileText,
@@ -12,6 +13,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function OwnerReview() {
     const { updateTask } = useWorkOrders();
+    const showAlert = useAlert();
     const isMobile = useIsMobile();
     const [searchParams] = useSearchParams();
     const woId = searchParams.get('woId') || '';
@@ -134,18 +136,58 @@ export default function OwnerReview() {
         );
     }
 
+    // Only a task still awaiting review ('Evaluating') is a valid target for approve/reject.
+    // The QR link can be reopened (browser back, forwarded, a second stale tab) after the
+    // task was already closed via this same link or via the FM's own SLAMonitor review —
+    // without this guard that reopen could silently revert an already-Complete task back
+    // to Evaluating (or double-approve it).
+    const alreadyHandled = !submitted && task.status !== 'Evaluating';
+    if (alreadyHandled) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
+                <div style={{ width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {canGoBack && <div><BackButton /></div>}
+                    <div style={{ background: '#fff', padding: '2.5rem', borderRadius: '32px', border: '1px solid #e2e8f0', width: '100%', textAlign: 'center', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05)' }}>
+                        <div style={{ width: '64px', height: '64px', background: '#dcfce7', color: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+                            <CheckCircle2 size={32} />
+                        </div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0 0 10px 0' }}>รายการงานนี้ถูกดำเนินการไปแล้ว</h3>
+                        <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: 1.5 }}>
+                            งานนี้ได้รับการตรวจรับหรือดำเนินการไปแล้วก่อนหน้านี้ ไม่สามารถอนุมัติหรือตีกลับซ้ำได้ ท่านสามารถปิดหน้านี้ได้เลย
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const currentRev = task.currentRevision || 'rev00';
     const revDisplay = currentRev === 'rev00' ? 'REV. 0 (ครั้งแรก)' : `REV. ${parseInt(currentRev.replace('rev', ''))}`;
+
+    // Re-reads the task doc right before writing — the mount-time snapshot can go stale
+    // if the customer leaves this tab open for a while, so re-verify at submit time too.
+    const verifyStillReviewable = async (): Promise<boolean> => {
+        const taskRef = doc(db, 'workOrders', woId, 'categories', catId, 'tasks', taskId);
+        const freshSnap = await getDoc(taskRef);
+        const freshStatus = freshSnap.exists() ? freshSnap.data().status : undefined;
+        if (freshStatus !== 'Evaluating') {
+            setTask((prev: any) => prev ? { ...prev, status: freshStatus } : prev);
+            await showAlert('รายการงานนี้ถูกดำเนินการไปแล้ว ไม่สามารถอนุมัติหรือตีกลับซ้ำได้ กรุณาปิดหน้านี้');
+            return false;
+        }
+        return true;
+    };
 
     // Same pipeline as the "Foreman fills it in" tab (SLAMonitor.tsx's handleConfirmReview) —
     // whichever device does the tapping, approve/reject must produce identical results.
     const handleApprove = async () => {
         if (!ownerName.trim()) {
-            alert('กรุณากรอกชื่อผู้ตรวจรับงาน');
+            await showAlert('กรุณากรอกชื่อผู้ตรวจรับงาน');
             return;
         }
         setSubmitting(true);
         try {
+            if (!(await verifyStillReviewable())) return;
             const now = new Date().toISOString();
             await updateTask(woId, catId, taskId, {
                 status: 'Complete',
@@ -158,7 +200,7 @@ export default function OwnerReview() {
             setSubmitted(true);
         } catch (error) {
             console.error("Error approving task:", error);
-            alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
+            await showAlert("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
         } finally {
             setSubmitting(false);
         }
@@ -166,11 +208,12 @@ export default function OwnerReview() {
 
     const handleReject = async () => {
         if (!rejectReason.trim()) {
-            alert('กรุณาระบุสาเหตุที่ไม่ผ่านหรือจุดงานชำรุดที่ต้องแก้ไข');
+            await showAlert('กรุณาระบุสาเหตุที่ไม่ผ่านหรือจุดงานชำรุดที่ต้องแก้ไข');
             return;
         }
         setSubmitting(true);
         try {
+            if (!(await verifyStillReviewable())) return;
             const now = new Date().toISOString();
             const revNum = parseInt(currentRev.replace('rev', '')) || 0;
             const nextRev = `rev${String(revNum + 1).padStart(2, '0')}`;
@@ -189,7 +232,7 @@ export default function OwnerReview() {
             setSubmitted(true);
         } catch (error) {
             console.error("Error rejecting task:", error);
-            alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
+            await showAlert("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
         } finally {
             setSubmitting(false);
         }

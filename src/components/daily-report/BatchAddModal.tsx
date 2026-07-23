@@ -3,6 +3,7 @@ import { Clock, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { AvailableItem, BatchConfig, BatchAddModalProps, ModalTimeTarget } from "../../types/dailyReport.types";
 import { AnalogTimePicker } from "../AnalogTimePicker";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useAlert } from "../../context/AlertContext";
 
 export const BatchAddModal: React.FC<BatchAddModalProps> = ({
   type,
@@ -11,6 +12,7 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
   onAdd,
 }) => {
   const isMobile = useIsMobile();
+  const showAlert = useAlert();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const filteredItems = useMemo(() => {
@@ -43,9 +45,12 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
 
   const hasSubmittedRef = useRef(false);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (hasSubmittedRef.current) return;
-    if (selectedIds.length === 0) return alert("กรุณาเลือกคนงานอย่างน้อย 1 คน");
+    if (selectedIds.length === 0) {
+      await showAlert("กรุณาเลือกคนงานอย่างน้อย 1 คน");
+      return;
+    }
     hasSubmittedRef.current = true;
     onAdd(selectedIds, config);
   };

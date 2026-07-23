@@ -359,7 +359,7 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
           (overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
         );
         const minutes = Math.floor(
-          (overdueDiff % (1000 * 60 * 60)) / (1000 * 65),
+          (overdueDiff % (1000 * 60 * 60)) / (1000 * 60),
         );
         setTimeLeftGlobal({ days, hours, minutes, isOverdue: true });
       } else {
@@ -380,7 +380,7 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
           (overdueDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
         );
         const minutes = Math.floor(
-          (overdueDiff % (1000 * 60 * 60)) / (1000 * 65),
+          (overdueDiff % (1000 * 60 * 60)) / (1000 * 60),
         );
         setTimeLeftSub({ days, hours, minutes, isOverdue: true });
       } else {

@@ -9,10 +9,12 @@ import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firesto
 import ActivityLogTable from '../components/ActivityLogTable';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { logService } from '../services/logService';
 
 const AdminMasterData = () => {
     const { user } = useAuth();
+    const showAlert = useAlert();
     const { projects: projectList, staff: staffList } = useWorkOrders();
     const [activeTab, setActiveTab] = useState<'Staff' | 'Contractors' | 'Projects' | 'Logs' | 'Costs'>('Staff');
 
@@ -96,20 +98,20 @@ const AdminMasterData = () => {
                 targetId: 'admin_settings'
             });
             
-            alert('บันทึกอัตราค่าแรงสำเร็จ!');
+            await showAlert('บันทึกอัตราค่าแรงสำเร็จ!');
         } catch (err) {
             console.error(err);
-            alert('เกิดข้อผิดพลาดในการบันทึก');
+            await showAlert('เกิดข้อผิดพลาดในการบันทึก');
         }
     };
 
-    const handleVerifyPasscode = (e: any) => {
+    const handleVerifyPasscode = async (e: any) => {
         e.preventDefault();
         const targetPasscode = dbPasscode || 'AdminTTS2004'; // Use DB or fallback
         if (passcode === targetPasscode) {
             setIsAuthorized(true);
         } else {
-            alert('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่');
+            await showAlert('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่');
             setPasscode('');
         }
     };

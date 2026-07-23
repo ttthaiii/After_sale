@@ -14,33 +14,36 @@ import { AuthProvider } from './context/AuthContext';
 import { WorkOrderProvider } from './context/WorkOrderContext';
 
 import { NotificationProvider } from './context/NotificationContext';
+import { AlertProvider } from './context/AlertContext';
 
 function App() {
     return (
-        <AuthProvider>
-            <WorkOrderProvider>
-                <NotificationProvider>
-                    <BrowserRouter>
-                        <Routes>
-                            <Route path="/login" element={<Login />} />
-                            <Route path="/owner-review" element={<OwnerReview />} />
-                            <Route path="/handover" element={<CustomerHandover />} />
+        <AlertProvider>
+            <AuthProvider>
+                <WorkOrderProvider>
+                    <NotificationProvider>
+                        <BrowserRouter>
+                            <Routes>
+                                <Route path="/login" element={<Login />} />
+                                <Route path="/owner-review" element={<OwnerReview />} />
+                                <Route path="/handover" element={<CustomerHandover />} />
 
-                            <Route path="/" element={<MainLayout />}>
-                                <Route index element={<Navigate to="/dashboard" replace />} />
-                                <Route path="dashboard" element={<Dashboard />} />
-                                <Route path="work-orders" element={<Entry />} />
-                                <Route path="sla-monitor" element={<SLAMonitor />} />
-                                <Route path="daily-report" element={<DailyReport />} />
-                                <Route path="admin" element={<AdminMasterData />} />
-                                <Route path="evaluation" element={<Evaluation />} />
-                                <Route path="history" element={<History />} />
-                            </Route>
-                        </Routes>
-                    </BrowserRouter>
-                </NotificationProvider>
-            </WorkOrderProvider>
-        </AuthProvider>
+                                <Route path="/" element={<MainLayout />}>
+                                    <Route index element={<Navigate to="/dashboard" replace />} />
+                                    <Route path="dashboard" element={<Dashboard />} />
+                                    <Route path="work-orders" element={<Entry />} />
+                                    <Route path="sla-monitor" element={<SLAMonitor />} />
+                                    <Route path="daily-report" element={<DailyReport />} />
+                                    <Route path="admin" element={<AdminMasterData />} />
+                                    <Route path="evaluation" element={<Evaluation />} />
+                                    <Route path="history" element={<History />} />
+                                </Route>
+                            </Routes>
+                        </BrowserRouter>
+                    </NotificationProvider>
+                </WorkOrderProvider>
+            </AuthProvider>
+        </AlertProvider>
     );
 }
 

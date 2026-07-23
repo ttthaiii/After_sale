@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar as CalendarIcon, FileText, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock, X, Camera } from 'lucide-react';
 import { WorkOrder, Project } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { useAlert } from '../context/AlertContext';
 import ImageOverlay from './ImageOverlay';
 import { AnalogTimePicker } from './AnalogTimePicker';
 import { db } from '../lib/firebase';
@@ -74,6 +75,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
     const [currentDate] = useState(new Date());
     const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
     const isMobile = useIsMobile();
+    const showAlert = useAlert();
 
 
     const year = selectedMonth ? parseInt(selectedMonth.split('-')[0]) : currentDate.getFullYear();
@@ -565,10 +567,10 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                 labor: tempLabor
             });
             setIsEditingId(null);
-            alert("บันทึกแก้ไขค่าแรงเรียบร้อยแล้ว");
+            await showAlert("บันทึกแก้ไขค่าแรงเรียบร้อยแล้ว");
         } catch (error) {
             console.error("Save error:", error);
-            alert("ไม่สามารถบันทึกข้อมูลได้");
+            await showAlert("ไม่สามารถบันทึกข้อมูลได้");
         } finally {
             setIsSubmitting(false);
         }

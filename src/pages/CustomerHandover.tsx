@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
+import { useAlert } from '../context/AlertContext';
 import { db } from '../lib/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import {
@@ -39,6 +40,7 @@ export default function CustomerHandover() {
     const woId = searchParams.get('woId') || '';
     
     const { submitCustomerInspection, submitPhCustomerInspection, logCustomerQrView } = useWorkOrders();
+    const showAlert = useAlert();
 
     // States
     const [loading, setLoading] = useState(true);
@@ -272,7 +274,7 @@ export default function CustomerHandover() {
         })
     );
 
-    const handleSelectAction = (taskId: string, status: 'approved' | 'rejected') => {
+    const handleSelectAction = async (taskId: string, status: 'approved' | 'rejected') => {
         const incompleteRejectTask = eligibleTasks.find((t: any) => 
             approvals[t.id]?.status === 'rejected' && (
                 !rejectReasons[t.id]?.trim() || 
@@ -282,7 +284,7 @@ export default function CustomerHandover() {
         );
         
         if (incompleteRejectTask && incompleteRejectTask.id !== taskId) {
-            alert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับรายการแก้ไข "${incompleteRejectTask.name || incompleteRejectTask.taskName}" ก่อนประเมินรายการอื่น`);
+            await showAlert(`กรุณากรอกข้อมูลสาเหตุ ชื่อติดต่อกลับ และเบอร์โทร สำหรับรายการแก้ไข "${incompleteRejectTask.name || incompleteRejectTask.taskName}" ก่อนประเมินรายการอื่น`);
             return;
         }
 
@@ -309,7 +311,7 @@ export default function CustomerHandover() {
     const handleFinalSubmit = async () => {
         const unactedTasks = eligibleTasks.filter((t: any) => !approvals[t.id]);
         if (unactedTasks.length > 0) {
-            alert('กรุณาประเมินงานย่อย (ผ่าน / แก้ไข) ให้ครบถ้วนทุกรายการก่อนกดส่งมอบงาน');
+            await showAlert('กรุณาประเมินงานย่อย (ผ่าน / แก้ไข) ให้ครบถ้วนทุกรายการก่อนกดส่งมอบงาน');
             return;
         }
 
@@ -321,7 +323,7 @@ export default function CustomerHandover() {
             )
         );
         if (invalidRejects.length > 0) {
-            alert('กรุณากรอกสาเหตุ ชื่อผู้แจ้ง และเบอร์โทรสำหรับรายการที่สั่งแก้ไข (Reject)');
+            await showAlert('กรุณากรอกสาเหตุ ชื่อผู้แจ้ง และเบอร์โทรสำหรับรายการที่สั่งแก้ไข (Reject)');
             return;
         }
 
@@ -341,7 +343,7 @@ export default function CustomerHandover() {
             setSubmitted(true);
         } catch (err) {
             console.error(err);
-            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+            await showAlert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         } finally {
             setSubmitting(false);
         }
@@ -411,9 +413,9 @@ export default function CustomerHandover() {
 
         const handlePhSubmit = async () => {
             const undecided = phCategories.filter((cat: any) => !catApprovals[cat.id]);
-            if (undecided.length > 0) { alert('กรุณาประเมินทุกหมวดงาน (ผ่าน / ส่งแก้ไข) ให้ครบก่อนยืนยัน'); return; }
+            if (undecided.length > 0) { await showAlert('กรุณาประเมินทุกหมวดงาน (ผ่าน / ส่งแก้ไข) ให้ครบก่อนยืนยัน'); return; }
             const incompleteReject = phCategories.find((cat: any) => catApprovals[cat.id]?.status === 'rejected' && !catRejectReasons[cat.id]?.trim());
-            if (incompleteReject) { alert(`กรุณาระบุเหตุผลสำหรับหมวดงาน "${incompleteReject.name}" ที่สั่งแก้ไข`); return; }
+            if (incompleteReject) { await showAlert(`กรุณาระบุเหตุผลสำหรับหมวดงาน "${incompleteReject.name}" ที่สั่งแก้ไข`); return; }
 
             // Merge reasons into catApprovals
             const finalApprovals = { ...catApprovals };
@@ -426,7 +428,7 @@ export default function CustomerHandover() {
                 setSubmitType(phHasRejections ? 'reject' : 'approve');
                 setSubmitted(true);
             } catch (err) {
-                alert('เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
+                await showAlert('เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่');
             } finally {
                 setSubmitting(false);
             }
@@ -469,8 +471,11 @@ export default function CustomerHandover() {
                                 const isExpanded = !!expandedTaskIds[cat.id];
                                 return (
                                     <div key={cat.id} style={{ background: '#fff', borderRadius: '14px', border: `1px solid ${decision?.status === 'approved' ? '#86efac' : decision?.status === 'rejected' ? '#fca5a5' : '#e2e8f0'}`, overflow: 'hidden' }}>
-                                        {/* Row header */}
-                                        <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        {/* Row header — stacks into two rows on mobile so the approve/reject/
+                                            expand buttons always get the full card width and can't get
+                                            clipped by the card's overflow:hidden (user-reported 2026-07-23:
+                                            chevron was squeezed off-screen next to a long category name). */}
+                                        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '10px' : 0 }}>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1e293b' }}>{cat.name}</div>
                                                 <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
@@ -478,7 +483,7 @@ export default function CustomerHandover() {
                                                     {` · ความคืบหน้า ${cat.dailyProgress || 0}%`}
                                                 </div>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
                                                 <button onClick={() => handlePhSelectAction(cat.id, 'approved')} style={{ border: 'none', padding: '5px 11px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer', background: decision?.status === 'approved' ? '#22c55e' : '#f1f5f9', color: decision?.status === 'approved' ? '#fff' : '#475569' }}>ผ่าน</button>
                                                 <button onClick={() => handlePhSelectAction(cat.id, 'rejected')} style={{ border: 'none', padding: '5px 11px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer', background: decision?.status === 'rejected' ? '#ef4444' : '#f1f5f9', color: decision?.status === 'rejected' ? '#fff' : '#475569' }}>ส่งแก้ไข</button>
                                                 {(photos.length > 0 || decision?.status === 'rejected') && (
@@ -601,12 +606,15 @@ export default function CustomerHandover() {
 
                                 return (
                                     <div key={task.id} style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', borderColor: decision?.status === 'approved' ? '#86efac' : decision?.status === 'rejected' ? '#fca5a5' : '#e2e8f0' }}>
-                                        {/* Row Header */}
-                                        <div style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        {/* Row Header — stacks into two rows on mobile so the approve/reject/
+                                            expand buttons always get the full card width and can't get
+                                            clipped by the card's overflow:hidden (user-reported 2026-07-23:
+                                            chevron was squeezed off-screen next to a long task name). */}
+                                        <div style={{ padding: '16px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '10px' : 0 }}>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1e293b' }}>{task.name || task.taskName}</div>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                            <div style={{ display: 'flex', gap: '8px', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
                                                 <button onClick={() => handleSelectAction(task.id, 'approved')} style={{ border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer', background: decision?.status === 'approved' ? '#22c55e' : '#f1f5f9', color: decision?.status === 'approved' ? '#fff' : '#475569' }}>
                                                     ผ่าน
                                                 </button>

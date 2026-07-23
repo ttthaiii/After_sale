@@ -8,6 +8,7 @@ import { deriveWoStatus } from '../utils/deriveWoStatus';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
 import { logService } from '../services/logService';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 import AdminAssignModal from '../components/AdminAssignModal';
@@ -24,6 +25,7 @@ import { scaleFont } from '../components/ui/responsiveText';
 const Evaluation = () => {
     const isMobile = useIsMobile();
     const { user } = useAuth();
+    const showAlert = useAlert();
     const { sendNotification } = useNotifications();
     const { workOrders, saveEvaluation, projects, markWorkOrderAsReviewed, updateTask, staff, contractors, markWorkOrderAsOpenedByAdmin, approveRetroactiveRequest, rejectRetroactiveRequest, approvePreHandoverWO, approvePhRetroactiveRequest, rejectPhRetroactiveRequest, reviewRejectedPhWO } = useWorkOrders();
     const location = useLocation();
@@ -292,7 +294,7 @@ const Evaluation = () => {
             setSelectedRejectedPhWo(null);
             setPhReassignDate('');
         } catch (err) {
-            alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+            await showAlert('เกิดข้อผิดพลาด กรุณาลองใหม่');
         } finally {
             setPhReassignLoading(false);
         }
