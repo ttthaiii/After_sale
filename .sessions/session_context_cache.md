@@ -1,4 +1,4 @@
-# Context Cache — 2026-07-22 15:35
+# Context Cache — 2026-07-23 11:48
 task: T-347 — job-level SLA 7-day warning threshold (final, team-confirmed) + Health Pulse เกือบช้า removal + SLA Pressure/เร่งด่วน card/SLAMonitor WOA dropdown all job-level + SLA-anchor timezone lock (+07:00)
 phase: in_progress
 next: user verifies in-app (Health Pulse 2-way split, SLA Pressure per-WO status, เร่งด่วน SLA card, SLAMonitor dropdown all-subtasks-same-status + WOP 3-tier color) → then close T-347.

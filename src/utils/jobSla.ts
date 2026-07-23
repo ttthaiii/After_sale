@@ -21,9 +21,13 @@
 //      Excludes Draft/Evaluating (not approved), Rejected (admin), Cancelled.
 //      customer_reject is auto-handled: the system resets the task in place with
 //      a fresh SLA, so we just read current state.
-//   2. Job SLA limit  = MAX SLA-hours among counted subtasks (the longest promise).
-//      Job start (วันนัด) = MAX appointment@08:00 among counted subtasks (latest).
-//      Job deadline = start + limit  (pure CALENDAR time — no working-hour math).
+//   2. Job deadline = MAX over counted subtasks of (that subtask's OWN appointment@08:00
+//      + that subtask's OWN SLA-hours) — i.e. whichever subtask's own promise lands
+//      latest governs the job (pure CALENDAR time — no working-hour math). Job start/
+//      limit/slaCategory are read from that SAME governing subtask, not independently
+//      maxed (an earlier version took MAX(start) and MAX(limit) separately, which could
+//      invent a deadline later than any subtask actually promised — corrected 2026-07-22,
+//      user-confirmed with a start-date-mismatch example).
 //   3. Job completion = LATEST completion among counted subtasks, and only once
 //      ALL counted subtasks are done. Otherwise the job is still in-progress.
 //   4. Status:
@@ -169,40 +173,48 @@ export const computeJobSLA = (wo: any): JobSLA => {
     const counted = getCountedSubtasks(wo);
     if (counted.length === 0) return notEligible;
 
-    let maxLimitHours = 0;
+    // Governing subtask = the one whose OWN (start + its own SLA) lands latest —
+    // NOT independently-maxed start and limit from possibly different subtasks
+    // (that combination can invent a deadline later than any subtask actually
+    // promised; user-confirmed correction 2026-07-22).
+    let governingDeadlineMs = -Infinity;
+    let startMs: number | null = null;
+    let limitHours = 0;
     let governingCat: string | null = null;
-    let maxStartMs = -Infinity;
     let latestEndMs = -Infinity;
     let allDone = true;
     let validCount = 0;
 
     for (const t of counted) {
         const cat = subtaskSlaCategory(t, wo, isWop);
-        const startMs = subtaskAppointmentMs(t, wo, isWop);
-        if (!cat || startMs === null) {
+        const tStartMs = subtaskAppointmentMs(t, wo, isWop);
+        if (!cat || tStartMs === null) {
             // Approved subtask missing SLA/appointment = data error → skip, never default.
             console.warn(
                 `[computeJobSLA] approved subtask on WO ${wo?.id} missing SLA/appointment — skipped`,
-                { taskId: t?.id, slaCategory: cat, startMs }
+                { taskId: t?.id, slaCategory: cat, startMs: tStartMs }
             );
             continue;
         }
         validCount++;
         const hrs = SLA_HOURS_MAP[cat];
-        if (hrs > maxLimitHours) { maxLimitHours = hrs; governingCat = cat; }
-        if (startMs > maxStartMs) maxStartMs = startMs;
+        const tDeadlineMs = tStartMs + hrs * HOUR_MS;
+        if (tDeadlineMs > governingDeadlineMs) {
+            governingDeadlineMs = tDeadlineMs;
+            startMs = tStartMs;
+            limitHours = hrs;
+            governingCat = cat;
+        }
 
         const { done, endMs } = resolveSubtaskEnd(t, wo);
         if (!done) allDone = false;
         else if (endMs !== null && endMs > latestEndMs) latestEndMs = endMs;
     }
 
-    if (validCount === 0) return notEligible;
+    if (validCount === 0 || startMs === null) return notEligible;
 
-    const startMs = maxStartMs;
-    const limitHours = maxLimitHours;
     const limitMs = limitHours * HOUR_MS;
-    const deadlineMs = startMs + limitMs;
+    const deadlineMs = governingDeadlineMs;
     const completedMs = allDone && latestEndMs !== -Infinity ? latestEndMs : null;
 
     let phase: JobSLAPhase;

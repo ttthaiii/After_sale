@@ -480,11 +480,11 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
     globalBorderColor = "#fca5a5";
     globalLabelText = `เกินกำหนด: ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
   } else {
-    if (totalGlobalHours < 24) {
+    if (totalGlobalHours < 24 * 7) {
       globalBadgeColor = "#d97706";
       globalBadgeBg = "#fffbeb";
       globalBorderColor = "#fde047";
-      globalLabelText = `ด่วน! เหลือ ${timeLeftGlobal.hours} ชม. ${timeLeftGlobal.minutes} น.`;
+      globalLabelText = `ด่วน! เหลือ ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
     } else {
       globalBadgeColor = "#059669";
       globalBadgeBg = "#f0fdf4";
@@ -505,8 +505,8 @@ export const GroupSLACountdown: React.FC<GroupSLACountdownProps & { isHelper?: b
     } else if (timeLeftGlobal?.isOverdue) {
       timeText = `เกินกำหนด: ${timeLeftGlobal.days > 0 ? `${timeLeftGlobal.days} วัน ` : ""}${timeLeftGlobal.hours} ชม.`;
     } else {
-      if (totalHours < 24) {
-        timeText = `ด่วน! เหลือ ${timeLeftGlobal?.hours} ชม. ${timeLeftGlobal?.minutes} น.`;
+      if (totalHours < 24 * 7) {
+        timeText = `ด่วน! เหลือ ${timeLeftGlobal?.days > 0 ? `${timeLeftGlobal?.days} วัน ` : ""}${timeLeftGlobal?.hours} ชม.`;
       } else {
         timeText = `เหลือ ${timeLeftGlobal?.days > 0 ? `${timeLeftGlobal?.days} วัน ` : ""}${timeLeftGlobal?.hours} ชม.`;
       }

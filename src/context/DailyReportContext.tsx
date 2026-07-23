@@ -1198,8 +1198,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     });
     const isToday = reportDate === todayTH();
-    const effectiveMax = isToday ? 100 : Math.min(max, 99);
-    return { min, max: effectiveMax, isToday };
+    // max is bounded ONLY by an actual future entry's progress (loop above) —
+    // no blanket cap for backdated dates; a day with no later entry yet can
+    // still be closed at 100% (user-confirmed correction 2026-07-23).
+    return { min, max, isToday };
   }, [selectedTaskInfo, reportDate]);
 
   const isReportDatePast3Days = useMemo(() => {
@@ -1868,7 +1870,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
     if (progress > progressBounds.max) {
       alert(
-        `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% ${!progressBounds.isToday && progress === 100 ? "(ห้ามลงปิดงาน 100% ย้อนหลัง)" : "(เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)"}`,
+        `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`,
       );
       return;
     }
@@ -1884,6 +1886,71 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       alert(
         `คุณเคยส่งรายงานของวันที่ ${formatDate(reportDate)} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`,
       );
+      return;
+    }
+
+    // Same shift flag alone doesn't mean the actual clock hours overlap
+    // (e.g. "normal" 08:00-12:00 on task A vs "normal" 13:00-17:00 on task B) —
+    // compare the real shiftTimes ranges via isTimeOverlap. Shared by both the
+    // same-task and cross-task duplicate checks below.
+    const DEFAULT_SHIFT_TIME: Record<string, string> = {
+      normal: "08:00 - 17:00",
+      otMorning: "06:00 - 08:00",
+      otNoon: "12:00 - 13:00",
+      otEvening: "18:00 - 21:00",
+    };
+    const SHIFT_TIME_KEY: Record<string, keyof NonNullable<LaborEntry["shiftTimes"]>> = {
+      normal: "day",
+      otMorning: "otMorning",
+      otNoon: "otNoon",
+      otEvening: "otEvening",
+    };
+    const SHIFT_LABEL: Record<string, string> = {
+      normal: "กะปกติ",
+      otMorning: "OT เช้า",
+      otNoon: "OT เที่ยง",
+      otEvening: "OT เย็น",
+    };
+    const getShiftTime = (entry: any, shiftKey: string) =>
+      entry.shiftTimes?.[SHIFT_TIME_KEY[shiftKey]] || DEFAULT_SHIFT_TIME[shiftKey];
+    const overlappingShiftsOf = (a: any, b: any): string[] => {
+      const result: string[] = [];
+      (["normal", "otMorning", "otNoon", "otEvening"] as const).forEach((shiftKey) => {
+        if (
+          a.shifts?.[shiftKey] &&
+          b.shifts?.[shiftKey] &&
+          isTimeOverlap(getShiftTime(a, shiftKey), getShiftTime(b, shiftKey))
+        ) {
+          result.push(SHIFT_LABEL[shiftKey]);
+        }
+      });
+      return result;
+    };
+
+    // 🚨 Same-task duplicate validation: defense-in-depth against duplicate labor
+    // entries for the SAME worker ending up in this report's own labor list — no
+    // matter which code path put them there (batch-add double click, draft restore,
+    // manual add, etc.) — before it ever reaches the cross-task check below (which
+    // deliberately skips the current task).
+    const sameTaskDuplicates: string[] = [];
+    labor.forEach((l, i) => {
+      const idToCheck = l.staffId || l.contractorId;
+      if (!idToCheck) return;
+      labor.forEach((other, j) => {
+        if (j <= i) return;
+        const otherId = other.staffId || other.contractorId;
+        if (otherId !== idToCheck) return;
+
+        const overlappingShifts = overlappingShiftsOf(l, other);
+        if (overlappingShifts.length > 0) {
+          const workerName = l.staffName || (l as any).name || l.affiliation || idToCheck;
+          sameTaskDuplicates.push(`${workerName} (${overlappingShifts.join(", ")})`);
+        }
+      });
+    });
+
+    if (sameTaskDuplicates.length > 0) {
+      alert(`พบรายการแรงงานซ้ำซ้อนในรายงานนี้ กรุณาลบรายการที่ซ้ำก่อนบันทึก:\n- ${sameTaskDuplicates.join('\n- ')}`);
       return;
     }
 
@@ -1910,21 +1977,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               );
 
               if (matchingWorker) {
-                // Check if any shift times overlap
-                const hasNormalOverlap = l.shifts?.normal && matchingWorker.shifts?.normal;
-                const hasOtMorningOverlap = l.shifts?.otMorning && matchingWorker.shifts?.otMorning;
-                const hasOtNoonOverlap = l.shifts?.otNoon && matchingWorker.shifts?.otNoon;
-                const hasOtEveningOverlap = l.shifts?.otEvening && matchingWorker.shifts?.otEvening;
+                const overlappingShifts = overlappingShiftsOf(l, matchingWorker);
 
-                if (hasNormalOverlap || hasOtMorningOverlap || hasOtNoonOverlap || hasOtEveningOverlap) {
+                if (overlappingShifts.length > 0) {
                   const workerName = l.staffName || (l as any).name || l.affiliation || idToCheck;
                   const taskNameClean = (t.name || t.taskName || t.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim();
-                  
-                  const overlappingShifts: string[] = [];
-                  if (hasNormalOverlap) overlappingShifts.push("กะปกติ");
-                  if (hasOtMorningOverlap) overlappingShifts.push("OT เช้า");
-                  if (hasOtNoonOverlap) overlappingShifts.push("OT เที่ยง");
-                  if (hasOtEveningOverlap) overlappingShifts.push("OT เย็น");
 
                   duplicateWorkers.push(`${workerName} ในงาน "${taskNameClean}" (${overlappingShifts.join(", ")})`);
                 }
@@ -1957,6 +2014,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           return h.date?.split("T")[0] === reportDate && matchesHelper;
         }
       );
+      const foremanEmpId = user?.employeeId || user?.id || "101527";
       const laborPayload = labor
         .filter(
           (l) =>
@@ -2049,7 +2107,6 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
               : null,
         },
       };
-      const foremanEmpId = user?.employeeId || user?.id || "101527";
       let updatedEditHistory = existingHistory?.editHistory || [];
       if (isEditingExisting && existingHistory) {
         const prevSnapshot = {
@@ -2613,8 +2670,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const catProgress = selectedPhCatInfo.cat.dailyProgress || 0;
       if (catProgress > min) min = catProgress;
     }
-    const effectiveMax = isToday ? 100 : Math.min(max, 99);
-    return { min, max: effectiveMax, isToday };
+    // max is bounded ONLY by an actual future entry's progress (loop above) —
+    // no blanket cap for backdated dates (user-confirmed correction 2026-07-23).
+    return { min, max, isToday };
   }, [selectedPhCatInfo, phDailyHistory, reportDate]);
 
   // WOP unsaved changes — after isPhExistingReport + isPhEditingExisting to avoid TDZ
@@ -2672,6 +2730,38 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const submitPhDailyReport = async (noteType?: string): Promise<void> => {
     if (!selectedPhCatInfo || isSubmitting) return;
+    // Same mandatory-evidence checks as AfterSale's handleSubmit — WOA and WOP
+    // must enforce identical requirements (user-confirmed 2026-07-23).
+    if (labor.length === 0)
+      return alert("กรุณาระบุข้อมูลแรงงานที่เข้าดำเนินการ");
+    if (sitePhotos.filter(Boolean).length < 2)
+      return alert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+    const isRegularActive = labor.some((l) => l.shifts?.normal);
+    if (isRegularActive) {
+      const requiredCount = getRequiredRegularPhotoCount(labor);
+      const uploadedCount = laborRegularPhotos.filter(Boolean).length;
+      if (uploadedCount < requiredCount) {
+        if (requiredCount === 2) {
+          return alert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
+        } else {
+          return alert(
+            "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
+          );
+        }
+      }
+    }
+    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
+    if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
+      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
+    }
+    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
+    if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
+      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
+    }
+    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
+    if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
+      return alert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
+    }
     const existingHistReport = phDailyHistory.find((h: any) => h.id === reportDate || h.date === reportDate);
     if (existingHistReport && !isPhEditingExisting) {
       alert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
@@ -2684,7 +2774,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
     if (progress > phProgressBounds.max) {
-      alert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}%${!phProgressBounds.isToday && progress === 100 ? ' (ห้ามลงปิดงาน 100% ย้อนหลัง)' : ' (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)'}`);
+      alert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`);
       return;
     }
     setIsSubmitting(true);

@@ -1,5 +1,5 @@
 import React, { Fragment, useState, useEffect } from "react";
-import { computeJobSLA } from "../../utils/jobSla";
+import { computeJobSLA, SLA_HOURS_MAP } from "../../utils/jobSla";
 import {
   ChevronLeft,
   Search,
@@ -158,43 +158,19 @@ export const WorkOrderGroupList: React.FC = () => {
       return activeTab === 'support' ? isSupport : !isSupport;
     });
 
-    const isWoaWop = wo.id.toUpperCase().includes('WOA') || wo.id.toUpperCase().includes('WOP');
-    let maxDl = 0;
+    const jobSla = computeJobSLA(wo);
     let maxDlOriginal = 0;
     let minSubDl = Infinity;
 
-    const slaHoursMap = {
-      Immediately: 4,
-      "24h": 24,
-      "1-3d": 72,
-      "3-7d": 168,
-      "7-14d": 336,
-      "14-30d": 720,
-    };
-
     wo.categories.forEach((cat: any) => {
       cat.tasks.forEach((t: any) => {
-        if (isWoaWop && !t.slaCategory) return;
-        const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
-        const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
-        let tStart = t.startDate 
-           ? `${t.startDate.split('T')[0]}T08:00:00+07:00`
-           : t.slaStartTime;
-        if (!tStart) {
-          tStart = wo.createdAt || new Date().toISOString();
-        }
-        const tDeadline = new Date(tStart).getTime() + tDurHours * 60 * 60 * 1e3;
-        if (tDeadline > maxDl) {
-          maxDl = tDeadline;
-        }
-
         const tRawInit1 = (t as any).initialStartDate;
         const tRevAt1 = (t as any).revisionCreatedAt;
         const tValidInit1 = tRawInit1 && tRevAt1
           ? (new Date(tRawInit1) < new Date(tRevAt1) ? tRawInit1 : null)
           : (tRawInit1 || null);
         const originalSla = (tValidInit1 ? (t as any).initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
-        const tDurHoursOriginal = slaHoursMap[originalSla as keyof typeof slaHoursMap] || 24;
+        const tDurHoursOriginal = SLA_HOURS_MAP[originalSla as keyof typeof SLA_HOURS_MAP] || 24;
         const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
         const tStartOriginal = tValidInit1
           ? `${tStartOriginalRaw.split('T')[0]}T08:00:00+07:00`
@@ -213,7 +189,7 @@ export const WorkOrderGroupList: React.FC = () => {
       });
     });
 
-    const globalDeadline = maxDl > 0 ? maxDl : new Date().getTime();
+    const globalDeadline = jobSla.deadlineMs || new Date().getTime();
     const subtaskDeadline = minSubDl !== Infinity ? minSubDl : globalDeadline;
     const completedAtTime = getCompletedAtTime(wo, globalTasks);
 
@@ -1481,15 +1457,7 @@ export const WorkOrderGroupList: React.FC = () => {
                     // upstream (agreed with product owner: don't show a task with zero remaining action).
                     if (item.task.status === 'Cancelled' || (item.task.status === 'Rejected' && item.task.taskArchived === true)) return;
                     const woId = item.wo.id;
-                    const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
-                    const slaHoursMap: Record<string, number> = {
-                      Immediately: 4,
-                      "24h": 24,
-                      "1-3d": 72,
-                      "3-7d": 168,
-                      "7-14d": 336,
-                      "14-30d": 720,
-                    };
+                    const slaHoursMap = SLA_HOURS_MAP;
                     const taskSla =
                       item.task.slaCategory ||
                       item.task.baselineSla ||
@@ -1534,32 +1502,10 @@ export const WorkOrderGroupList: React.FC = () => {
                     } else {
                       const fullWo = (workOrders as any[]).find((w) => w.id === woId);
                       if (fullWo) {
-                        let maxDl = 0;
+                        const jobSla = computeJobSLA(fullWo);
                         let maxDlOriginal = 0;
                         fullWo.categories.forEach((cat: any) => {
                           cat.tasks.forEach((t: any) => {
-                            if (isWoaWop && !t.slaCategory) return;
-                            const tSla =
-                              t.slaCategory ||
-                              t.baselineSla ||
-                              t.estimatedSla ||
-                              "24h";
-                            const tDurHours = slaHoursMap[tSla as keyof typeof slaHoursMap] || 24;
-                            let tStart = t.startDate 
-                               ? `${t.startDate.split('T')[0]}T08:00:00+07:00`
-                               : t.slaStartTime;
-                            if (!tStart) {
-                              tStart =
-                                fullWo.createdAt ||
-                                 new Date().toISOString();
-                            }
-                            const tDeadline =
-                              new Date(tStart).getTime() +
-                              tDurHours * 60 * 60 * 1e3;
-                            if (tDeadline > maxDl) {
-                              maxDl = tDeadline;
-                            }
-
                             // Original Deadline Calculation — locked to first assignment
                             // Validate: initialStartDate must be BEFORE revisionCreatedAt
                             const tRawInit3 = t.initialStartDate;
@@ -1579,8 +1525,8 @@ export const WorkOrderGroupList: React.FC = () => {
                             }
                           });
                         });
-                        if (maxDl > 0) {
-                          globalDeadlineTime = maxDl;
+                        if (jobSla.deadlineMs) {
+                          globalDeadlineTime = jobSla.deadlineMs;
                         }
                         if (maxDlOriginal > 0) {
                           globalDeadlineTimeOriginal = maxDlOriginal;

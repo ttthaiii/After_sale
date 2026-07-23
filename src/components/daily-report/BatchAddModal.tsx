@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Clock, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { AvailableItem, BatchConfig, BatchAddModalProps, ModalTimeTarget } from "../../types/dailyReport.types";
 import { AnalogTimePicker } from "../AnalogTimePicker";
@@ -41,8 +41,12 @@ export const BatchAddModal: React.FC<BatchAddModalProps> = ({
     );
   };
 
+  const hasSubmittedRef = useRef(false);
+
   const handleConfirm = () => {
+    if (hasSubmittedRef.current) return;
     if (selectedIds.length === 0) return alert("กรุณาเลือกคนงานอย่างน้อย 1 คน");
+    hasSubmittedRef.current = true;
     onAdd(selectedIds, config);
   };
 

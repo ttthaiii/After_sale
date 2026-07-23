@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useDailyReport, filterHistoryByRevision } from "../../context/DailyReportContext";
 import { SLACountdown } from "./SLACountdowns";
+import { computeJobSLA, SLA_HOURS_MAP } from "../../utils/jobSla";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
 import { formatDate } from "../../utils/date";
 import { todayTH } from "../../lib/dateUtils";
@@ -861,19 +862,11 @@ export const DailyReportDetailPane: React.FC = () => {
                       }}
                     >
                       {(() => {
-                        const slaHoursMap: Record<string, number> = {
-                          Immediately: 4,
-                          "24h": 24,
-                          "1-3d": 72,
-                          "3-7d": 168,
-                          "7-14d": 336,
-                          "14-30d": 720,
-                        };
                         const isHelperTask = selectedTaskInfo.task.isHelper === true;
-                        const slaDuration = (selectedTaskInfo.task.slaCategory && slaHoursMap[selectedTaskInfo.task.slaCategory]) || 24;
+                        const slaDuration = (selectedTaskInfo.task.slaCategory && SLA_HOURS_MAP[selectedTaskInfo.task.slaCategory]) || 24;
                         let globalDeadlineTime: number | undefined = undefined;
                         const woId = selectedTaskInfo.wo.id;
-                        
+
                         if (isHelperTask) {
                           const helperDue = selectedTaskInfo.task.dueDate ? new Date(selectedTaskInfo.task.dueDate).getTime() : 0;
                           if (helperDue > 0) {
@@ -882,35 +875,9 @@ export const DailyReportDetailPane: React.FC = () => {
                         } else {
                           const fullWo = workOrders.find((w) => w.id === woId);
                           if (fullWo) {
-                            const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
-                            let maxDl = 0;
-                            fullWo.categories.forEach((cat: any) => {
-                              cat.tasks.forEach((t: any) => {
-                                if (isWoaWop && !t.slaCategory) return;
-                                const tSla =
-                                  t.slaCategory ||
-                                  t.baselineSla ||
-                                  t.estimatedSla ||
-                                  "24h";
-                                const tDurHours = slaHoursMap[tSla] || 24;
-                                let tStart = t.startDate && typeof t.startDate === 'string'
-                                  ? `${t.startDate.split('T')[0]}T08:00:00+07:00`
-                                  : t.slaStartTime;
-                                if (!tStart) {
-                                  tStart =
-                                    fullWo.createdAt ||
-                                     new Date().toISOString();
-                                }
-                                const tDeadline =
-                                  new Date(tStart).getTime() +
-                                  tDurHours * 60 * 60 * 1e3;
-                                if (tDeadline > maxDl) {
-                                  maxDl = tDeadline;
-                                }
-                              });
-                            });
-                            if (maxDl > 0) {
-                              globalDeadlineTime = maxDl;
+                            const jobSla = computeJobSLA(fullWo);
+                            if (jobSla.deadlineMs) {
+                              globalDeadlineTime = jobSla.deadlineMs;
                             }
                           }
                         }
@@ -5027,16 +4994,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     <Clock size={14} color="#2563eb" /> SLA
                   </div>
                   {(() => {
-                    const slaHoursMap: Record<string, number> = {
-                      Immediately: 4,
-                      "24h": 24,
-                      "1-3d": 72,
-                      "3-7d": 168,
-                      "7-14d": 336,
-                      "14-30d": 720,
-                    };
                     const isHelperTask = selectedTaskInfo.task.isHelper === true;
-                    const slaDuration = (selectedTaskInfo.task.slaCategory && slaHoursMap[selectedTaskInfo.task.slaCategory]) || 24;
+                    const slaDuration = (selectedTaskInfo.task.slaCategory && SLA_HOURS_MAP[selectedTaskInfo.task.slaCategory]) || 24;
                     let globalDeadlineTime: number | undefined = undefined;
                     const woId = selectedTaskInfo.wo.id;
                     if (isHelperTask) {
@@ -5045,22 +5004,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     } else {
                       const fullWo = workOrders.find((w) => w.id === woId);
                       if (fullWo) {
-                        const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
-                        let maxDl = 0;
-                        fullWo.categories.forEach((cat: any) => {
-                          cat.tasks.forEach((t: any) => {
-                            if (isWoaWop && !t.slaCategory) return;
-                            const tSla = t.slaCategory || t.baselineSla || t.estimatedSla || "24h";
-                            const tDurHours = slaHoursMap[tSla] || 24;
-                            let tStart = t.startDate && typeof t.startDate === 'string'
-                              ? `${t.startDate.split('T')[0]}T08:00:00`
-                              : t.slaStartTime;
-                            if (!tStart) { tStart = fullWo.createdAt || new Date().toISOString(); }
-                            const tDeadline = new Date(tStart).getTime() + tDurHours * 60 * 60 * 1e3;
-                            if (tDeadline > maxDl) { maxDl = tDeadline; }
-                          });
-                        });
-                        if (maxDl > 0) { globalDeadlineTime = maxDl; }
+                        const jobSla = computeJobSLA(fullWo);
+                        if (jobSla.deadlineMs) { globalDeadlineTime = jobSla.deadlineMs; }
                       }
                     }
                     const isCompleted100 = (selectedTaskInfo.task.dailyProgress || 0) >= 100;
