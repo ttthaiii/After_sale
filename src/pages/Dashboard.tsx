@@ -908,12 +908,12 @@ const Dashboard = () => {
     const [taskCatFilter, setTaskCatFilter] = useState<string>('');
     const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
     const [taskWoTypeFilter, setTaskWoTypeFilter] = useState<string>('');
-    const [taskSlaOutcomeFilter, setTaskSlaOutcomeFilter] = useState<'' | 'onTime' | 'late'>('');
-    // "งานค้างเกินกำหนด" card (Insights Mode SLA gauge) — jumps to Task Performance
-    // Details and scopes it to still-open tasks whose WO is critical-late (user-flagged
-    // 2026-07-24: the click had nowhere to go for Admin/Manager, who only ever see
-    // Insights Mode — Overview Mode's urgent-section table doesn't exist in that branch).
-    const [taskUrgentOnly, setTaskUrgentOnly] = useState(false);
+    // 'onTime'/'late' = completed jobs (job-level SLA outcome); 'urgent' = still-open
+    // jobs whose SLA is critical (the Insights gauge's "งานค้างเกินกำหนด" card). One
+    // shared state so the three are mutually exclusive — stacking 'urgent' (not-yet-done)
+    // with 'onTime'/'late' (already-done) is a contradiction and always yields zero rows
+    // (user-flagged 2026-07-24: filters were stacking instead of replacing each other).
+    const [taskSlaOutcomeFilter, setTaskSlaOutcomeFilter] = useState<'' | 'onTime' | 'late' | 'urgent'>('');
     // T-336: declared before activeForemen (which reads it for the project→foreman cascade) to avoid a TDZ error.
     const [selectedSCurveProject, setSelectedSCurveProject] = useState<string>('');
 
@@ -1292,12 +1292,11 @@ const Dashboard = () => {
         if (highlightedWOId && t.woId !== highlightedWOId) return false;
         if (taskCatFilter && t.categoryName !== taskCatFilter) return false;
         if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
-        if (taskUrgentOnly) {
+        if (taskSlaOutcomeFilter === 'urgent') {
             // Same criteria as the "งานค้างเกินกำหนด" count on the Insights gauge —
             // still-open jobs whose SLA status is critical.
             if (isWorkOrderCompleted(t.parentWO) || getSLATimeStatus(t.parentWO)?.level !== 'critical') return false;
-        }
-        if (taskSlaOutcomeFilter) {
+        } else if (taskSlaOutcomeFilter === 'onTime' || taskSlaOutcomeFilter === 'late') {
             // เสร็จทัน/เลย SLA cards count job-level (per ใบงาน) outcomes — only completed jobs qualify.
             const jobSla = getJobSla(t.parentWO);
             if (!jobSla.isEligible || jobSla.phase !== 'done') return false;
@@ -1305,7 +1304,7 @@ const Dashboard = () => {
             if (taskSlaOutcomeFilter === 'late' && jobSla.status !== 'late') return false;
         }
         return true;
-    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter, taskSlaOutcomeFilter, taskUrgentOnly]);
+    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter, taskSlaOutcomeFilter]);
 
     // Comparison Dashboard specific broad filtering
     const comparisonFilteredData = useMemo(() => {
@@ -2736,7 +2735,7 @@ const Dashboard = () => {
                                         {lateCount > 0 && (
                                             <div
                                                 onClick={() => {
-                                                    setTaskUrgentOnly(prev => !prev);
+                                                    setTaskSlaOutcomeFilter(prev => prev === 'urgent' ? '' : 'urgent');
                                                     document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' });
                                                 }}
                                                 title="คลิกเพื่อดูรายการที่เกินกำหนด"
@@ -3175,14 +3174,8 @@ const Dashboard = () => {
                                             )}
                                             {taskSlaOutcomeFilter && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: taskSlaOutcomeFilter === 'onTime' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${taskSlaOutcomeFilter === 'onTime' ? '#bbf7d0' : '#fecaca'}`, borderRadius: '10px', padding: '5px 10px' }}>
-                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: taskSlaOutcomeFilter === 'onTime' ? '#15803d' : '#b91c1c' }}>{taskSlaOutcomeFilter === 'onTime' ? 'เสร็จทัน SLA' : 'เลย SLA'}</span>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: taskSlaOutcomeFilter === 'onTime' ? '#15803d' : '#b91c1c' }}>{taskSlaOutcomeFilter === 'onTime' ? 'เสร็จทัน SLA' : taskSlaOutcomeFilter === 'late' ? 'เลย SLA' : 'งานค้างเกินกำหนด'}</span>
                                                     <button onClick={() => setTaskSlaOutcomeFilter('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: taskSlaOutcomeFilter === 'onTime' ? '#86efac' : '#fca5a5', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
-                                                </div>
-                                            )}
-                                            {taskUrgentOnly && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '5px 10px' }}>
-                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#b91c1c' }}>งานค้างเกินกำหนด</span>
-                                                    <button onClick={() => setTaskUrgentOnly(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fca5a5', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
                                                 </div>
                                             )}
                                             <select value={taskWoTypeFilter} onChange={e => setTaskWoTypeFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskWoTypeFilter ? '#fef3c7' : '#f8fafc', color: taskWoTypeFilter ? '#b45309' : '#64748b', cursor: 'pointer', outline: 'none' }}>
@@ -3198,8 +3191,8 @@ const Dashboard = () => {
                                                 <option value="">สถานะ: ทั้งหมด</option>
                                                 {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
-                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId || taskSlaOutcomeFilter || taskUrgentOnly) && (
-                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); setTaskSlaOutcomeFilter(''); setTaskUrgentOnly(false); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
+                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId || taskSlaOutcomeFilter) && (
+                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); setTaskSlaOutcomeFilter(''); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
                                             )}
                                         </div>
                                     </div>
