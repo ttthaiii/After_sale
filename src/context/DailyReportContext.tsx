@@ -194,7 +194,7 @@ interface DailyReportContextType {
   // Inner Helper Logic States (Cleaned to correct signatures & formats)
   toggleShift: (laborId: string, shiftKey: keyof ShiftConfig) => void;
   togglePhShift: (laborId: string, shiftKey: keyof ShiftConfig) => void;
-  getDateStatus: (dateStr: string, task: WorkTask, wo: WorkOrder) => "disabled" | "reported" | "unlocked" | "locked";
+  getDateStatus: (dateStr: string, task: WorkTask) => "disabled" | "reported" | "unlocked" | "locked";
   isProgressNotePhotosEditable: boolean;
   hasHistoryForSelectedDate: boolean;
   getTaskImage: (task: WorkTask) => string | null;
@@ -688,7 +688,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setLaborOtEveningPhotos([]);
       }
       setActivePhotoTab("site");
-      setIsEditingExisting(false);
+      // A draft entry (status: 'draft') isn't finalized yet — resume straight into
+      // edit mode like the old shadow-draft flow did, no extra "แก้ไขข้อมูล" click
+      // needed. A real submitted entry still requires that explicit edit step.
+      setIsEditingExisting((existingReport as any).status === 'draft' && !isTaskFinished);
     } else {
       const history = selectedTaskInfo.task.history || [];
       const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
@@ -796,7 +799,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const _pendingDeliveryWOs: PendingDeliveryItem[] = [];
     const _preHandoverWOs: { wo: any; assignedCategories: any[] }[] = [];
     workOrders.forEach((wo) => {
-      if (["Draft", "Cancelled", "Completed", "Verified"].includes(wo.status))
+      if (["Draft", "Cancelled", "Complete", "Verified"].includes(wo.status))
         return;
 
       if (wo.type === 'PreHandover') {
@@ -915,21 +918,28 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       });
 
       const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
+      // A task sitting at 100% via a still-open draft (progressStatus: 'draft')
+      // must NOT count toward "all done" — that would surface the WO for
+      // customer QR/delivery before the foreman has actually finalized it
+      // (user-confirmed 2026-07-24). Missing progressStatus = legacy/submitted.
       const globalIsAllCompleted =
         globalTasks.length > 0 &&
         globalTasks.every(
-          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
+          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft'
         );
 
       const isGroupedDelivery =
-        ["pending_delivery", "Completed", "Rejected"].includes(wo.status) ||
+        ["pending_delivery", "Rejected"].includes(wo.status) ||
         globalIsAllCompleted;
 
       if (isParticipant && isGroupedDelivery) {
         _pendingDeliveryWOs.push({ wo });
       } else {
         woTasksList.forEach((item) => {
-          if (item.task.dailyProgress === 100) {
+          // A draft-only 100% (progressStatus: 'draft') stays "in progress" —
+          // it's not really done until the foreman finalizes it (user-confirmed
+          // 2026-07-24).
+          if (item.task.dailyProgress === 100 && (item.task as any).progressStatus !== 'draft') {
             _pendingInspectionTasks.push(item);
           } else if (item.task.dailyProgress && item.task.dailyProgress > 0) {
             _inProgressTasks.push(item);
@@ -984,7 +994,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           let message = "";
           let title = "ใบสั่งงานไม่พร้อมสำหรับการรายงาน";
           let type: "info" | "success" | "error" | "warning" = "info";
-          if (wo.status === "Completed") {
+          if (wo.status === "Complete") {
             message =
               "งานในใบงานนี้ได้รับการรายงานความคืบหน้าครบถ้วนและเสร็จสิ้นเรียบร้อยแล้ว";
             title = "ใบสั่งงานเสร็จสิ้นแล้ว";
@@ -1134,18 +1144,15 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setReportDate(todayTH());
   };
 
-  const getDateStatus = (dateStr: string, task: WorkTask, wo: WorkOrder) => {
+  const getDateStatus = (dateStr: string, task: WorkTask) => {
     const todayStr = todayTH();
     if (dateStr > todayStr) {
       return "disabled";
     }
-    const openingDate = wo.startDate || wo.createdAt || "";
-    const openingDateStr = openingDate
-      ? new Date(openingDate).toISOString().split("T")[0]
-      : "";
-    if (openingDateStr && dateStr < openingDateStr) {
-      return "disabled";
-    }
+    // No floor at wo.startDate/createdAt (user 2026-07-24): work can predate
+    // when the WO was opened in the system. Dates before opening now fall
+    // through to the same locked/unlocked rule as any other past date —
+    // >3 days ago requires the existing retroactive-request/admin-approve flow.
     const isHelperTask = (task as any).isHelper === true;
     const reported = task.history?.some(
       (h) => h.revisionId === (task.currentRevision || 'rev00') &&
@@ -2239,6 +2246,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         labor: laborPayload,
         leave: leavePayload,
         type: reportType,
+        status: "submitted",
         projectLocationId: selectedTaskInfo.wo.projectId || "",
         ...(updatedEditHistory.length > 0
           ? { editHistory: updatedEditHistory }
@@ -2391,69 +2399,167 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  // T-craft (2026-07-24): a draft now writes REAL progress into the same
+  // dailyReports entry a final submit would (status: 'draft' vs 'submitted') —
+  // matching the Labor system's reference model — instead of a separate shadow
+  // doc nobody but the foreman's own browser ever saw. Requirements mirror
+  // Labor's: site photos are mandatory for a draft too (progress must be real),
+  // labor photos are NOT (those are only enforced by handleSubmit/handleFinalSubmit's
+  // full validation). A locked (>3 day) date still requires admin approval either
+  // way — this routes through the exact same submitRetroactiveRequest path
+  // handleFinalSubmit uses (user-confirmed 2026-07-24).
   const handleSaveDraft = async () => {
     if (submittingRef.current || isSubmitting) return;
     if (!selectedTaskInfo) return;
+
+    if (sitePhotos.filter(Boolean).length < 2) {
+      await showAlert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
+      return;
+    }
+    // Draft skips the lower (monotonic) bound — an in-progress save may sit
+    // below the last committed value while the foreman works through the day
+    // (matches Labor's reference implementation). Upper bound still applies.
+    if (progress > progressBounds.max) {
+      await showAlert(
+        `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`,
+      );
+      return;
+    }
+
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
+      const foremanEmpId = user?.employeeId || user?.id || "101527";
+      const laborPayload = labor
+        .filter(
+          (l) =>
+            l.shifts?.normal ||
+            l.shifts?.otMorning ||
+            l.shifts?.otNoon ||
+            l.shifts?.otEvening,
+        )
+        .map((l) => ({
+          membership: l.membership || "Internal",
+          workerId: l.staffId || l.contractorId || l.id,
+          workerName: l.staffName || l.affiliation || "",
+          staffId: l.staffId || "",
+          staffName: l.staffName || "",
+          contractorId: l.contractorId || "",
+          employeeId: l.employeeId || "",
+          shiftTimes: {
+            day: l.shifts?.normal ? l.shiftTimes?.day || "08:00 - 17:00" : null,
+            otEvening: l.shifts?.otEvening
+              ? l.shiftTimes?.otEvening || "18:00 - 21:00"
+              : null,
+            otMorning: l.shifts?.otMorning
+              ? l.shiftTimes?.otMorning || "06:00 - 08:00"
+              : null,
+            otNoon: l.shifts?.otNoon ? "12:00 - 13:00" : null,
+          },
+          shifts: {
+            normal: l.shifts?.normal || false,
+            otEvening: l.shifts?.otEvening || false,
+            otMorning: l.shifts?.otMorning || false,
+            otNoon: l.shifts?.otNoon || false,
+          },
+          amount: l.amount || 1,
+          recordedBy: l.recordedBy || foremanEmpId,
+        }));
+      const photosPayload = {
+        site: sitePhotos.filter(Boolean),
+        laborByShift: {
+          regular: laborRegularPhotos.some(Boolean)
+            ? laborRegularPhotos.slice(0, 4)
+            : null,
+          otMorning:
+            laborOtMorningPhotos[0] || laborOtMorningPhotos[1]
+              ? { in: laborOtMorningPhotos[0] || "", out: laborOtMorningPhotos[1] || "" }
+              : null,
+          otNoon:
+            laborOtNoonPhotos[0] || laborOtNoonPhotos[1]
+              ? { in: laborOtNoonPhotos[0] || "", out: laborOtNoonPhotos[1] || "" }
+              : null,
+          otEvening:
+            laborOtEveningPhotos[0] || laborOtEveningPhotos[1]
+              ? { in: laborOtEveningPhotos[0] || "", out: laborOtEveningPhotos[1] || "" }
+              : null,
+        },
+      };
       const isWoaWop = isWoaWopType(selectedTaskInfo.wo);
-      const workOrderId = selectedTaskInfo.wo.id;
-      const categoryId = selectedTaskInfo.categoryId;
-      const taskId = selectedTaskInfo.task.id;
-      const getSubtaskId = (tId: string): string => {
-        if (tId) {
-          return tId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
-        }
-        return tId;
-      };
-      const subtaskId = getSubtaskId(taskId);
-      const taskDoc = workOrders.find((w) => w?.id === workOrderId)?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
-      const currentRev = taskDoc?.currentRevision || "rev00";
-
-      const draftPayload = {
-        progress,
+      const updateId = isWoaWop ? reportDate : `h-${Date.now()}`;
+      const draftUpdate = {
+        id: updateId,
+        date: `${reportDate}T${new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split("T")[1]}`,
         note,
-        labor,
-        sitePhotos: sitePhotos.filter(Boolean),
-        laborRegularPhotos,
-        laborOtMorningPhotos,
-        laborOtNoonPhotos,
-        laborOtEveningPhotos,
-        reportType,
-        reportDate,
+        progress,
+        photos: photosPayload,
+        labor: laborPayload,
+        leave: [] as any[],
+        type: reportType,
+        status: "draft",
+        projectLocationId: selectedTaskInfo.wo.projectId || "",
+        createdBy: foremanEmpId,
+        createdAt: new Date().toISOString(),
+        updatedBy: foremanEmpId,
         updatedAt: new Date().toISOString(),
-        updatedBy: user?.employeeId || user?.id || "unknown",
       };
 
-      let draftDocRef;
-      if (isWoaWop) {
-        if (selectedTaskInfo.task.isHelper) {
-          const helpId = currentRev.replace('rev', 'help');
-          const helpDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId);
-          await setDoc(helpDocRef, { helpId, projectId: selectedTaskInfo.wo.projectId || '', createdAt: new Date().toISOString() }, { merge: true });
-
-          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId, "dailyReportsDraft", reportDate);
-        } else {
-          const revDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev);
-          await setDoc(revDocRef, { revisionId: currentRev, projectId: selectedTaskInfo.wo.projectId || '', createdAt: new Date().toISOString() }, { merge: true });
-
-          draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
-        }
-      } else {
-        draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "dailyreportDraft", reportDate);
+      if (isReportDatePast3Days) {
+        // Same "needs admin approval" gate handleFinalSubmit uses — a locked date
+        // can't be draft-saved directly either (user-confirmed 2026-07-24).
+        await submitRetroactiveRequest(
+          selectedTaskInfo.wo.id,
+          selectedTaskInfo.categoryId,
+          selectedTaskInfo.task.id,
+          reportDate,
+          {
+            progress,
+            note,
+            type: reportType as string,
+            labor: laborPayload,
+            leave: [],
+            photos: photosPayload,
+          },
+          { uid: user?.id || foremanEmpId, name: (user as any)?.name || (user as any)?.displayName || "โฟรแมน" },
+        );
+        setRetroactiveSubmitDone(true);
+        await showAlert("เกินกำหนด 3 วัน — ส่งคำขอรับรองข้อมูลย้อนหลังให้ Admin แล้ว");
+        return;
       }
 
-      await setDoc(draftDocRef, draftPayload);
+      await claimLaborDayLocks(
+        labor,
+        reportDate,
+        selectedTaskInfo.wo.id,
+        selectedTaskInfo.task.id,
+        (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName || selectedTaskInfo.task.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim(),
+      );
+
+      await addTaskUpdate(
+        selectedTaskInfo.wo.id,
+        selectedTaskInfo.categoryId,
+        selectedTaskInfo.task.id,
+        draftUpdate as any,
+      );
+
       setDraftedTaskIds(prev => {
-        const next = new Set(prev).add(taskId);
+        const next = new Set(prev).add(selectedTaskInfo.task.id);
         sessionStorage.setItem('draftedTaskIds', JSON.stringify([...next]));
         return next;
       });
       await showAlert("บันทึกแบบร่างเรียบร้อยแล้ว");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save draft failed:", error);
-      await showAlert("บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      if (error?.code === 'LABOR_DAY_LOCK_CONFLICT') {
+        await showAlert(error.message);
+      } else if (error?.message === 'DUPLICATE_PENDING') {
+        await showAlert("มีคำขอรับรองสำหรับวันนี้รออยู่แล้ว กรุณารอการรับรองก่อน");
+        setRetroactiveSubmitDone(true);
+      } else {
+        await showAlert("บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      }
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -2683,7 +2789,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return (bData.progress || 0) - (aData.progress || 0);
       })[0] || null;
       if (resolvedSnap?.exists()) {
-        // Existing submitted report — load data, keep editing locked (false)
+        // Existing report — a submitted one keeps editing locked (false); a draft
+        // (status: 'draft', not finalized yet) resumes straight into edit mode,
+        // same as the old shadow-draft flow below did.
         const d = resolvedSnap.data();
         setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
         setNote(d.note || '');
@@ -2694,7 +2802,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setLaborOtMorningPhotos(d.photos?.laborByShift?.otMorning || d.laborPhotos?.otMorning || []);
         setLaborOtNoonPhotos(d.photos?.laborByShift?.otNoon || d.laborPhotos?.otNoon || []);
         setLaborOtEveningPhotos(d.photos?.laborByShift?.otEvening || d.laborPhotos?.otEvening || []);
-        setIsPhEditingExisting(false);
+        if ((d as any).status === 'draft') {
+          setPhDraftedDates(prev => new Set([...prev, reportDate]));
+        }
+        setIsPhEditingExisting((d as any).status === 'draft');
       } else {
         // No main report — check for draft
         getDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReportsDraft', reportDate)).then(draftSnap => {
@@ -2732,10 +2843,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const getPhDateStatus = (dateStr: string): "disabled" | "reported" | "unlocked" | "locked" => {
     const todayStr = todayTH();
     if (dateStr > todayStr) return 'disabled';
-    if (selectedPhCatInfo) {
-      const scheduled = selectedPhCatInfo.wo.scheduledDate;
-      if (scheduled && dateStr < scheduled) return 'disabled';
-    }
+    // No floor at wo.scheduledDate (user 2026-07-24, matches the WOA fix in
+    // getDateStatus above): work can predate when the WO was scheduled/opened.
     if (phDailyHistory.some((h: any) => h.date === dateStr)) return 'reported';
     const diffDays = Math.ceil((new Date(todayStr).getTime() - new Date(dateStr).getTime()) / 86400000);
     if (diffDays <= 3) return 'unlocked';
@@ -2968,7 +3077,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
       const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId);
       const subtaskRef = doc(taskRef, 'subtasks', phSubtaskId);
-      const progressUpdate = { dailyProgress: progress, lastProgressUpdate: new Date().toISOString() };
+      const progressUpdate = { dailyProgress: progress, progressStatus: 'submitted', lastProgressUpdate: new Date().toISOString() };
       await claimLaborDayLocks(
         labor,
         reportDate,
@@ -3023,20 +3132,69 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  // T-craft (2026-07-24): mirrors WOA's handleSaveDraft — writes REAL progress
+  // into the same dailyReports entry a final submit would (status: 'draft' vs
+  // 'submitted'), instead of a separate shadow doc. Site photos are mandatory
+  // (progress must be real); labor photos are not (only submitPhDailyReport's
+  // full validation requires those). A locked (>3 day) date routes through the
+  // same submitPhRetroactiveRequest path the final-submit button uses.
   const savePhDraft = async (): Promise<void> => {
     if (!selectedPhCatInfo || isSubmitting) return;
+
+    if (sitePhotos.filter(Boolean).length < 2) {
+      await showAlert('กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป');
+      return;
+    }
+    if (progress > phProgressBounds.max) {
+      await showAlert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`);
+      return;
+    }
+
+    if (isPhReportDatePast3Days) {
+      await submitPhRetroactiveRequest();
+      await showAlert("เกินกำหนด 3 วัน — ส่งคำขอรับรองข้อมูลย้อนหลังให้ Admin แล้ว");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const { wo, cat } = selectedPhCatInfo;
       const phRev = cat.currentRevision || 'rev00';
+      const foremanEmpId = user?.employeeId || user?.id || '';
+      const laborPayload = labor
+        .filter(l => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
+        .map(l => ({
+          membership: l.membership || 'Internal',
+          workerId: l.staffId || l.contractorId || (l as any).id || '',
+          workerName: l.staffName || l.affiliation || '',
+          staffId: l.staffId || '',
+          staffName: l.staffName || '',
+          contractorId: l.contractorId || '',
+          employeeId: l.employeeId || '',
+          shiftTimes: {
+            day: l.shifts?.normal ? l.shiftTimes?.day || '08:00 - 17:00' : null,
+            otMorning: l.shifts?.otMorning ? l.shiftTimes?.otMorning || '06:00 - 08:00' : null,
+            otNoon: l.shifts?.otNoon ? '12:00 - 13:00' : null,
+            otEvening: l.shifts?.otEvening ? l.shiftTimes?.otEvening || '18:00 - 21:00' : null,
+          },
+          shifts: {
+            normal: l.shifts?.normal || false,
+            otMorning: l.shifts?.otMorning || false,
+            otNoon: l.shifts?.otNoon || false,
+            otEvening: l.shifts?.otEvening || false,
+          },
+          amount: l.amount || 1,
+          recordedBy: l.recordedBy || foremanEmpId,
+        }));
       const phTaskId = cat.id;
       const phSubtaskId = cat.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
-      const draftPayload = {
+      const payload = {
+        id: reportDate,
+        date: reportDate,
         progress,
         note,
-        labor,
-        reportDate,
-        isDraft: true,
+        type: 'Normal',
+        labor: laborPayload,
         photos: {
           site: sitePhotos.filter(Boolean),
           laborByShift: {
@@ -3046,15 +3204,41 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             otEvening: laborOtEveningPhotos.filter(Boolean),
           },
         },
+        createdBy: foremanEmpId,
+        createdAt: new Date().toISOString(),
+        updatedBy: foremanEmpId,
         updatedAt: new Date().toISOString(),
-        updatedBy: user?.employeeId || user?.id || '',
+        revisionId: phRev,
+        revisionName: phRev === 'rev00' ? 'Initial Revision' : `Revision ${phRev}`,
+        status: 'draft',
+        projectId: wo.projectId || '',
       };
-      await setDoc(doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', phRev, 'dailyReportsDraft', reportDate), draftPayload);
+      const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId);
+      const subtaskRef = doc(taskRef, 'subtasks', phSubtaskId);
+      // Unlike a real submit, a draft never flips visible completion state — the
+      // dailyProgress number is real, but progressStatus:'draft' keeps every
+      // "is this actually done" gate (QR eligibility, pending-delivery buckets)
+      // from firing off it (user-confirmed 2026-07-24).
+      const progressUpdate = { dailyProgress: progress, progressStatus: 'draft', lastProgressUpdate: new Date().toISOString() };
+      await claimLaborDayLocks(labor, reportDate, wo.id, phTaskId, (cat.name || (cat as any).categoryName || phTaskId));
+      await setDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReports', reportDate), payload);
+      await Promise.all([
+        updateDoc(subtaskRef, progressUpdate),
+        updateDoc(taskRef, progressUpdate),
+      ]);
+      const snap = await getDocs(collection(subtaskRef, 'revisions', phRev, 'dailyReports'));
+      const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+      setPhDailyHistory(hist);
       setPhDraftedDates(prev => new Set([...prev, reportDate]));
       await showAlert('บันทึกแบบร่างเรียบร้อยแล้ว');
-    } catch (err) {
+    } catch (err: any) {
       console.error('savePhDraft failed:', err);
-      await showAlert('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      if (err?.code === 'LABOR_DAY_LOCK_CONFLICT') {
+        await showAlert(err.message);
+      } else {
+        await showAlert('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      }
     } finally {
       setIsSubmitting(false);
     }

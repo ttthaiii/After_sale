@@ -34,7 +34,9 @@ const formatSubtaskId = (id: string | undefined): string => {
 };
 
 const getCompletedAtTime = (wo: any, tasks: any[]): number | null => {
-  const isAllCompleted = tasks.length > 0 && tasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100);
+  // A draft-only 100% doesn't count as "completed" — see isReallyDone100 in
+  // renderTaskCard for the same rule (user-confirmed 2026-07-24).
+  const isAllCompleted = tasks.length > 0 && tasks.every((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft');
   if (!isAllCompleted) return null;
 
   // ถ้ายังมี task รอลูกค้าประเมิน → ยังไม่เสร็จสมบูรณ์จริง → ไม่แสดง completedAt
@@ -105,8 +107,9 @@ export const WorkOrderGroupList: React.FC = () => {
   const showAlert = useAlert();
   const isMobile = useIsMobile();
 
-  // Real staff (users, systemCode='AS') — used to resolve foreman display names by id/employeeId
-  const { staff } = useWorkOrders();
+  // Real staff (users, systemCode='AS') — used to resolve foreman display names by id/employeeId.
+  // taskDrafts: realtime, cross-session draft progress (Admin/Manager only — see useDraftReports).
+  const { staff, taskDrafts } = useWorkOrders();
 
   const [activeTab, setActiveTab] = useState<'internal' | 'support'>('internal');
   const [sortBy, setSortBy] = useState<'deadline' | 'delivery' | 'id'>('deadline');
@@ -213,6 +216,12 @@ export const WorkOrderGroupList: React.FC = () => {
       if (sortBy === 'id') {
         return a.wo.id.localeCompare(b.wo.id);
       }
+      if (sortBy === 'delivery') {
+        // Every item here is already 100% complete (that's why it's in this
+        // section) — "delivery" sort surfaces whichever has been waiting for
+        // QR generation the longest (oldest completedAtTime first).
+        return (a.completedAtTime ?? Infinity) - (b.completedAtTime ?? Infinity);
+      }
       return a.globalDeadline - b.globalDeadline;
     });
 
@@ -231,8 +240,13 @@ export const WorkOrderGroupList: React.FC = () => {
     const isSelected = selectedTaskInfo?.task.id === task.id;
     const isHighlighted = highlightedId === wo.id;
     const project = realProjects.find((p) => p.id === wo.projectId);
+    // A task sitting at 100% via a still-open draft (progressStatus: 'draft')
+    // is not really "done" yet — it must still read/behave as in-progress
+    // (clickable, blue ring) until the foreman does a real submit
+    // (user-confirmed 2026-07-24).
+    const isReallyDone100 = (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft';
     const progressColor =
-      task.dailyProgress === 100
+      isReallyDone100(task)
         ? "#10b981"
         : task.dailyProgress && task.dailyProgress > 0
           ? "#3b82f6"
@@ -241,10 +255,8 @@ export const WorkOrderGroupList: React.FC = () => {
     const globalTasks = wo.categories.flatMap((c: any) => c.tasks);
     const globalIsAllCompleted =
       globalTasks.length > 0 &&
-      globalTasks.every(
-        (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100,
-      );
-    const isCompleted100 = (task.dailyProgress || 0) >= 100 && globalIsAllCompleted;
+      globalTasks.every(isReallyDone100);
+    const isCompleted100 = isReallyDone100(task) && globalIsAllCompleted;
     const isWoRejectedAwaitingAdmin = wo.status === 'Rejected' && !wo.reviewedByAdmin;
     const isTaskDisabledInRejectedWo = isWoRejectedAwaitingAdmin;
 
@@ -262,7 +274,7 @@ export const WorkOrderGroupList: React.FC = () => {
             });
             return;
           }
-          if ((task.dailyProgress || 0) === 100 || task.status === 'Complete') {
+          if (isReallyDone100(task) || task.status === 'Complete') {
             return;
           }
           if (isReadOnly) {
@@ -493,22 +505,50 @@ export const WorkOrderGroupList: React.FC = () => {
                 REV. {parseInt(task.currentRevision.replace("rev", ""))}
               </div>
             )}
-            {draftedTaskIds.has(task.id) && (
-              <div
-                style={{
-                  fontSize: "0.62rem",
-                  fontWeight: 800,
-                  color: "#92400e",
-                  background: "#fef3c7",
-                  padding: "2px 5px",
-                  borderRadius: "4px",
-                  whiteSpace: "nowrap",
-                  border: "1px solid #fcd34d",
-                }}
-              >
-                ✏️ ร่างค้าง
-              </div>
-            )}
+            {(() => {
+              // taskDrafts (Admin/Manager only) has the real cross-session progress;
+              // draftedTaskIds is a sessionStorage-only "I just saved a draft" flag
+              // from the FM's own browser (no progress number available there).
+              const draft = taskDrafts?.get(task.id);
+              if (draft) {
+                return (
+                  <div
+                    title={draft.note || undefined}
+                    style={{
+                      fontSize: "0.62rem",
+                      fontWeight: 800,
+                      color: "#7c3aed",
+                      background: "#f5f3ff",
+                      padding: "2px 5px",
+                      borderRadius: "4px",
+                      whiteSpace: "nowrap",
+                      border: "1px solid #ddd6fe",
+                    }}
+                  >
+                    📝 แบบร่าง {draft.progress}% (ยังไม่ส่ง)
+                  </div>
+                );
+              }
+              if (draftedTaskIds.has(task.id)) {
+                return (
+                  <div
+                    style={{
+                      fontSize: "0.62rem",
+                      fontWeight: 800,
+                      color: "#92400e",
+                      background: "#fef3c7",
+                      padding: "2px 5px",
+                      borderRadius: "4px",
+                      whiteSpace: "nowrap",
+                      border: "1px solid #fcd34d",
+                    }}
+                  >
+                    ✏️ ร่างค้าง
+                  </div>
+                );
+              }
+              return null;
+            })()}
             {isReadOnly && (
               <div
                 style={{
@@ -985,7 +1025,10 @@ export const WorkOrderGroupList: React.FC = () => {
                       const slaLabel = _jobSla.deadlineMs !== null ? phDeadlineDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '—';
                       const daysLeft = _jobSla.deadlineMs !== null ? Math.ceil((phDeadlineMs - Date.now()) / 86400000) : 0;
                       const daysLabel = daysLeft > 0 ? `อีก ${daysLeft} วัน` : daysLeft === 0 ? 'วันนี้!' : `เกิน ${Math.abs(daysLeft)} วัน`;
-                      const allDone = assignedCategories.every((cat: any) => (cat.dailyProgress || 0) >= 100);
+                      // A draft-only 100% (progressStatus: 'draft') must not unlock the
+                      // "Generate QR" button below — only a real submit can
+                      // (user-confirmed 2026-07-24).
+                      const allDone = assignedCategories.every((cat: any) => (cat.dailyProgress || 0) >= 100 && cat.progressStatus !== 'draft');
                       const hasReassigned = assignedCategories.some((cat: any) => cat.customerStatus === 'reassigned');
                       const maxRevNum = assignedCategories.reduce((max: number, cat: any) => {
                         const rev = cat.currentRevision || 'rev00';
@@ -1213,10 +1256,13 @@ export const WorkOrderGroupList: React.FC = () => {
                         wo.reporterId === user?.id ||
                         (user?.employeeId && wo.reporterId === user.employeeId);
 
+                      // Defensive re-check (matches the pendingDeliveryWorkOrders gate in
+                      // DailyReportContext.tsx): a draft-only 100% must not count as done —
+                      // see isReallyDone100 in renderTaskCard for the same rule.
                       const globalIsAllCompleted =
                         globalTasks.length > 0 &&
                         globalTasks.every(
-                          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100,
+                          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft',
                         );
 
                       const isSelected = selectedTaskInfo?.wo.id === wo.id;
@@ -1338,7 +1384,7 @@ export const WorkOrderGroupList: React.FC = () => {
                                       ? "⚠️ รอแก้ไข"
                                       : globalIsAllCompleted
                                         ? "✓ เสร็จครบ 100%"
-                                        : `⏳ เสร็จ ${globalTasks.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100).length}/${globalTasks.length}`}
+                                        : `⏳ เสร็จ ${globalTasks.filter((t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft').length}/${globalTasks.length}`}
                                 </span>
 
                                  {isWoOwner && globalIsAllCompleted && (
@@ -1613,8 +1659,11 @@ export const WorkOrderGroupList: React.FC = () => {
                     }
 
                     const globalTotal = globalTasks.length;
+                    // A draft-only 100% (progressStatus: 'draft') must not count toward
+                    // "all done" — that gates the Generate-QR button below
+                    // (user-confirmed 2026-07-24).
                     const globalCompleted = globalTasks.filter(
-                      (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100
+                      (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft'
                     ).length;
 
                     const isAllCompleted = globalTotal > 0 && globalCompleted === globalTotal;

@@ -20,6 +20,7 @@ interface ForemanCalendarProps {
     // T-336: when set to a projectId, show ALL foremen's activity for that project
     // (project-wide mode) instead of filtering to currentUserId.
     allForemenForProject?: string | null;
+    onSelectWO?: (woId: string) => void;
 }
 
 // Helper to get leave hours from time range string
@@ -71,7 +72,7 @@ const getShiftHours = (timeRange: string, defaultHours: number): number => {
     }
 };
 
-const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUserId, projects, highlightProjectId, highlightedWOId, selectedMonth, allForemenForProject }) => {
+const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUserId, projects, highlightProjectId, highlightedWOId, selectedMonth, allForemenForProject, onSelectWO }) => {
     const [currentDate] = useState(new Date());
     const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
     const isMobile = useIsMobile();
@@ -364,23 +365,30 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
                         if (!item) return <div key={idx} style={{ height: '19px' }} />;
                         // Show actual task info if it's an active event
                         const label = item.projectName && item.taskName ? `${item.projectName} - ${item.taskName}` : '...';
+                        const isFocused = highlightedWOId?.toString().trim() === item.woId?.toString().trim();
                         return (
-                            <div key={idx} style={{ 
-                                background: item.color?.bg || '#f1f5f9', 
-                                color: item.color?.text || '#64748b', 
-                                fontSize: '0.65rem', 
-                                fontWeight: 900, 
-                                height: '19px', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                padding: '0 6px', 
-                                overflow: 'hidden', 
-                                whiteSpace: 'nowrap', 
-                                textOverflow: 'ellipsis', 
+                            <div
+                                key={idx}
+                                title={onSelectWO ? (isFocused ? 'คลิกเพื่อยกเลิกโฟกัส' : `คลิกเพื่อโฟกัสใบงาน #${item.woId}`) : undefined}
+                                onClick={onSelectWO ? (e) => { e.stopPropagation(); onSelectWO(item.woId); } : undefined}
+                                style={{
+                                background: item.color?.bg || '#f1f5f9',
+                                color: item.color?.text || '#64748b',
+                                fontSize: '0.65rem',
+                                fontWeight: 900,
+                                height: '19px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '0 6px',
+                                overflow: 'hidden',
+                                whiteSpace: 'nowrap',
+                                textOverflow: 'ellipsis',
                                 marginBottom: '1px',
                                 borderLeft: dateStr === taskFirstDayMap[item.taskId] ? `3px solid ${item.color?.border || 'transparent'}` : 'none',
                                 borderRight: dateStr === taskLastDayMap[item.taskId] && item.progress === 100 ? `3px solid ${item.color?.border || 'transparent'}` : 'none',
-                                opacity: (highlightedWOId && item.woId?.toString().trim() !== highlightedWOId?.toString().trim()) || (highlightProjectId && item.projectId !== highlightProjectId) ? 0.15 : 1
+                                opacity: (highlightedWOId && item.woId?.toString().trim() !== highlightedWOId?.toString().trim()) || (highlightProjectId && item.projectId !== highlightProjectId) ? 0.15 : 1,
+                                boxShadow: isFocused ? `0 0 0 2px ${item.color?.border || '#6366f1'}` : 'none',
+                                cursor: onSelectWO ? 'pointer' : 'default',
                             }}>
                                 {label}
                             </div>

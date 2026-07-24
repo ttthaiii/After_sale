@@ -308,42 +308,27 @@ export default function TaskReviewModal({
                     {/* Owner QR review link */}
                         <div style={{ background: '#ffffff', borderRadius: '24px', padding: '1.5rem', border: '1px solid #cbd5e1', display: 'flex', gap: '1.5rem', alignItems: 'center', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
                             
-                            {/* Stylized QR Code Mockup */}
-                            <div style={{ 
-                                background: '#f8fafc', 
-                                border: '2px solid #e2e8f0', 
-                                borderRadius: '20px', 
-                                padding: '16px', 
-                                width: '170px', 
-                                height: '170px', 
-                                display: 'flex', 
+                            {/* Real scannable QR Code, encodes reviewLink */}
+                            <div style={{
+                                background: '#f8fafc',
+                                border: '2px solid #e2e8f0',
+                                borderRadius: '20px',
+                                padding: '16px',
+                                width: '170px',
+                                height: '170px',
+                                display: 'flex',
                                 flexDirection: 'column',
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                justifyContent: 'center',
                                 position: 'relative',
                                 overflow: 'hidden'
                             }}>
-                                <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ zIndex: 1 }}>
-                                    {/* Mock QR Code Pattern */}
-                                    <path d="M3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM9 3h2v2H9zM13 3h2v2h-2zM9 7h2v2H9zM13 7h2v2h-2zM3 9h2v2H3zM7 9h2v2H7zM11 9h2v2h-2zM15 9h2v2h-2zM19 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 13h2v2h-2zM9 17h2v2H9zM13 17h2v2h-2zM17 17h2v2h-2zM9 21h2v2H9zM13 21h2v2h-2zM17 21h2v2h-2z" />
-                                    <path d="M12 12h.01M16 12h.01M20 12h.01M12 16h.01M16 16h.01M20 16h.01M12 20h.01M16 20h.01M20 20h.01" strokeWidth="2.5" />
-                                </svg>
-                                <div style={{ 
-                                    position: 'absolute', 
-                                    top: 0, left: 0, right: 0, height: '4px', 
-                                    background: 'rgba(79, 70, 229, 0.7)',
-                                    boxShadow: '0 0 8px #4f46e5',
-                                    animation: 'qr-scan 2.5s infinite linear'
-                                }} />
+                                <img
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(reviewLink)}`}
+                                    alt="Owner QR Pass"
+                                    style={{ width: '130px', height: '130px' }}
+                                />
                                 <span style={{ fontSize: '0.62rem', fontWeight: 900, color: '#64748b', marginTop: '10px', zIndex: 1 }}>OWNER QR PASS</span>
-                                
-                                <style>{`
-                                    @keyframes qr-scan {
-                                        0% { top: 10px; }
-                                        50% { top: 130px; }
-                                        100% { top: 10px; }
-                                    }
-                                `}</style>
                             </div>
 
                             {/* Link detail & Actions */}

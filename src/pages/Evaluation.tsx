@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import WorkOrderCard from '../components/WorkOrderCard';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
-import { CheckSquare, Search, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info, Users, History, UserCircle } from 'lucide-react';
+import { CheckSquare, Search, Building2, ChevronDown, AlertCircle, XCircle, CheckCircle2, Info, Users, History, UserCircle, Tag } from 'lucide-react';
 import { WorkOrder, MasterTask } from '../types';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import WorkOrderDetailModal from '../components/WorkOrderDetailModal';
@@ -21,6 +21,7 @@ import { collection, query as fsQuery, where, onSnapshot as fsOnSnapshot } from 
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from '../components/ui/responsiveGrid';
 import { scaleFont } from '../components/ui/responsiveText';
+import { getJobCode } from '../utils/workOrder';
 
 const Evaluation = () => {
     const isMobile = useIsMobile();
@@ -33,6 +34,7 @@ const Evaluation = () => {
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProjectId, setSelectedProjectId] = useState('');
+    const [selectedJobType, setSelectedJobType] = useState<'' | 'WOA' | 'WOP'>('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
@@ -166,6 +168,7 @@ const Evaluation = () => {
             const matchesSearch = (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
+            const matchesJobType = selectedJobType ? getJobCode(wo) === selectedJobType : true;
             let woDate = '';
             const rawDate = wo.submittedAt || wo.createdAt;
             if (rawDate) {
@@ -176,7 +179,7 @@ const Evaluation = () => {
             }
             const matchesStartDate = startDate ? (woDate ? woDate >= startDate : false) : true;
             const matchesEndDate = endDate ? (woDate ? woDate <= endDate : false) : true;
-            return isPending && matchesSearch && matchesProject && matchesStartDate && matchesEndDate;
+            return isPending && matchesSearch && matchesProject && matchesJobType && matchesStartDate && matchesEndDate;
         })
         .sort((a, b) => {
             const timeA = new Date(a.submittedAt || a.createdAt).getTime();
@@ -199,8 +202,9 @@ const Evaluation = () => {
                             (wo.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                             (wo.locationName || '').toLowerCase().includes(searchTerm.toLowerCase());
                         const matchesProject = selectedProjectId ? wo.projectId === selectedProjectId : true;
-                        
-                        if (matchesSearch && matchesProject) {
+                        const matchesJobType = selectedJobType ? getJobCode(wo) === selectedJobType : true;
+
+                        if (matchesSearch && matchesProject && matchesJobType) {
                             tasksList.push({ task: t, wo, categoryId: cat.id });
                         }
                     }
@@ -208,7 +212,7 @@ const Evaluation = () => {
             });
         });
         return tasksList;
-    }, [workOrders, searchTerm, selectedProjectId]);
+    }, [workOrders, searchTerm, selectedProjectId, selectedJobType]);
 
     // ✅ Track Page View
     useEffect(() => {
@@ -275,7 +279,7 @@ const Evaluation = () => {
 
     // Listener: rejected PreHandover WOs awaiting admin review
     useEffect(() => {
-        const phRejected = workOrders.filter((wo: any) =>
+        const phRejected = selectedJobType === 'WOA' ? [] : workOrders.filter((wo: any) =>
             wo.type === 'PreHandover' &&
             wo.status === 'customer_reject' &&
             (wo.pendingAdminReassign === true || wo.reviewedByAdmin === false)
@@ -284,7 +288,7 @@ const Evaluation = () => {
             projectName: projects.find(p => p.id === wo.projectId)?.name || '',
         }));
         setRejectedPhWOs(phRejected);
-    }, [workOrders, projects]);
+    }, [workOrders, projects, selectedJobType]);
 
     const handlePhReassignConfirm = async () => {
         if (!selectedRejectedPhWo) return;
@@ -727,7 +731,7 @@ const Evaluation = () => {
 
             {/* Filters */}
             <div style={{ background: '#ffffff', padding: '24px 32px', borderRadius: '24px', marginBottom: '2rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', marginLeft: '4px', marginRight: '4px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4, 1fr)', 'repeat(2,1fr)'), gap: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(5, 1fr)', 'repeat(2,1fr)'), gap: '1.5rem' }}>
 
                     <div style={{ position: 'relative' }}>
                         <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', display: 'flex', color: '#94a3b8' }}>
@@ -764,6 +768,24 @@ const Evaluation = () => {
                                     }
                                 })
                                 .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
+                            <ChevronDown size={18} />
+                        </div>
+                    </div>
+
+                    <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', display: 'flex', color: '#94a3b8', pointerEvents: 'none' }}>
+                            <Tag size={20} />
+                        </div>
+                        <select
+                            style={{ ...commonInputStyle, paddingLeft: '48px', appearance: 'none' }}
+                            value={selectedJobType}
+                            onChange={e => setSelectedJobType(e.target.value as '' | 'WOA' | 'WOP')}
+                        >
+                            <option value="">-- ทุกประเภทงาน --</option>
+                            <option value="WOA">WOA (After-Sale)</option>
+                            <option value="WOP">WOP (Pre-Handover)</option>
                         </select>
                         <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}>
                             <ChevronDown size={18} />

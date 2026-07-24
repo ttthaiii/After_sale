@@ -30,7 +30,7 @@ interface CustomerInspectionMockupProps {
 const getAfterPhotos = (task: any): string[] => {
     const photosList: string[] = [];
     if (task.history && task.history.length > 0) {
-        const entry100 = task.history.find((h: any) => Number(h.progress) === 100 || Number(h.dailyProgress) === 100);
+        const entry100 = task.history.find((h: any) => (Number(h.progress) === 100 || Number(h.dailyProgress) === 100) && h.status !== 'draft');
         if (entry100) {
             const h = entry100;
             if (h.photos) {
@@ -120,7 +120,10 @@ export default function CustomerInspectionMockup({
         ((workOrder as any).pendingAdminReassign === undefined && (workOrder as any).reviewedByAdmin === false && workOrder.status === 'Rejected');
     const eligibleTasks = workOrder.categories.flatMap(cat => 
         cat.tasks.filter(task => {
-            const hasCompletedProgress = task.dailyProgress === 100;
+            // A draft-only 100% (progressStatus: 'draft') is not really done — a
+            // customer must never see/approve a task the foreman hasn't finalized
+            // (user-confirmed 2026-07-24).
+            const hasCompletedProgress = task.dailyProgress === 100 && (task as any).progressStatus !== 'draft';
             const notYetVerified = task.status !== 'Complete';
             const notStillRejectedByAdmin = task.status !== 'Rejected' && !isWoPendingReassign;
             return hasCompletedProgress && notYetVerified && notStillRejectedByAdmin;

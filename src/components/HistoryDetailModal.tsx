@@ -897,7 +897,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                                 const latestRevId = taskRevisions[task.id]?.[0]?.id || task.currentRevision || 'rev00';
                                 const isSelectedRevRejected = selectedRevId !== latestRevId && (taskRevisions[task.id]?.length ?? 0) > 1;
                                 const revRejectReason = (currentRevObj as any).rejectReason || task.rejectReason;
-                                const isCompleted = task.status === 'Complete' || task.dailyProgress === 100;
+                                const isCompleted = task.status === 'Complete' || (task.dailyProgress === 100 && (task as any).progressStatus !== 'draft');
                                 const isUserContributor = currentUserId && (
                                     (task.responsibleStaffIds && task.responsibleStaffIds.includes(currentUserId)) ||
                                     (task.history && task.history.some(h =>

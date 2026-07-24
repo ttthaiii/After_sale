@@ -1186,7 +1186,6 @@ export const DailyReportDetailPane: React.FC = () => {
                                 const status = getDateStatus(
                                   dateStr,
                                   selectedTaskInfo.task,
-                                  selectedTaskInfo.wo,
                                 );
                                 let dotColor = "";
                                 if (status === "reported") dotColor = "#10b981";
@@ -1533,7 +1532,7 @@ export const DailyReportDetailPane: React.FC = () => {
                             {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, idx) => {
                               const day = idx + 1;
                               const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                              const status = getDateStatus(dateStr, selectedTaskInfo.task, selectedTaskInfo.wo);
+                              const status = getDateStatus(dateStr, selectedTaskInfo.task);
                               const isSelected = reportDate === dateStr;
                               const isDisabled = status === "disabled";
                               let dotColor = "";
@@ -3036,11 +3035,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     {l.shifts?.normal && <CheckCircle2 size={12} color="#fff" />}
                                   </div>
                                   {l.shifts?.normal ? (
-                                    isInternal ? renderTimeInput(l.id, "normal", l.shiftTimes?.day || "08:00 - 17:00") : (
-                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
-                                        <Clock size={12} /> 08:00 - 17:00
-                                      </div>
-                                    )
+                                    renderTimeInput(l.id, "normal", l.shiftTimes?.day || "08:00 - 17:00")
                                   ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
                                 </div>
                                 <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
@@ -3049,11 +3044,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     {l.shifts?.otMorning && <CheckCircle2 size={12} color="#fff" />}
                                   </div>
                                   {l.shifts?.otMorning ? (
-                                    isInternal ? renderTimeInput(l.id, "otMorning", otMorningTime) : (
-                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
-                                        <Clock size={12} /> {otMorningTime}
-                                      </div>
-                                    )
+                                    renderTimeInput(l.id, "otMorning", otMorningTime)
                                   ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
                                 </div>
                                 <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
@@ -3062,11 +3053,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     {l.shifts?.otNoon && <CheckCircle2 size={12} color="#fff" />}
                                   </div>
                                   {l.shifts?.otNoon ? (
-                                    isInternal ? renderTimeInput(l.id, "otNoon", otNoonTime) : (
-                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
-                                        <Clock size={12} /> {otNoonTime}
-                                      </div>
-                                    )
+                                    renderTimeInput(l.id, "otNoon", otNoonTime)
                                   ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
                                 </div>
                                 <div style={{display:"flex", alignItems:"center", gap:"8px"}}>
@@ -3075,11 +3062,7 @@ export const DailyReportDetailPane: React.FC = () => {
                                     {l.shifts?.otEvening && <CheckCircle2 size={12} color="#fff" />}
                                   </div>
                                   {l.shifts?.otEvening ? (
-                                    isInternal ? renderTimeInput(l.id, "otEvening", otEveningTime) : (
-                                      <div style={{display:"flex", alignItems:"center", gap:"4px", background:"#f8fafc", borderRadius:"8px", border:"1px solid #e2e8f0", padding:"2px 6px", fontSize:"0.75rem", fontWeight:700, color:"#64748b"}}>
-                                        <Clock size={12} /> {otEveningTime}
-                                      </div>
-                                    )
+                                    renderTimeInput(l.id, "otEvening", otEveningTime)
                                   ) : <span style={{color:"#cbd5e1", fontWeight:800, fontSize:"0.8rem"}}>-</span>}
                                 </div>
                                 <div style={{display:"flex", alignItems:"flex-start", gap:"8px"}}>

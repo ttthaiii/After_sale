@@ -40,7 +40,7 @@ const TrackingCard = ({ wo, role, onVerifyTask, onAssignTask, staffList = [], co
         };
 
         const taskRisks = validTasks.map(t => {
-            const isDone = t.dailyProgress === 100 || t.status === 'Complete';
+            const isDone = (t.dailyProgress === 100 && (t as any).progressStatus !== 'draft') || t.status === 'Complete';
             if (isDone) return { diffHours: 9999, isDone: true };
 
             const limit = slaHoursMap[t.slaCategory as keyof typeof slaHoursMap || '24h'] || 24;

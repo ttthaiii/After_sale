@@ -21,7 +21,7 @@ import { scaleFont } from '../components/ui/responsiveText';
 
 const SLAMonitor = () => {
     const { user } = useAuth();
-    const { workOrders, updateWorkOrderStatus, updateTask, projects, staff, contractors, saveEvaluation } = useWorkOrders();
+    const { workOrders, updateWorkOrderStatus, updateTask, projects, staff, contractors, saveEvaluation, taskDrafts } = useWorkOrders();
     const [searchParams] = useSearchParams();
     const isMobile = useIsMobile();
     const showAlert = useAlert();
@@ -181,7 +181,10 @@ const SLAMonitor = () => {
     // via the central computeJobSLA helper (max-SLA-among-subtasks, 7-day fixed warning window).
     // Per-task terminal states (done/rejected) stay per-subtask — those describe the subtask itself.
     const getSLARemaining = (task: any, wo: any) => {
-        if (task.dailyProgress === 100) {
+        // A draft-only 100% (progressStatus: 'draft') is not really done — don't
+        // label it finished until the foreman submits for real (user-confirmed
+        // 2026-07-24).
+        if (task.dailyProgress === 100 && task.progressStatus !== 'draft') {
             return { text: 'เสร็จสิ้นแล้ว', isCritical: false, isWarning: false, isDone: true, diffMs: 0 };
         }
 
@@ -303,7 +306,7 @@ const SLAMonitor = () => {
                     let score = 2;
                     let slaType: 'overdue' | 'warning' | 'normal' | 'completed' = 'normal';
 
-                    if (t.dailyProgress === 100) { score = 1; slaType = 'completed'; }
+                    if (t.dailyProgress === 100 && t.progressStatus !== 'draft') { score = 1; slaType = 'completed'; }
                     else if (sla.isCritical) { score = 4; slaType = 'overdue'; }
                     else if (sla.isWarning) { score = 3; slaType = 'warning'; }
 
@@ -638,6 +641,18 @@ const SLAMonitor = () => {
                                                     )}
                                                     <div style={{ fontSize: '0.75rem', fontWeight: 900, color: column.color, background: `${column.color}15`, padding: '2px 8px', borderRadius: '8px' }}>{task.dailyProgress}%</div>
                                                 </div>
+                                                {(() => {
+                                                    const draft = taskDrafts?.get(task.id);
+                                                    if (!draft) return null;
+                                                    return (
+                                                        <div
+                                                            title={draft.note || undefined}
+                                                            style={{ fontSize: '0.7rem', fontWeight: 800, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px', padding: '3px 8px', marginBottom: '6px', display: 'inline-block' }}
+                                                        >
+                                                            📝 แบบร่าง {draft.progress}% (ยังไม่ส่ง)
+                                                        </div>
+                                                    );
+                                                })()}
                                                 <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#1e293b', marginBottom: '6px', lineHeight: 1.3 }}>{task.name}</div>
                                                 <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <Building2 size={12} /> {project?.name} - {task.woLocation}
@@ -869,8 +884,12 @@ const SLAMonitor = () => {
                     {[
                         { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived },
                         { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
-                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && (cat.dailyProgress || 0) < 100 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
-                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        // A draft-only 100% (progressStatus: 'draft') still counts as "in
+                        // progress" here, not "waiting for customer" — matches the same
+                        // rule as the WOA board's done-pending-qr test below
+                        // (user-confirmed 2026-07-24).
+                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && ((cat.dailyProgress || 0) < 100 || cat.progressStatus === 'draft') && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && cat.progressStatus !== 'draft' && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
                         { id: 'completed',        label: 'สำเร็จ',                 color: '#059669', test: (_cat: any, wo: any) => !!wo.isArchived },
                     ].map((col) => {
                         const items = phWorkOrders.flatMap((wo: any) =>
@@ -935,6 +954,22 @@ const SLAMonitor = () => {
                                                     )}
                                                     <div style={{ fontSize: '0.75rem', fontWeight: 900, color: col.color, background: `${col.color}15`, padding: '2px 8px', borderRadius: '8px' }}>{progress}%</div>
                                                 </div>
+
+                                                {(() => {
+                                                    // PreHandover's "task" doc id is always == its category id (see
+                                                    // WorkOrderContext.tsx: `const taskId = a.catId`), so taskDrafts
+                                                    // keys the same way here as it does for a WOA task.
+                                                    const draft = taskDrafts?.get(item.id);
+                                                    if (!draft) return null;
+                                                    return (
+                                                        <div
+                                                            title={draft.note || undefined}
+                                                            style={{ fontSize: '0.7rem', fontWeight: 800, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px', padding: '3px 8px', marginBottom: '6px', display: 'inline-block' }}
+                                                        >
+                                                            📝 แบบร่าง {draft.progress}% (ยังไม่ส่ง)
+                                                        </div>
+                                                    );
+                                                })()}
 
                                                 {/* Category name */}
                                                 <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#1e293b', marginBottom: '6px', lineHeight: 1.3 }}>{item.name || item.catName || item.id}</div>

@@ -10,6 +10,7 @@ import { isWoaWop as isWoaWopType, getJobCode, resolveTaskRefs } from '../utils/
 import { logService } from '../services/logService';
 import { useRealtimeWorkOrders } from '../hooks/useRealtimeWorkOrders';
 import { useCrossProjectWorkOrders } from '../hooks/useCrossProjectWorkOrders';
+import { useDraftReports, DraftReportEntry } from '../hooks/useDraftReports';
 import { assembleWorkOrders } from '../utils/assembleWorkOrders';
 import { useStableCallbacks } from '../hooks/useStableCallbacks';
 
@@ -37,6 +38,9 @@ interface WorkOrderContextType {
     staff: Staff[];
     contractors: Contractor[];
     loading: boolean;
+    /** taskId -> that task's most recently updated pending (unsubmitted) draft.
+     *  Only populated for Admin/Manager/Approver — see useDraftReports. */
+    taskDrafts: Map<string, DraftReportEntry>;
     deleteWorkOrder: (id: string) => Promise<void>;
     archiveWorkOrder: (id: string) => Promise<void>;
     markWorkOrderAsReviewed: (id: string) => Promise<void>;
@@ -246,6 +250,10 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
     // every delta batch and drives the assembler useMemo below. Replaces the old
     // per-WO fetchSubcollections full-tree re-reads.
     const { cache: rtCache, version: rtVersion } = useRealtimeWorkOrders(!!user, projectFilter);
+
+    // Admin/Manager-only: realtime foreman drafts (in-progress, not yet
+    // submitted) so they can track today's progress before end-of-day submit.
+    const taskDrafts = useDraftReports(!!user && isPrivileged);
 
     // Rare cross-project assignment case (helper/responsible/reporter outside the
     // user's home projects) — one-time discovery fetch, not realtime. See
@@ -812,7 +820,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     reportDate: reportDateVal,
                     projectId: projectId,
                     projectName: projectName,
-                    status: 'submitted',
+                    status: (report as any).status || 'submitted',
                     isSupportReport: true,
                     editHistory: (report as any).editHistory || []
                 };
@@ -885,17 +893,26 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     updatedAt: new Date().toISOString()
                 });
             } else {
-                const isCompleted = report.progress === 100 || (taskDoc.dailyProgress === 100);
+                // A draft report (status: 'draft') is real progress data, but must NOT
+                // flip the task to "For Checking"/stamp completedAt on its own — that
+                // would surface the task for customer QR/delivery before the foreman
+                // has actually finalized it (user-confirmed 2026-07-24). Reaching 100%
+                // via a draft leaves the task's status/completedAt untouched; only a
+                // status:'submitted' (or legacy, status-less) report can complete it.
+                const isDraftReport = (report as any).status === 'draft';
+                const isCompleted = !isDraftReport && (report.progress === 100 || (taskDoc.dailyProgress === 100));
                 const newProgress = Math.max(taskDoc.dailyProgress || 0, report.progress || 0);
-                
+                const progressStatus = (report as any).status || 'submitted';
+
                 // Single source of truth: store the new CamelCase task vocab directly (no LB translation).
                 let lbStatus = isCompleted ? 'For Checking' : 'In Progress';
-                
+
                 const progressNow = new Date().toISOString();
                 if (isWoaWop || isSubtask) {
                     await updateDoc(taskRef, {
                         dailyProgress: newProgress,
-                        status: lbStatus,
+                        progressStatus,
+                        ...(isDraftReport ? {} : { status: lbStatus }),
                         updatedAt: progressNow,
                         ...(isCompleted ? { completedAt: progressNow } : {})
                     });
@@ -904,12 +921,14 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     const subtaskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId);
                     await updateDoc(subtaskRef, {
                         dailyProgress: newProgress,
-                        status: lbStatus
+                        progressStatus,
+                        ...(isDraftReport ? {} : { status: lbStatus })
                     });
                 } else {
                     await updateDoc(taskRef, {
                         dailyProgress: newProgress,
-                        status: isCompleted ? 'For Checking' : 'In Progress',
+                        progressStatus,
+                        ...(isDraftReport ? {} : { status: isCompleted ? 'For Checking' : 'In Progress' }),
                         updatedAt: progressNow,
                         ...(isCompleted ? { completedAt: progressNow } : {})
                     });
@@ -2077,8 +2096,9 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         staff,
         contractors,
         loading,
+        taskDrafts,
         ...stable
-    }), [workOrders, projects, staff, contractors, loading, stable]);
+    }), [workOrders, projects, staff, contractors, loading, taskDrafts, stable]);
 
     return (
         <WorkOrderContext.Provider value={value}>

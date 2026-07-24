@@ -5,6 +5,11 @@ import ImageOverlay from './ImageOverlay';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { formatDate } from '../utils/date';
 
+// A task sitting at 100% via a still-open draft (progressStatus: 'draft') is not
+// really done — every "is this actually finished" check must require a real
+// submit too (user-confirmed 2026-07-24).
+const isReallyDone100 = (t: any): boolean => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft';
+
 interface WorkOrderCardProps {
     wo: WorkOrder;
     onTaskClick?: (task: MasterTask, categoryId: string, workOrderId: string, categoryName: string) => void;
@@ -702,11 +707,14 @@ const WorkOrderCard = ({
                                                                     )}
                                                                 </div>
 
+                                                                {/* A draft-only 100% (progressStatus: 'draft') is not really done —
+                                                                    keep the ring/close-task button acting as in-progress until the
+                                                                    foreman finalizes it (user-confirmed 2026-07-24). */}
                                                                 <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                     <div style={{ flex: 1, height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
-                                                                        <div style={{ width: `${task.dailyProgress || 0}%`, height: '100%', background: task.dailyProgress === 100 ? '#10b981' : '#3b82f6', transition: 'width 0.5s' }}></div>
+                                                                        <div style={{ width: `${task.dailyProgress || 0}%`, height: '100%', background: isReallyDone100(task) ? '#10b981' : '#3b82f6', transition: 'width 0.5s' }}></div>
                                                                     </div>
-                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: task.dailyProgress === 100 ? '#10b981' : '#64748b' }}>
+                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isReallyDone100(task) ? '#10b981' : '#64748b' }}>
                                                                         {task.dailyProgress || 0}%
                                                                     </div>
                                                                 </div>
@@ -744,7 +752,7 @@ const WorkOrderCard = ({
                                                             </div>
 
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                                                {task.dailyProgress === 100 && onVerifyTask && (
+                                                                {isReallyDone100(task) && onVerifyTask && (
                                                                     <div
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
@@ -761,7 +769,7 @@ const WorkOrderCard = ({
                                                                     </div>
                                                                 )}
 
-                                                                {task.dailyProgress !== 100 && (
+                                                                {!isReallyDone100(task) && (
                                                                     <div
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();

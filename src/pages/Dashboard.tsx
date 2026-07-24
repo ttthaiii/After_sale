@@ -967,16 +967,19 @@ const Dashboard = () => {
 
     const isWorkOrderCompleted = (wo: any) => {
         if (wo.status === 'Complete') return true;
-        let totalP = 0, tCount = 0;
+        let totalP = 0, tCount = 0, hasDraftOnly100 = false;
         wo.categories?.forEach((c: any) => c.tasks.forEach((t: any) => {
             // Cancelled/archived tasks never happened — exclude from the average entirely,
             // same as still-undecided Rejected tasks (confirmed with product owner).
             if (t.status !== 'Rejected' && t.status !== 'Cancelled') {
                 totalP += t.dailyProgress || 0;
                 tCount++;
+                // A draft-only 100% (progressStatus: 'draft') is not really done —
+                // don't count the WO as complete off of it (user-confirmed 2026-07-24).
+                if ((t.dailyProgress || 0) === 100 && t.progressStatus === 'draft') hasDraftOnly100 = true;
             }
         }));
-        return tCount > 0 && Math.round(totalP / tCount) === 100;
+        return tCount > 0 && Math.round(totalP / tCount) === 100 && !hasDraftOnly100;
     };
 
     // T-347: job-level (per ใบงาน) — delegates to the central computeJobSLA helper so every
@@ -1656,7 +1659,7 @@ const Dashboard = () => {
                     const isMineTask = isAdminOrManager || tResponsible.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
                     if (!isMineTask) return;
                     projectsMap[pId].total++;
-                    const isTaskCompleted = t.dailyProgress === 100 || t.status === 'Complete';
+                    const isTaskCompleted = (t.dailyProgress === 100 && t.progressStatus !== 'draft') || t.status === 'Complete';
                     if (isTaskCompleted) {
                         projectsMap[pId].completed++;
                     } else {
@@ -1672,7 +1675,7 @@ const Dashboard = () => {
                 });
                 if (!projectsMap[pId].categories[c.name]) projectsMap[pId].categories[c.name] = { name: c.name, total: 0, completed: 0, slaMet: 0, stalled: 0 };
                 projectsMap[pId].categories[c.name].total += myTasks.length;
-                projectsMap[pId].categories[c.name].completed += myTasks.filter((t: any) => t.dailyProgress === 100 || t.status === 'Complete').length;
+                projectsMap[pId].categories[c.name].completed += myTasks.filter((t: any) => (t.dailyProgress === 100 && t.progressStatus !== 'draft') || t.status === 'Complete').length;
             });
 
             const isWOCompleted = isWorkOrderCompleted(wo);
@@ -1986,7 +1989,7 @@ const Dashboard = () => {
                     const isMine = isAdminOrManager || tResp.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
                     if (!isMine) return;
                     const isWaitingEval = t.status === 'For Checking' || t.status === 'pending_delivery';
-                    const isDone = !isWaitingEval && (t.status === 'Complete' || t.dailyProgress === 100);
+                    const isDone = !isWaitingEval && (t.status === 'Complete' || (t.dailyProgress === 100 && t.progressStatus !== 'draft'));
                     if (!isDone) return;
                     if (!map[name]) map[name] = { count: 0, totalDays: 0, completedCount: 0, totalRev: 0 };
                     map[name].count++;
@@ -2833,6 +2836,7 @@ const Dashboard = () => {
                                         allForemenForProject={isForeman ? null : (selectedForemanId ? null : (selectedSCurveProject || '__ALL__'))}
                                         highlightedWOId={highlightedWOId}
                                         selectedMonth={selectedMonth}
+                                        onSelectWO={(woId) => setHighlightedWOId(prev => prev === woId ? null : woId)}
                                     />
                                 </div>
                             )}
@@ -3276,7 +3280,7 @@ const Dashboard = () => {
                                                             const d = new Date(h.date).getTime();
                                                             if (!isNaN(d) && d > latestHistMs) latestHistMs = d;
                                                         });
-                                                        const isTaskDone = task.dailyProgress >= 100 || task.status === 'Complete' || isWoCompleted;
+                                                        const isTaskDone = (task.dailyProgress >= 100 && task.progressStatus !== 'draft') || task.status === 'Complete' || isWoCompleted;
                                                         const taskCompletedAt = task.completedAt
                                                             ? new Date(task.completedAt)
                                                             : (isTaskDone && latestHistMs > 0)
