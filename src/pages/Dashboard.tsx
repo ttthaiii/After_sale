@@ -909,6 +909,11 @@ const Dashboard = () => {
     const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
     const [taskWoTypeFilter, setTaskWoTypeFilter] = useState<string>('');
     const [taskSlaOutcomeFilter, setTaskSlaOutcomeFilter] = useState<'' | 'onTime' | 'late'>('');
+    // "งานค้างเกินกำหนด" card (Insights Mode SLA gauge) — jumps to Task Performance
+    // Details and scopes it to still-open tasks whose WO is critical-late (user-flagged
+    // 2026-07-24: the click had nowhere to go for Admin/Manager, who only ever see
+    // Insights Mode — Overview Mode's urgent-section table doesn't exist in that branch).
+    const [taskUrgentOnly, setTaskUrgentOnly] = useState(false);
     // T-336: declared before activeForemen (which reads it for the project→foreman cascade) to avoid a TDZ error.
     const [selectedSCurveProject, setSelectedSCurveProject] = useState<string>('');
 
@@ -1287,6 +1292,11 @@ const Dashboard = () => {
         if (highlightedWOId && t.woId !== highlightedWOId) return false;
         if (taskCatFilter && t.categoryName !== taskCatFilter) return false;
         if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
+        if (taskUrgentOnly) {
+            // Same criteria as the "งานค้างเกินกำหนด" count on the Insights gauge —
+            // still-open jobs whose SLA status is critical.
+            if (isWorkOrderCompleted(t.parentWO) || getSLATimeStatus(t.parentWO)?.level !== 'critical') return false;
+        }
         if (taskSlaOutcomeFilter) {
             // เสร็จทัน/เลย SLA cards count job-level (per ใบงาน) outcomes — only completed jobs qualify.
             const jobSla = getJobSla(t.parentWO);
@@ -1295,7 +1305,7 @@ const Dashboard = () => {
             if (taskSlaOutcomeFilter === 'late' && jobSla.status !== 'late') return false;
         }
         return true;
-    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter, taskSlaOutcomeFilter]);
+    }), [flatTasks, highlightedWOId, taskCatFilter, taskStatusFilter, taskSlaOutcomeFilter, taskUrgentOnly]);
 
     // Comparison Dashboard specific broad filtering
     const comparisonFilteredData = useMemo(() => {
@@ -2726,9 +2736,8 @@ const Dashboard = () => {
                                         {lateCount > 0 && (
                                             <div
                                                 onClick={() => {
-                                                    userHasManuallySelected.current = true;
-                                                    setSelectedOpCategory('urgent');
-                                                    setTimeout(() => opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                                                    setTaskUrgentOnly(prev => !prev);
+                                                    document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' });
                                                 }}
                                                 title="คลิกเพื่อดูรายการที่เกินกำหนด"
                                                 style={{ fontSize: '11px', color: '#A32D2D', textAlign: 'center', lineHeight: 1.6, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' }}
@@ -3170,6 +3179,12 @@ const Dashboard = () => {
                                                     <button onClick={() => setTaskSlaOutcomeFilter('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: taskSlaOutcomeFilter === 'onTime' ? '#86efac' : '#fca5a5', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
                                                 </div>
                                             )}
+                                            {taskUrgentOnly && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '5px 10px' }}>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#b91c1c' }}>งานค้างเกินกำหนด</span>
+                                                    <button onClick={() => setTaskUrgentOnly(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fca5a5', fontSize: '0.75rem', padding: '0', lineHeight: 1 }}>✕</button>
+                                                </div>
+                                            )}
                                             <select value={taskWoTypeFilter} onChange={e => setTaskWoTypeFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskWoTypeFilter ? '#fef3c7' : '#f8fafc', color: taskWoTypeFilter ? '#b45309' : '#64748b', cursor: 'pointer', outline: 'none' }}>
                                                 <option value="">ประเภท: ทั้งหมด</option>
                                                 <option value="woa">หลังขาย (WOA)</option>
@@ -3183,8 +3198,8 @@ const Dashboard = () => {
                                                 <option value="">สถานะ: ทั้งหมด</option>
                                                 {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
-                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId || taskSlaOutcomeFilter) && (
-                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); setTaskSlaOutcomeFilter(''); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
+                                            {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId || taskSlaOutcomeFilter || taskUrgentOnly) && (
+                                                <button onClick={() => { setTaskCatFilter(''); setTaskStatusFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); setTaskSlaOutcomeFilter(''); setTaskUrgentOnly(false); }} style={{ fontSize: '0.72rem', fontWeight: 800, padding: '6px 10px', borderRadius: '10px', border: 'none', background: '#fee2e2', color: '#b91c1c', cursor: 'pointer' }}>✕ ล้าง</button>
                                             )}
                                         </div>
                                     </div>
