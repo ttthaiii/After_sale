@@ -2724,7 +2724,17 @@ const Dashboard = () => {
                                             {statusLabel}
                                         </div>
                                         {lateCount > 0 && (
-                                            <div style={{ fontSize: '11px', color: '#A32D2D', textAlign: 'center', lineHeight: 1.6 }}>งานค้างเกินกำหนด {lateCount} รายการ</div>
+                                            <div
+                                                onClick={() => {
+                                                    userHasManuallySelected.current = true;
+                                                    setSelectedOpCategory('urgent');
+                                                    setTimeout(() => opListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                                                }}
+                                                title="คลิกเพื่อดูรายการที่เกินกำหนด"
+                                                style={{ fontSize: '11px', color: '#A32D2D', textAlign: 'center', lineHeight: 1.6, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                            >
+                                                งานค้างเกินกำหนด {lateCount} รายการ
+                                            </div>
                                         )}
                                     </div>
 
