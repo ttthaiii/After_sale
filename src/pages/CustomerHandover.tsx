@@ -115,12 +115,14 @@ export default function CustomerHandover() {
     const [catApprovals, setCatApprovals] = useState<Record<string, { status: 'approved' | 'rejected'; reason?: string }>>({});
     const [catRejectReasons, setCatRejectReasons] = useState<Record<string, string>>({});
 
-    // 5-Star Ratings
-    const [workQuality, setWorkQuality] = useState(5);
-    const [siteCleanliness, setSiteCleanliness] = useState(5);
-    const [foremanProfessionalism, setForemanProfessionalism] = useState(5);
-    const [specAccuracy, setSpecAccuracy] = useState(5);
-    const [handoverCare, setHandoverCare] = useState(5);
+    // 5-Star Ratings — default unrated (0) so the customer must actively
+    // score each criterion instead of silently submitting a pre-filled 5/5
+    // (user-flagged 2026-07-24: a full-score default reads as already answered).
+    const [workQuality, setWorkQuality] = useState(0);
+    const [siteCleanliness, setSiteCleanliness] = useState(0);
+    const [foremanProfessionalism, setForemanProfessionalism] = useState(0);
+    const [specAccuracy, setSpecAccuracy] = useState(0);
+    const [handoverCare, setHandoverCare] = useState(0);
 
     useEffect(() => {
         const fetchWoData = async () => {
@@ -399,9 +401,14 @@ export default function CustomerHandover() {
             return;
         }
 
+        const hasRejections = Object.values(approvals).some(a => a.status === 'rejected');
+        if (!hasRejections && [workQuality, siteCleanliness, foremanProfessionalism, specAccuracy, handoverCare].some(v => v === 0)) {
+            await showAlert('กรุณาให้คะแนนแบบประเมินความพึงพอใจให้ครบทุกหัวข้อก่อนยืนยัน');
+            return;
+        }
+
         setSubmitting(true);
         try {
-            const hasRejections = Object.values(approvals).some(a => a.status === 'rejected');
             const surveyPayload = hasRejections ? undefined : {
                 workQuality,
                 siteCleanliness,
@@ -488,6 +495,11 @@ export default function CustomerHandover() {
             if (undecided.length > 0) { await showAlert('กรุณาประเมินทุกหมวดงาน (ผ่าน / ส่งแก้ไข) ให้ครบก่อนยืนยัน'); return; }
             const incompleteReject = phCategories.find((cat: any) => catApprovals[cat.id]?.status === 'rejected' && !catRejectReasons[cat.id]?.trim());
             if (incompleteReject) { await showAlert(`กรุณาระบุเหตุผลสำหรับหมวดงาน "${incompleteReject.name}" ที่สั่งแก้ไข`); return; }
+
+            if (!phHasRejections && [workQuality, siteCleanliness, foremanProfessionalism, specAccuracy, handoverCare].some(v => v === 0)) {
+                await showAlert('กรุณาให้คะแนนแบบประเมินความพึงพอใจให้ครบทุกหัวข้อก่อนยืนยัน');
+                return;
+            }
 
             // Merge reasons into catApprovals
             const finalApprovals = { ...catApprovals };

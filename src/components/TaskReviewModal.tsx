@@ -35,7 +35,6 @@ export default function TaskReviewModal({
     // Find task category
     const category = workOrder.categories.find(c => c.tasks.some(t => t.id === task.id));
     const categoryName = category?.name || 'หมวดงานทั่วไป';
-    const categoryId = category?.id || 'unknown';
 
     // Get current revision details
     const currentRev = task.currentRevision || 'rev00';
@@ -85,10 +84,12 @@ export default function TaskReviewModal({
         }
     }
 
-    // Owner Review Public Link Mockup
+    // Owner Review Public Link — points to the same customer handover form
+    // used by /daily-report's QR, so both entry points show one consistent
+    // review experience (user-flagged inconsistency 2026-07-24).
     const protocol = window.location.protocol;
     const host = window.location.host;
-    const reviewLink = `${protocol}//${host}/owner-review?woId=${workOrder.id}&catId=${categoryId}&taskId=${task.id}`;
+    const reviewLink = `${protocol}//${host}/handover?woId=${workOrder.id}`;
 
     const handleCopyLink = () => {
         navigator.clipboard.writeText(reviewLink);
