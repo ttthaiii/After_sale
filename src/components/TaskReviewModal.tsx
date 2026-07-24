@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { WorkOrder, MasterTask } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 import {
     Camera,
     Copy, Check, FileText,
@@ -141,35 +142,7 @@ export default function TaskReviewModal({
                             QR Code สำหรับให้ลูกค้าตรวจรับงาน
                         </h2>
                     </div>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: '#f8fafc',
-                            border: '1.5px solid #e2e8f0',
-                            borderRadius: '50%',
-                            cursor: 'pointer',
-                            color: '#64748b',
-                            width: '38px',
-                            height: '38px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s',
-                        }}
-                        onMouseOver={e => {
-                            e.currentTarget.style.background = '#f1f5f9';
-                            e.currentTarget.style.color = '#0f172a';
-                        }}
-                        onMouseOut={e => {
-                            e.currentTarget.style.background = '#f8fafc';
-                            e.currentTarget.style.color = '#64748b';
-                        }}
-                    >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
+                    <ModalCloseButton onClick={onClose} size={18} style={{ width: '38px', height: '38px', borderRadius: '50%' }} />
                 </div>
 
                 {/* Content */}

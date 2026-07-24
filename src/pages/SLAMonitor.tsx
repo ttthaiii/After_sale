@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, X, ChevronLeft, ChevronRight, ChevronDown, Image as ImageIcon, Info, FileText } from 'lucide-react';
+import { Search, LayoutDashboard, RotateCw, Building2, AlertCircle, ArrowDown, ArrowUp, Calendar, Users, Clock, Camera, ChevronLeft, ChevronRight, ChevronDown, Image as ImageIcon, Info, FileText } from 'lucide-react';
+import { ModalCloseButton } from '../components/ui/ModalCloseButton';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
@@ -1378,14 +1379,7 @@ const SLAMonitor = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setHistoryTask(null)}
-                                    style={{ background: '#f1f5f9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.15s' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#e2e8f0'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                                >
-                                    <X size={16} />
-                                </button>
+                                <ModalCloseButton onClick={() => setHistoryTask(null)} size={16} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1.6fr'), gap: '28px', alignItems: 'start' }}>

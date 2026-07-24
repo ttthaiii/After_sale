@@ -3,6 +3,7 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAlert } from '../context/AlertContext';
 import { WorkOrder } from '../types';
 import { Star, Sparkles, Building2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 
 interface CustomerInspectionMockupProps {
@@ -346,12 +347,7 @@ export default function CustomerInspectionMockup({
                             หน้าจอจำลองการส่งมอบงานของลูกค้า (Customer Review Simulation)
                         </h2>
                     </div>
-                    <button 
-                        onClick={onClose}
-                        style={{ background: '#f8fafc', border: '1px solid #cbd5e1', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}
-                    >
-                        ✕
-                    </button>
+                    <ModalCloseButton onClick={onClose} size={16} style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
                 </div>
 
                 {/* Content Area */}

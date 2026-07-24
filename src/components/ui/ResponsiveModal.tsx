@@ -1,6 +1,6 @@
 import React from 'react';
-import { X } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { ModalCloseButton } from './ModalCloseButton';
 
 // Shared modal shell: full-screen overlay + a white panel that never exceeds the
 // viewport. On mobile the panel becomes a full-width bottom sheet with reduced
@@ -55,19 +55,14 @@ export const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
                 }}
             >
                 {onClose && (
-                    <button
+                    <ModalCloseButton
                         onClick={onClose}
-                        aria-label="ปิดหน้าต่าง"
                         style={{
                             position: 'absolute', top: '12px', right: '12px',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             width: isMobile ? '44px' : '32px', height: isMobile ? '44px' : '32px',
-                            background: '#f1f5f9', border: 'none', borderRadius: '10px',
-                            color: '#475569', cursor: 'pointer', zIndex: 1,
+                            zIndex: 1,
                         }}
-                    >
-                        <X size={18} />
-                    </button>
+                    />
                 )}
                 {children}
             </div>

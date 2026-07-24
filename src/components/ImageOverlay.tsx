@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface ImageOverlayProps {
     src: string;
@@ -128,32 +129,12 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
                     </div>
                 )}
                 <div style={{ marginLeft: 'auto', pointerEvents: 'auto' }}>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onClose(); }}
-                        style={{
-                            background: 'rgba(255, 255, 255, 0.1)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            borderRadius: '50%',
-                            width: '44px',
-                            height: '44px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseOver={e => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                        }}
-                        onMouseOut={e => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                            e.currentTarget.style.transform = 'scale(1)';
-                        }}
-                    >
-                        <X size={24} />
-                    </button>
+                    <ModalCloseButton
+                        variant="dark"
+                        size={24}
+                        style={{ width: '44px', height: '44px', borderRadius: '50%' }}
+                        onClick={() => onClose()}
+                    />
                 </div>
             </div>
 

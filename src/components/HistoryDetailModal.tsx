@@ -7,6 +7,7 @@ import { db } from '../lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from './ui/responsiveGrid';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface HistoryDetailModalProps {
     isOpen: boolean;
@@ -700,39 +701,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         >
                             <Printer size={16} /> พิมพ์เอกสารใบส่งมอบงาน
                         </button>
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: '#f8fafc',
-                                border: '1px solid #cbd5e1',
-                                width: '44px',
-                                height: '44px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                color: '#000000',
-                                transition: 'all 0.2s',
-                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                                padding: 0
-                            }}
-                            onMouseOver={e => {
-                                e.currentTarget.style.background = '#000000';
-                                e.currentTarget.style.color = '#ffffff';
-                                e.currentTarget.style.borderColor = '#000000';
-                            }}
-                            onMouseOut={e => {
-                                e.currentTarget.style.background = '#f8fafc';
-                                e.currentTarget.style.color = '#000000';
-                                e.currentTarget.style.borderColor = '#cbd5e1';
-                            }}
-                        >
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
+                        <ModalCloseButton onClick={onClose} size={20} style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
                     </div>
                 </div>
 

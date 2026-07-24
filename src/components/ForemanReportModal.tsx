@@ -15,6 +15,7 @@ import LoadingOverlay from './LoadingOverlay';
 import CustomDateInput from './CustomDateInput';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from './ui/responsiveGrid';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 // Helper to get all categories for dropdown
 const CATEGORIES_LIST = [
@@ -974,39 +975,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     </p>
                                 </div>
                             </div>
-                            <button
-                                onClick={handleClose}
-                                style={{
-                                    background: '#f8fafc',
-                                    border: '1px solid #cbd5e1',
-                                    color: '#000000',
-                                    cursor: 'pointer',
-                                    padding: '0',
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    transition: 'all 0.2s',
-                                    width: '44px',
-                                    height: '44px',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
-                                }}
-                                onMouseOver={(e) => {
-                                    e.currentTarget.style.background = '#000000';
-                                    e.currentTarget.style.color = '#ffffff';
-                                    e.currentTarget.style.borderColor = '#000000';
-                                }}
-                                onMouseOut={(e) => {
-                                    e.currentTarget.style.background = '#f8fafc';
-                                    e.currentTarget.style.color = '#000000';
-                                    e.currentTarget.style.borderColor = '#cbd5e1';
-                                }}
-                            >
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
+                            <ModalCloseButton onClick={handleClose} size={20} style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
                         </div>
 
                         {/* Scrollable Content */}

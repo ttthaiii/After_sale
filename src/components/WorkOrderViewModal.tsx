@@ -1,7 +1,8 @@
-import { X, Wrench, FileText, ExternalLink, Clock } from 'lucide-react';
+import { Wrench, FileText, ExternalLink, Clock } from 'lucide-react';
 import { WorkOrder, Project } from '../types';
 import { formatDate } from '../utils/date';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface WorkOrderViewModalProps {
     isOpen: boolean;
@@ -66,25 +67,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: '#f8fafc',
-                            border: '1px solid #cbd5e1',
-                            color: '#000000',
-                            cursor: 'pointer',
-                            padding: '0',
-                            borderRadius: '50%',
-                            display: 'flex',
-                            transition: 'all 0.2s',
-                            width: '40px',
-                            height: '40px',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                    >
-                        <X size={20} strokeWidth={3} />
-                    </button>
+                    <ModalCloseButton onClick={onClose} size={20} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                 </div>
 
                 {/* Content Section (Scrollable) */}

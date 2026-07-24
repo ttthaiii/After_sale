@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Calendar as CalendarIcon, FileText, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock, X, Camera } from 'lucide-react';
+import { Calendar as CalendarIcon, FileText, AlertCircle, Users, Edit2, Check, Plus, Search, Trash2, Clock, Camera } from 'lucide-react';
 import { WorkOrder, Project } from '../types';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAlert } from '../context/AlertContext';
 import ImageOverlay from './ImageOverlay';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 import { AnalogTimePicker } from './AnalogTimePicker';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -1169,7 +1170,7 @@ const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, even
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, background: '#fff', display: 'flex', flexDirection: 'column', animation: 'fade-in 0.2s' }}>
                         <style>{`@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }`}</style>
                         <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <button onClick={() => setShowSelection(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+                            <ModalCloseButton onClick={() => setShowSelection(null)} size={20} />
                             <div style={{ flex: 1, position: 'relative' }}>
                                 <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                                 <input

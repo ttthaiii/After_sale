@@ -5,6 +5,7 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import LoadingOverlay from './LoadingOverlay';
 import CustomDateInput from './CustomDateInput';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface TaskUpdateModalProps {
     isOpen: boolean;
@@ -135,38 +136,7 @@ const TaskUpdateModal = ({ isOpen, onClose, task, categoryId, workOrderId, categ
                                 }}
                             />
                         </div>
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: '#333',
-                                border: '1px solid #555',
-                                color: '#ffffff',
-                                cursor: 'pointer',
-                                padding: '0',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                width: '40px',
-                                height: '40px',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => {
-                                e.currentTarget.style.background = '#ffffff';
-                                e.currentTarget.style.color = '#000000';
-                                e.currentTarget.style.borderColor = '#ffffff';
-                            }}
-                            onMouseOut={e => {
-                                e.currentTarget.style.background = '#333';
-                                e.currentTarget.style.color = '#ffffff';
-                                e.currentTarget.style.borderColor = '#555';
-                            }}
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
+                        <ModalCloseButton onClick={onClose} variant="dark" size={18} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                     </div>
                 </div>
 

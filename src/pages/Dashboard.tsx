@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
+import { ModalCloseButton } from '../components/ui/ModalCloseButton';
 import {
     TrendingUp,
     AlertTriangle,
@@ -375,9 +376,7 @@ const WOSummaryModal = ({ isOpen, onClose, data, onViewDetail, selectedMonth, ge
                             )}
                         </div>
                     </div>
-                    <button onClick={onClose} style={{ padding: '10px', borderRadius: '14px', border: 'none', background: '#f8fafc', color: '#64748b', cursor: 'pointer', transition: 'all 0.2s' }}>
-                        <X size={20} />
-                    </button>
+                    <ModalCloseButton onClick={onClose} size={20} style={{ borderRadius: '14px' }} />
                 </div>
                 <div style={{ padding: '2rem', maxHeight: '60vh', overflowY: 'auto' }}>
                     {openedWOs.length > 0 && (
@@ -499,7 +498,7 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                             </span>
                         </div>
                     </div>
-                    <button onClick={onClose} style={{ background: '#fff', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
+                    <ModalCloseButton onClick={onClose} size={20} style={{ width: '40px', height: '40px', borderRadius: '12px', flexShrink: 0 }} />
                 </div>
 
                 {/* Body */}
@@ -3616,7 +3615,7 @@ const Dashboard = () => {
                                     {selectedLaborDetail.date ? `วันที่ ${formatDate(selectedLaborDetail.date)}` : 'สรุปภาพรวมทั้งหมด'}
                                 </p>
                             </div>
-                            <button onClick={() => setSelectedLaborDetail(null)} style={{ background: '#fff', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0f172a', fontSize: '24px', fontWeight: 900 }} title="ปิดหน้าต่าง">×</button>
+                            <ModalCloseButton onClick={() => setSelectedLaborDetail(null)} size={20} style={{ width: '40px', height: '40px', borderRadius: '12px' }} />
                         </div>
                         <div style={{ padding: '32px', maxHeight: '70vh', overflowY: 'auto' }}>
                             {(() => {

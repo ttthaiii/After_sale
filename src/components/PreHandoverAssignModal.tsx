@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, Users, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
+import { Clock, Users, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
 import { WorkOrder, Staff } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface Assignment {
     foremanId: string;
@@ -128,9 +129,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                             <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{wo.id} · {wo.building ? `อาคาร ${wo.building}` : ''} ชั้น {wo.floor} ห้อง {wo.room}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, color: '#64748b' }}>
-                        <X size={18} />
-                    </button>
+                    <ModalCloseButton onClick={onClose} size={18} style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
                 </div>
 
                 {/* Body */}

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { X, User, Save, Search } from 'lucide-react';
+import { User, Save, Search } from 'lucide-react';
 import { MasterTask, Staff } from '../types';
 import { useAlert } from '../context/AlertContext';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface AdminAssignHelperModalProps {
     isOpen: boolean;
@@ -71,7 +72,7 @@ const AdminAssignHelperModal = ({ isOpen, onClose, task, workOrderId, staffList,
                             {` (ใบงาน ${workOrderId})`}
                         </p>
                     </div>
-                    <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px', borderRadius: '12px', cursor: 'pointer' }}><X size={20} /></button>
+                    <ModalCloseButton onClick={onClose} variant="dark" size={20} style={{ borderRadius: '12px' }} />
                 </div>
 
                 <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>

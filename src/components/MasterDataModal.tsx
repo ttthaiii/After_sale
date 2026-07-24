@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Upload, User, Building, HardHat, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Upload, User, Building, HardHat, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Staff, Project, Contractor } from '../types';
 import { storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { compressImage } from '../utils/imageCompression';
 import LoadingOverlay from './LoadingOverlay';
 import { useAlert } from '../context/AlertContext';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface MasterDataModalProps {
     isOpen: boolean;
@@ -135,9 +136,7 @@ const MasterDataModal = ({ isOpen, onClose, type, initialData, projects = [], on
                             {initialData ? 'แก้ไขข้อมูล' : 'เพิ่มข้อมูล'} {type === 'Staff' ? 'เจ้าหน้าที่' : type === 'Projects' ? 'โครงการ' : 'ผู้รับเหมา'}
                         </h3>
                     </div>
-                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b' }}>
-                        <X size={24} />
-                    </button>
+                    <ModalCloseButton onClick={onClose} size={24} />
                 </div>
 
                 {/* Body */}

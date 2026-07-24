@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ClipboardList, Calendar, Users, Camera, CheckCircle2,
-  FileText, Clock, X, Plus, Trash2, Loader2,
+  FileText, Clock, Plus, Trash2, Loader2,
   ChevronLeft, AlertTriangle, ChevronRight, Activity, User, HardHat,
   Edit2, XCircle,
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { PreHandoverSummaryModal } from './PreHandoverSummaryModal';
 import { computeJobSLA } from '../../utils/jobSla';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { gridCols } from '../ui/responsiveGrid';
+import { ModalCloseButton } from '../ui/ModalCloseButton';
 
 // ─── Inline Calendar Component ───────────────────────────────────────────────
 const MONTH_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -352,16 +353,7 @@ export const PreHandoverDetailPane: React.FC = () => {
               {wo.locationName || project?.name || '—'} · {cat.defectCount || 0} จุดตรวจสอบ
             </div>
           </div>
-          <button
-            onClick={() => selectPhCatInfo(null)}
-            style={{
-              background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px',
-              color: '#fff', width: '32px', height: '32px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}
-          >
-            <X size={16} />
-          </button>
+          <ModalCloseButton onClick={() => selectPhCatInfo(null)} variant="dark" size={16} style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
         </div>
 
         {/* SLA + Scheduled date row */}

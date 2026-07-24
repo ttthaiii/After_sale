@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
-import { X, Download, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 export type ImportType = 'Staff' | 'Contractors';
 
@@ -180,7 +181,7 @@ const ImportExcelModal = ({ isOpen, onClose, type, existingKeys, onConfirm }: Pr
                         </div>
                         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>{TITLE[type]}</h3>
                     </div>
-                    <button onClick={close} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={24} /></button>
+                    <ModalCloseButton onClick={close} size={24} />
                 </div>
 
                 {/* Body */}

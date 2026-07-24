@@ -34,6 +34,7 @@ import { formatDate } from "../../utils/date";
 import { todayTH } from "../../lib/dateUtils";
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { gridCols } from '../ui/responsiveGrid';
+import { ModalCloseButton } from '../ui/ModalCloseButton';
 
 const formatSubtaskId = (id: string | undefined): string => {
   if (!id) return "";
@@ -4743,53 +4744,11 @@ export const DailyReportDetailPane: React.FC = () => {
             >
               {" "}
               
-              <button
+              <ModalCloseButton
                 onClick={() => setSelectedTaskInfo(null)}
-                style={{
-                  background: "#f8fafc",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "50%",
-                  width: "44px",
-                  height: "44px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  color: "#000000",
-                  transition: "all 0.2s",
-                  boxShadow:
-                    "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
-                  padding: 0,
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = "#000000";
-                  e.currentTarget.style.color = "#ffffff";
-                  e.currentTarget.style.borderColor = "#000000";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = "#f8fafc";
-                  e.currentTarget.style.color = "#000000";
-                  e.currentTarget.style.borderColor = "#cbd5e1";
-                }}
-              >
-                {" "}
-                
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  {" "}
-                  
-                  <line x1="18" y1="6" x2="6" y2="18" /> 
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+                size={20}
+                style={{ width: "44px", height: "44px", borderRadius: "50%" }}
+              />
               {(!hasHistoryForSelectedDate || isEditingExisting) &&
                 !isTaskFinished &&
                 !isAwaitingAdmin &&
@@ -4883,28 +4842,12 @@ export const DailyReportDetailPane: React.FC = () => {
                 }}
                 onClick={() => setPhotoPreviewOpen(false)}
               >
-                <button
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    right: "16px",
-                    background: "rgba(255,255,255,0.15)",
-                    border: "none",
-                    borderRadius: "50%",
-                    width: "44px",
-                    height: "44px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    color: "#fff",
-                    fontSize: "1.2rem",
-                    fontWeight: 700,
-                  }}
-                  onClick={(e) => { e.stopPropagation(); setPhotoPreviewOpen(false); }}
-                >
-                  ✕
-                </button>
+                <ModalCloseButton
+                  variant="dark"
+                  size={18}
+                  style={{ position: "absolute", top: "16px", right: "16px", width: "44px", height: "44px", borderRadius: "50%" }}
+                  onClick={() => setPhotoPreviewOpen(false)}
+                />
                 {photoPreviewUrl && (
                   <img
                     src={photoPreviewUrl}
@@ -4951,28 +4894,11 @@ export const DailyReportDetailPane: React.FC = () => {
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <button
-                    style={{
-                      position: "absolute",
-                      top: "12px",
-                      right: "12px",
-                      background: "#f1f5f9",
-                      border: "none",
-                      borderRadius: "50%",
-                      width: "32px",
-                      height: "32px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                      color: "#64748b",
-                      fontSize: "1rem",
-                      fontWeight: 700,
-                    }}
+                  <ModalCloseButton
                     onClick={() => setShowSLAPopup(false)}
-                  >
-                    ✕
-                  </button>
+                    size={14}
+                    style={{ position: "absolute", top: "12px", right: "12px", width: "32px", height: "32px", borderRadius: "50%" }}
+                  />
                   <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0f172a", marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
                     <Clock size={14} color="#2563eb" /> SLA
                   </div>

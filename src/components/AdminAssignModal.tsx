@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, User, HardHat, Clock, Save, CheckCircle2, Calendar } from 'lucide-react';
+import { User, HardHat, Clock, Save, CheckCircle2, Calendar } from 'lucide-react';
 import { MasterTask, Staff, Contractor } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
@@ -7,6 +7,7 @@ import { useAlert } from '../context/AlertContext';
 import CustomDateInput from './CustomDateInput';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from './ui/responsiveGrid';
+import { ModalCloseButton } from './ui/ModalCloseButton';
 
 interface AdminAssignModalProps {
     isOpen: boolean;
@@ -123,7 +124,7 @@ const AdminAssignModal = ({ isOpen, onClose, task, workOrderId, staffList, contr
                         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>มอบหมายงาน (Assign Task)</h2>
                         <p style={{ margin: '4px 0 0', opacity: 0.8, fontSize: '0.85rem' }}>{task.name}</p>
                     </div>
-                    <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px', borderRadius: '12px', cursor: 'pointer' }}><X size={20} /></button>
+                    <ModalCloseButton onClick={onClose} variant="dark" size={20} style={{ borderRadius: '12px' }} />
                 </div>
 
                 <div style={{ padding: '24px', overflowY: 'auto' }}>
