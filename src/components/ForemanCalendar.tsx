@@ -75,7 +75,6 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
     const [currentDate] = useState(new Date());
     const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
     const isMobile = useIsMobile();
-    const showAlert = useAlert();
 
 
     const year = selectedMonth ? parseInt(selectedMonth.split('-')[0]) : currentDate.getFullYear();
@@ -412,6 +411,7 @@ const ForemanCalendar: React.FC<ForemanCalendarProps> = ({ workOrders, currentUs
 
 const DailyDetailDrawer = ({ dateStr, events, onClose }: { dateStr: string, events: any[], onClose: () => void }) => {
     const { addTaskUpdate, workOrders, contractors: masterContractors } = useWorkOrders();
+    const showAlert = useAlert();
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [previewImagesList, setPreviewImagesList] = useState<{ url: string; label: string }[]>([]);
     const [previewImageIndex, setPreviewImageIndex] = useState<number>(0);
