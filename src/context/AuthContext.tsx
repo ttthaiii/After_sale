@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { User, UserRole } from '../types';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/firestore';
@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return () => unsub();
     }, [user?.id]);
 
-    const login = async (username: string, password: string): Promise<boolean> => {
+    const login = useCallback(async (username: string, password: string): Promise<boolean> => {
         try {
             setLoading(true);
             const cleanUsername = username.trim();
@@ -215,9 +215,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [showAlert]);
 
-    const logout = () => {
+    const logout = useCallback(() => {
         if (user) {
             // ✅ Log Action (fire and forget for logout)
             logService.trackAction({
@@ -232,10 +232,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
         sessionStorage.removeItem(STORAGE_KEY);
         sessionStorage.removeItem('after_sale_user');
-    };
+    }, [user]);
+
+    const value = useMemo(() => ({
+        user, login, logout, isAuthenticated: !!user, loading
+    }), [user, login, logout, loading]);
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, loading }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );

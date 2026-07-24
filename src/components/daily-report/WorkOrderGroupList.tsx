@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect } from "react";
+import React, { Fragment, useState, useEffect, useMemo } from "react";
 import { computeJobSLA, SLA_HOURS_MAP } from "../../utils/jobSla";
 import {
   ChevronLeft,
@@ -124,22 +124,25 @@ export const WorkOrderGroupList: React.FC = () => {
   }, [selectedTaskInfo]);
 
   // Filter tasks based on activeTab
-  const newTasks = rawNewTasks.filter(item => {
+  // These were previously recomputed on every render of this component (unmemoized filter/map/
+  // nested-loop work) — since this component consumes DailyReportContext, that meant redoing it
+  // on every unrelated context change (e.g. every keystroke in a sibling search box). Memoized here.
+  const newTasks = useMemo(() => rawNewTasks.filter(item => {
     const isSupport = item.task.isSupportRequest === true || item.task.isHelper === true;
     return activeTab === 'support' ? isSupport : !isSupport;
-  });
+  }), [rawNewTasks, activeTab]);
 
-  const inProgressTasks = rawInProgressTasks.filter(item => {
+  const inProgressTasks = useMemo(() => rawInProgressTasks.filter(item => {
     const isSupport = item.task.isSupportRequest === true || item.task.isHelper === true;
     return activeTab === 'support' ? isSupport : !isSupport;
-  });
+  }), [rawInProgressTasks, activeTab]);
 
-  const pendingInspectionTasks = rawPendingInspectionTasks.filter(item => {
+  const pendingInspectionTasks = useMemo(() => rawPendingInspectionTasks.filter(item => {
     const isSupport = item.task.isSupportRequest === true || item.task.isHelper === true;
     return activeTab === 'support' ? isSupport : !isSupport;
-  });
+  }), [rawPendingInspectionTasks, activeTab]);
 
-  const pendingDeliveryWorkOrders = rawPendingDeliveryWorkOrders.filter(item => {
+  const pendingDeliveryWorkOrders = useMemo(() => rawPendingDeliveryWorkOrders.filter(item => {
     const hasMatchingTask = item.wo.categories.some((c: any) =>
       c.tasks.some((t: any) => {
         const isSupport = t.isSupportRequest === true || t.isHelper === true;
@@ -147,70 +150,74 @@ export const WorkOrderGroupList: React.FC = () => {
       })
     );
     return hasMatchingTask;
-  });
+  }), [rawPendingDeliveryWorkOrders, activeTab]);
 
-  const mappedPendingDeliveries = pendingDeliveryWorkOrders.map(item => {
-    const wo = item.wo;
-    const globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
-      // Cancelled/archived-rejected tasks never happened — exclude them here too,
-      // same rule as the other task-count sites in this file (globalTasks filter,
-      // allActiveItems.forEach, otherTasks fallback, generateDeliveryQrToken).
-      if (t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true)) return false;
-      const isSupport = t.isSupportRequest === true || t.isHelper === true;
-      return activeTab === 'support' ? isSupport : !isSupport;
-    });
-
-    const jobSla = computeJobSLA(wo);
-    let maxDlOriginal = 0;
-    let minSubDl = Infinity;
-
-    wo.categories.forEach((cat: any) => {
-      cat.tasks.forEach((t: any) => {
-        const tRawInit1 = (t as any).initialStartDate;
-        const tRevAt1 = (t as any).revisionCreatedAt;
-        const tValidInit1 = tRawInit1 && tRevAt1
-          ? (new Date(tRawInit1) < new Date(tRevAt1) ? tRawInit1 : null)
-          : (tRawInit1 || null);
-        const originalSla = (tValidInit1 ? (t as any).initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
-        const tDurHoursOriginal = SLA_HOURS_MAP[originalSla as keyof typeof SLA_HOURS_MAP] || 24;
-        const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
-        const tStartOriginal = tValidInit1
-          ? `${tStartOriginalRaw.split('T')[0]}T08:00:00+07:00`
-          : tStartOriginalRaw;
-        const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
-        if (tDeadlineOriginal > maxDlOriginal) {
-          maxDlOriginal = tDeadlineOriginal;
-        }
-
-        if (t.deadline) {
-          const subDl = new Date(t.deadline).getTime();
-          if (subDl < minSubDl) {
-            minSubDl = subDl;
-          }
-        }
+  const mappedPendingDeliveries = useMemo(() => {
+    const mapped = pendingDeliveryWorkOrders.map(item => {
+      const wo = item.wo;
+      const globalTasks = wo.categories.flatMap((c: any) => c.tasks).filter((t: any) => {
+        // Cancelled/archived-rejected tasks never happened — exclude them here too,
+        // same rule as the other task-count sites in this file (globalTasks filter,
+        // allActiveItems.forEach, otherTasks fallback, generateDeliveryQrToken).
+        if (t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true)) return false;
+        const isSupport = t.isSupportRequest === true || t.isHelper === true;
+        return activeTab === 'support' ? isSupport : !isSupport;
       });
+
+      const jobSla = computeJobSLA(wo);
+      let maxDlOriginal = 0;
+      let minSubDl = Infinity;
+
+      wo.categories.forEach((cat: any) => {
+        cat.tasks.forEach((t: any) => {
+          const tRawInit1 = (t as any).initialStartDate;
+          const tRevAt1 = (t as any).revisionCreatedAt;
+          const tValidInit1 = tRawInit1 && tRevAt1
+            ? (new Date(tRawInit1) < new Date(tRevAt1) ? tRawInit1 : null)
+            : (tRawInit1 || null);
+          const originalSla = (tValidInit1 ? (t as any).initialSlaCategory : null) || t.baselineSla || t.estimatedSla || t.slaCategory || "24h";
+          const tDurHoursOriginal = SLA_HOURS_MAP[originalSla as keyof typeof SLA_HOURS_MAP] || 24;
+          const tStartOriginalRaw = tValidInit1 || t.slaStartTime || wo.createdAt || new Date().toISOString();
+          const tStartOriginal = tValidInit1
+            ? `${tStartOriginalRaw.split('T')[0]}T08:00:00+07:00`
+            : tStartOriginalRaw;
+          const tDeadlineOriginal = new Date(tStartOriginal).getTime() + tDurHoursOriginal * 60 * 60 * 1e3;
+          if (tDeadlineOriginal > maxDlOriginal) {
+            maxDlOriginal = tDeadlineOriginal;
+          }
+
+          if (t.deadline) {
+            const subDl = new Date(t.deadline).getTime();
+            if (subDl < minSubDl) {
+              minSubDl = subDl;
+            }
+          }
+        });
+      });
+
+      const globalDeadline = jobSla.deadlineMs || new Date().getTime();
+      const subtaskDeadline = minSubDl !== Infinity ? minSubDl : globalDeadline;
+      const completedAtTime = getCompletedAtTime(wo, globalTasks);
+
+      return {
+        ...item,
+        globalTasks,
+        globalDeadline,
+        subtaskDeadline,
+        originalDeadline: maxDlOriginal,
+        completedAtTime,
+      };
     });
 
-    const globalDeadline = jobSla.deadlineMs || new Date().getTime();
-    const subtaskDeadline = minSubDl !== Infinity ? minSubDl : globalDeadline;
-    const completedAtTime = getCompletedAtTime(wo, globalTasks);
+    mapped.sort((a: any, b: any) => {
+      if (sortBy === 'id') {
+        return a.wo.id.localeCompare(b.wo.id);
+      }
+      return a.globalDeadline - b.globalDeadline;
+    });
 
-    return {
-      ...item,
-      globalTasks,
-      globalDeadline,
-      subtaskDeadline,
-      originalDeadline: maxDlOriginal,
-      completedAtTime,
-    };
-  });
-
-  mappedPendingDeliveries.sort((a: any, b: any) => {
-    if (sortBy === 'id') {
-      return a.wo.id.localeCompare(b.wo.id);
-    }
-    return a.globalDeadline - b.globalDeadline;
-  });
+    return mapped;
+  }, [pendingDeliveryWorkOrders, activeTab, sortBy]);
 
 
   // Helper render function with lexical scope access

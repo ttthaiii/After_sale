@@ -46,6 +46,10 @@ expect('allPendingDelivery→pending_delivery', deriveWoStatus([t('pending_deliv
 expect('Complete+Evaluating(rev1)→customer_reject', deriveWoStatus([t('Complete'), t('Evaluating', 'rev01')]), 'customer_reject');
 expect('allEvaluating(rev1)→customer_reject', deriveWoStatus([t('Evaluating', 'rev01'), t('Evaluating', 'rev01')]), 'customer_reject');
 
+// bug fix (2026-07-23): a Complete sibling must NOT make an unrelated fresh (rev00) Evaluating
+// task look like a customer rejection — that task was never sent to the customer at all.
+expect('Complete+Evaluating(fresh rev00)→Evaluating', deriveWoStatus([t('Complete'), t('Evaluating', 'rev00')]), 'Evaluating');
+
 // rework loop resolution — admin re-assigned, passed siblings Complete
 expect('Complete+Assigned(rev1)→Assigned', deriveWoStatus([t('Complete'), t('Assigned', 'rev01')]), 'Assigned');
 expect('Complete+InProgress(rev1)→InProgress', deriveWoStatus([t('Complete'), t('In Progress', 'rev01')]), 'In Progress');

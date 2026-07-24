@@ -5,6 +5,7 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
 import { computeJobSLA } from '../utils/jobSla';
+import { getJobCode } from '../utils/workOrder';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { logService } from '../services/logService';
@@ -282,10 +283,8 @@ const SLAMonitor = () => {
         });
 
         if (currentRole === 'Admin') {
-            filteredWOs = filteredWOs.filter((wo) => {
-                const idUpper = (wo.id || '').toUpperCase();
-                return idUpper.includes('WOA');
-            });
+            // WOA/WOP decided via wo.type (getJobCode), not id string-matching — see [[woa-wop-type-helper]].
+            filteredWOs = filteredWOs.filter((wo) => getJobCode(wo) === 'WOA');
         }
 
         if (currentRole === 'Foreman') {

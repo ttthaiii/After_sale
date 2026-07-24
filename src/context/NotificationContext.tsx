@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     collection, 
     query, 
@@ -114,12 +114,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return () => unsubscribe();
     }, [user]);
 
-    const markAsRead = async (notificationId: string) => {
+    const markAsRead = useCallback(async (notificationId: string) => {
         if (!user) return;
         try {
             const notificationRef = doc(db, 'notifications', notificationId);
             const notification = notifications.find(n => n.id === notificationId);
-            
+
             if (notification?.recipientRole) {
                 // For role-based, add user to readBy array
                 const currentReadBy = notification.readBy || [];
@@ -135,21 +135,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         } catch (error) {
             console.error("Error marking notification as read:", error);
         }
-    };
+    }, [user, notifications]);
 
-    const markAllAsRead = async () => {
+    const markAllAsRead = useCallback(async () => {
         try {
             const unreadNotifications = notifications.filter(n => !n.isRead);
-            const promises = unreadNotifications.map(n => 
+            const promises = unreadNotifications.map(n =>
                 updateDoc(doc(db, 'notifications', n.id), { isRead: true })
             );
             await Promise.all(promises);
         } catch (error) {
             console.error("Error marking all as read:", error);
         }
-    };
+    }, [notifications]);
 
-    const sendNotification = async (notificationData: Omit<Notification, 'id' | 'isRead' | 'createdAt'>) => {
+    const sendNotification = useCallback(async (notificationData: Omit<Notification, 'id' | 'isRead' | 'createdAt'>) => {
         try {
             await addDoc(collection(db, 'notifications'), {
                 ...notificationData,
@@ -159,16 +159,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         } catch (error) {
             console.error("Error sending notification:", error);
         }
-    };
+    }, []);
+
+    const value = useMemo(() => ({
+        notifications,
+        unreadCount,
+        markAsRead,
+        markAllAsRead,
+        sendNotification
+    }), [notifications, unreadCount, markAsRead, markAllAsRead, sendNotification]);
 
     return (
-        <NotificationContext.Provider value={{ 
-            notifications, 
-            unreadCount, 
-            markAsRead, 
-            markAllAsRead,
-            sendNotification 
-        }}>
+        <NotificationContext.Provider value={value}>
             {children}
         </NotificationContext.Provider>
     );

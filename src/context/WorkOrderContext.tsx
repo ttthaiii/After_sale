@@ -1,15 +1,27 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { WorkOrder, MasterTask, DailyReport, Project, Staff, Contractor } from '../types';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where, deleteField, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, getDocs, writeBatch, addDoc, serverTimestamp, Timestamp, query, where, documentId, deleteField, deleteDoc } from 'firebase/firestore';
 
 import { TaskAssignee } from '../types';
 import { useAuth } from './AuthContext';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
-import { isWoaWop as isWoaWopType, resolveTaskRefs } from '../utils/workOrder';
+import { isWoaWop as isWoaWopType, getJobCode, resolveTaskRefs } from '../utils/workOrder';
 import { logService } from '../services/logService';
 import { useRealtimeWorkOrders } from '../hooks/useRealtimeWorkOrders';
+import { useCrossProjectWorkOrders } from '../hooks/useCrossProjectWorkOrders';
 import { assembleWorkOrders } from '../utils/assembleWorkOrders';
+import { useStableCallbacks } from '../hooks/useStableCallbacks';
+
+const PRIVILEGED_ROLES = ['Admin', 'Manager', 'Approver'];
+/** Firestore 'in' filters accept at most 30 values. */
+const IN_CHUNK_SIZE = 30;
+function chunkIds(arr: string[], size: number): string[][] {
+    if (arr.length === 0) return [];
+    const out: string[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
 
 interface WorkOrderContextType {
     workOrders: WorkOrder[];
@@ -114,17 +126,17 @@ const CATEGORIES_LIST = [
 //   e.g. ART-WOA-0002-0000001   (globally unique: no two tasks in any project/WO can share this)
 //
 // ONLY applies to WOA/WOP work orders. All other codes are untouched.
-const formatCategoriesAndTasks = (woId: string, categories: any[]): any[] => {
+const formatCategoriesAndTasks = (woId: string, categories: any[], woType?: string): any[] => {
     if (!categories || categories.length === 0) return [];
 
-    // Guard: only WOA/WOP
-    const isWoaWop = woId.toUpperCase().includes('WOA') || woId.toUpperCase().includes('WOP');
-    if (!isWoaWop) return categories;
+    // Guard: only WOA/WOP — decided via wo.type (isWoaWopType), not id string-matching
+    if (!isWoaWopType({ type: woType, id: woId })) return categories;
 
-    // Parse WO ID — e.g. ART-2026-WOA-0002
+    // Parse WO ID — e.g. ART-2026-WOA-0002 (structural parsing of the id's own shape;
+    // unrelated to WOA/WOP classification, which comes from woType above)
     const parts = woId.split('-');
     const projectPrefix = parts.length > 0 ? parts[0].toUpperCase() : 'LR';
-    const jobCode     = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA'; // "WOA"
+    const jobCode     = getJobCode({ type: woType }); // "WOA" | "WOP"
     const woSeq       = parts.length >= 1 ? parts[parts.length - 1] : '0001';
 
     // Pad woSeq to 4 digits for standard display (e.g. 0001)
@@ -178,38 +190,42 @@ const getSubtaskId = (taskId: string): string => {
     return taskId;
 };
 
-// ✅ Resolve task assignee details from the users collection for LB schema compatibility
+// ✅ Resolve task assignee details from the users collection for LB schema compatibility.
+// Batched via a single `where(documentId(), 'in', chunk)` query per 30 ids (Firestore's
+// 'in' cap) instead of one getDoc per staff id — was N reads, now ceil(N/30).
+const RESOLVE_ASSIGNEES_CHUNK_SIZE = 30;
 const resolveAssignees = async (staffIds: string[]): Promise<TaskAssignee[]> => {
     if (!staffIds || staffIds.length === 0) return [];
-    const assignees: TaskAssignee[] = [];
-    for (const staffId of staffIds) {
-        try {
-            const userDoc = await getDoc(doc(db, 'users', staffId));
-            if (userDoc.exists()) {
+    const uniqueIds = [...new Set(staffIds)];
+    const foundById = new Map<string, TaskAssignee>();
+
+    const chunks: string[][] = [];
+    for (let i = 0; i < uniqueIds.length; i += RESOLVE_ASSIGNEES_CHUNK_SIZE) {
+        chunks.push(uniqueIds.slice(i, i + RESOLVE_ASSIGNEES_CHUNK_SIZE));
+    }
+
+    try {
+        await Promise.all(chunks.map(async (chunk) => {
+            const snap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk)));
+            snap.docs.forEach((userDoc) => {
                 const userData = userDoc.data();
-                assignees.push({
-                    employeeId: userData.employeeId || staffId,
+                foundById.set(userDoc.id, {
+                    employeeId: userData.employeeId || userDoc.id,
                     name: userData.name || '',
                     roleId: userData.roleId || (userData.role === 'Admin' ? 'AM' : 'FM')
                 });
-            } else {
-                // Fallback if user doesn't exist in users collection
-                assignees.push({
-                    employeeId: staffId,
-                    name: `Staff ${staffId}`,
-                    roleId: 'FM' // Default fallback
-                });
-            }
-        } catch (error) {
-            console.error("Error resolving assignee details:", error);
-            assignees.push({
-                employeeId: staffId,
-                name: `Staff ${staffId}`,
-                roleId: 'FM'
             });
-        }
+        }));
+    } catch (error) {
+        console.error("Error resolving assignee details:", error);
     }
-    return assignees;
+
+    // Preserve input order (incl. duplicates); fall back per id with no matching user doc.
+    return staffIds.map((staffId) => foundById.get(staffId) || {
+        employeeId: staffId,
+        name: `Staff ${staffId}`,
+        roleId: 'FM'
+    });
 };
 
 export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
@@ -220,11 +236,25 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
     const [contractors, setContractors] = useState<Contractor[]>([]);
     const [loading, setLoading] = useState(true);
 
+    // T-craft (2026-07-23): privileged roles keep the full-company firehose;
+    // everyone else is scoped to their assignedProjects at the query level
+    // (see pre-prod-audit "Critical #1"). `null` = unfiltered.
+    const isPrivileged = !!user && PRIVILEGED_ROLES.includes(user.role);
+    const projectFilter: string[] | null = isPrivileged ? null : (user?.assignedProjects || []);
+
     // T-335: collectionGroup delta listeners feed a flat cache. `version` bumps on
     // every delta batch and drives the assembler useMemo below. Replaces the old
     // per-WO fetchSubcollections full-tree re-reads.
-    const { cache: rtCache, version: rtVersion } = useRealtimeWorkOrders(!!user);
+    const { cache: rtCache, version: rtVersion } = useRealtimeWorkOrders(!!user, projectFilter);
 
+    // Rare cross-project assignment case (helper/responsible/reporter outside the
+    // user's home projects) — one-time discovery fetch, not realtime. See
+    // hooks/useCrossProjectWorkOrders.ts for why this isn't a listener.
+    const crossProjectWOs = useCrossProjectWorkOrders(
+        !!user && !isPrivileged,
+        user ? { id: user.id, employeeId: user.employeeId } : null,
+        projectFilter || []
+    );
 
     // ✅ REAL-TIME SYNC: Reverting to a more stable root listener with reactive integration
     useEffect(() => {
@@ -233,13 +263,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             return;
         }
 
-        const unsubscribeWO = onSnapshot(collection(db, 'workOrders'), (snapshot) => {
+        const handleWoSnapshot = (snapshot: any) => {
             const changes = snapshot.docChanges();
-            const toFetch = changes.filter(c => c.type === 'added' || c.type === 'modified');
-            const toRemove = changes.filter(c => c.type === 'removed').map(c => c.doc.id);
+            const toFetch = changes.filter((c: any) => c.type === 'added' || c.type === 'modified');
+            const toRemove = changes.filter((c: any) => c.type === 'removed').map((c: any) => c.doc.id);
 
             // Step 1: แสดง UI ทันทีด้วย base data (ไม่รอ subcollections)
-            const baseWOs = toFetch.map((change) => ({
+            const baseWOs = toFetch.map((change: any) => ({
                 ...(change.doc.data() as WorkOrder),
                 status: (change.doc.data() as WorkOrder).status || 'In Progress',
                 id: change.doc.id,
@@ -260,7 +290,19 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
             // T-335: subcollections no longer fetched per-WO here. The base WOs
             // (categories: []) are assembled with the live cache in the useMemo below.
-        });
+        };
+
+        // Privileged roles: one unfiltered listener. Everyone else: one listener
+        // per chunk of assignedProjects (Firestore 'in' caps at 30 values); zero
+        // projects assigned → zero listeners (nothing to fetch this way — the
+        // cross-project hook is that user's only source).
+        const woChunks = projectFilter === null ? [null] : chunkIds(projectFilter, IN_CHUNK_SIZE);
+        const unsubscribesWO = woChunks.map(ids =>
+            onSnapshot(
+                ids === null ? collection(db, 'workOrders') : query(collection(db, 'workOrders'), where('projectId', 'in', ids)),
+                handleWoSnapshot
+            )
+        );
 
         const unsubProjects = onSnapshot(collection(db, 'projects'), s => setProjects(s.docs.map(d => ({ ...d.data(), id: d.id }) as Project)));
         const unsubUsers = onSnapshot(collection(db, 'users'), s => {
@@ -295,15 +337,16 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         });
         const unsubContractors = onSnapshot(collection(db, 'contractors'), s => setContractors(s.docs.map(d => ({ ...d.data(), id: d.id }) as Contractor)));
 
-        // T-335: unsubscribe ALL 4 listeners (previously only unsubscribeWO was
+        // T-335: unsubscribe ALL listeners (previously only unsubscribeWO was
         // returned — projects/users/contractors leaked on user change / unmount).
         return () => {
-            unsubscribeWO();
+            unsubscribesWO.forEach(unsub => unsub());
             unsubProjects();
             unsubUsers();
             unsubContractors();
         };
-    }, [user]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, isPrivileged, (projectFilter || []).slice().sort().join(',')]);
 
     // T-335: rebuild the nested WorkOrder[] (categories/tasks/subtasks/reports)
     // from the flat delta cache. Re-runs when base WOs change or a delta arrives
@@ -314,12 +357,17 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         [allWorkOrders, rtVersion, rtCache]
     );
 
-    // ✅ Filter the final list for the UI
+    // ✅ Filter the final list for the UI. The heavy lifting (restricting to the
+    // user's own projects) now happens at the Firestore query level (see the
+    // listeners above) — this filter is a lightweight safety net, and it's also
+    // what lets the rare cross-project WOs (merged in below) through via the
+    // isReporter/isResponsible branches even though they're outside assignedProjects.
     const workOrders = useMemo(() => {
         if (!user) return [];
-        let filtered = assembledWorkOrders;
+        const combined = isPrivileged ? assembledWorkOrders : [...assembledWorkOrders, ...crossProjectWOs];
+        let filtered = combined;
         if (user.role !== 'Admin' && user.role !== 'Manager' && user.role !== 'Approver') {
-            filtered = assembledWorkOrders.filter(wo => {
+            filtered = combined.filter(wo => {
                 const isAssignedProject = user.assignedProjects?.includes(wo.projectId || '');
                 // ✅ Check match against BOTH system id and employeeId during transition
                 const isReporter = wo.reporterId === user.id || (user.employeeId && wo.reporterId === user.employeeId);
@@ -340,7 +388,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             });
         }
         return filtered;
-    }, [assembledWorkOrders, user]);
+    }, [assembledWorkOrders, crossProjectWOs, isPrivileged, user]);
 
     const getWorkOrderById = (id: string) => workOrders.find(wo => wo.id === id);
 
@@ -350,41 +398,45 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await assertNotEvalLocked(wo.id);
 
         // Format categories and tasks to have structured document IDs matching the LB format for WOA/WOP
-        const formattedCategories = formatCategoriesAndTasks(wo.id, wo.categories || []);
+        const formattedCategories = formatCategoriesAndTasks(wo.id, wo.categories || [], wo.type);
         const woWithFormattedCategories = {
             ...wo,
             categories: formattedCategories
         };
         const { categories, ...rest } = woWithFormattedCategories;
-        
-        const parts = wo.id.split('-');
-        const workOrderCode = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA';
 
-        // Clean up any existing categories/tasks for this work order to prevent orphans
+        const workOrderCode = getJobCode(wo);
+
+        // Clean up any existing categories/tasks for this work order to prevent orphans.
+        // Reads at each tree level are independent (different category/task/subtask/revision
+        // ids), so siblings are scanned concurrently via Promise.all instead of one at a time —
+        // was a fully sequential O(depth) chain of round-trips per branch, now O(depth) latency
+        // total regardless of branch count. deleteBatch.delete() is a synchronous local queue
+        // op, so calling it from concurrent callbacks is safe.
         try {
             const oldCategoriesSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories'));
             if (!oldCategoriesSnap.empty) {
                 const deleteBatch = writeBatch(db);
-                for (const catDoc of oldCategoriesSnap.docs) {
+                await Promise.all(oldCategoriesSnap.docs.map(async (catDoc) => {
                     const oldTasksSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks'));
-                    for (const taskDoc of oldTasksSnap.docs) {
+                    await Promise.all(oldTasksSnap.docs.map(async (taskDoc) => {
                         // Deep delete subtasks, revisions, dailyReports
                         const oldSubtasksSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks'));
-                        for (const subtaskDoc of oldSubtasksSnap.docs) {
+                        await Promise.all(oldSubtasksSnap.docs.map(async (subtaskDoc) => {
                             const oldRevisionsSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions'));
-                            for (const revDoc of oldRevisionsSnap.docs) {
+                            await Promise.all(oldRevisionsSnap.docs.map(async (revDoc) => {
                                 const oldReportsSnap = await getDocs(collection(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
-                                for (const reportDoc of oldReportsSnap.docs) {
+                                oldReportsSnap.docs.forEach((reportDoc) => {
                                     deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports', reportDoc.id));
-                                }
+                                });
                                 deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id));
-                            }
+                            }));
                             deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id, 'subtasks', subtaskDoc.id));
-                        }
+                        }));
                         deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id, 'tasks', taskDoc.id));
-                    }
+                    }));
                     deleteBatch.delete(doc(db, 'workOrders', wo.id, 'categories', catDoc.id));
-                }
+                }));
                 await deleteBatch.commit();
             }
         } catch (error) {
@@ -400,24 +452,33 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         await setDoc(doc(db, 'workOrders', wo.id), rootDocData);
         
         if (formattedCategories && formattedCategories.length > 0) {
+            // Resolve every task's assignees up front, in parallel, instead of sequentially
+            // awaiting resolveAssignees() once per task inside the write loop below.
+            const allTasks = formattedCategories.flatMap((cat: any) => cat.tasks || []);
+            const assigneesByTaskId = new Map<string, TaskAssignee[]>();
+            await Promise.all(allTasks.map(async (task: any) => {
+                assigneesByTaskId.set(task.id, await resolveAssignees(task.responsibleStaffIds || []));
+            }));
+
             const batch = writeBatch(db);
             for (const cat of formattedCategories) {
                 const catRef = doc(db, 'workOrders', wo.id, 'categories', cat.id);
                 const { tasks, ...catRest } = cat;
-                
+
                 // Write Category with catName and name
                 batch.set(catRef, {
                     ...catRest,
                     catName: cat.name || cat.catName || '',
                     name: cat.name || cat.catName || '',
+                    projectId: wo.projectId || '',
                     updatedAt: new Date().toISOString()
                 });
 
                 if (tasks) {
                     for (const task of tasks) {
                         const { dailyreports, dailyReport, history, ...taskRest } = task;
-                        const assignees = await resolveAssignees(task.responsibleStaffIds || []);
-                        
+                        const assignees = assigneesByTaskId.get(task.id) || [];
+
                         // Map status to LB
                         // Single source of truth: store the new CamelCase task vocab directly.
                         const lbStatus = task.status || 'Draft';
@@ -448,6 +509,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                             dailyProgress: task.dailyProgress || 0,
                             assignees,
                             currentRevision: task.currentRevision || 'rev00',
+                            projectId: wo.projectId || '',
                             isActive: true
                         });
 
@@ -458,6 +520,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                             revisionId: revId,
                             revisionName: task.revisionName || 'Initial Revision',
                             status: 'active',
+                            projectId: wo.projectId || '',
                             createdAt: task.revisionCreatedAt || new Date().toISOString()
                         });
 
@@ -468,7 +531,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                             const reportRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', task.id, 'subtasks', subtaskId, 'revisions', revId, 'dailyReports', reportDate);
                             
                             // Map labor fields in reports for LB compatibility on write
-                            let mappedReport = { ...report };
+                            let mappedReport = { ...report, projectId: wo.projectId || '' };
                             if (report.labor) {
                                 const mappedLabor = report.labor.map((l: any) => ({
                                     ...l,
@@ -500,11 +563,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const parentWO = allWorkOrders.find(w => w.id === id);
         const projectId = parentWO?.projectId || '';
         const locationName = parentWO?.locationName || '';
-        
-        const parts = id.split('-');
-        const workOrderCode = parts.length >= 2 ? parts[parts.length - 2].toUpperCase() : 'WOA';
-        
-        // Clean up any categories/tasks that were actually deleted in the new list to prevent orphans
+
+        const workOrderCode = getJobCode({ type: parentWO?.type, id });
+
+        // Clean up any categories/tasks that were actually deleted in the new list to prevent
+        // orphans. Sibling reads at each tree level are independent, so scanned concurrently via
+        // Promise.all (was a fully sequential O(depth) chain per branch) — see addWorkOrder above
+        // for the same pattern.
         try {
             const oldCategoriesSnap = await getDocs(collection(db, 'workOrders', id, 'categories'));
             if (!oldCategoriesSnap.empty) {
@@ -512,32 +577,32 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 const newCatIds = new Set((categories || []).map(c => c.id));
                 const newExecutionTaskIds = new Set((categories || []).flatMap(c => (c.tasks || []).map((t: any) => t.id)));
 
-                for (const catDoc of oldCategoriesSnap.docs) {
+                await Promise.all(oldCategoriesSnap.docs.map(async (catDoc) => {
                     const oldTasksSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks'));
-                    for (const taskDoc of oldTasksSnap.docs) {
+                    await Promise.all(oldTasksSnap.docs.map(async (taskDoc) => {
                         const taskId = taskDoc.id;
-                        
+
                         // Only delete subcollections & task doc if it is NOT in the new list
                         if (!newExecutionTaskIds.has(taskId)) {
                             const oldSubtasksSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks'));
-                            for (const subtaskDoc of oldSubtasksSnap.docs) {
+                            await Promise.all(oldSubtasksSnap.docs.map(async (subtaskDoc) => {
                                 const oldRevisionsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions'));
-                                for (const revDoc of oldRevisionsSnap.docs) {
+                                await Promise.all(oldRevisionsSnap.docs.map(async (revDoc) => {
                                     const oldReportsSnap = await getDocs(collection(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports'));
-                                    for (const reportDoc of oldReportsSnap.docs) {
+                                    oldReportsSnap.docs.forEach((reportDoc) => {
                                         deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id, 'dailyReports', reportDoc.id));
-                                    }
+                                    });
                                     deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id, 'revisions', revDoc.id));
-                                }
+                                }));
                                 deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskDoc.id));
-                            }
+                            }));
                             deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id, 'tasks', taskId));
                         }
-                    }
+                    }));
                     if (!newCatIds.has(catDoc.id)) {
                         deleteBatch.delete(doc(db, 'workOrders', id, 'categories', catDoc.id));
                     }
-                }
+                }));
                 await deleteBatch.commit();
             }
         } catch (error) {
@@ -591,23 +656,32 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
 
         batch.update(doc(db, 'workOrders', id), woUpdates);
 
+        // Resolve every task's assignees up front, in parallel, instead of sequentially awaiting
+        // resolveAssignees() once per task inside the write loop below.
+        const allTasksForEval = formattedCategories.flatMap((cat: any) => cat.tasks || []);
+        const assigneesByTaskIdForEval = new Map<string, TaskAssignee[]>();
+        await Promise.all(allTasksForEval.map(async (task: any) => {
+            assigneesByTaskIdForEval.set(task.id, await resolveAssignees(task.responsibleStaffIds || []));
+        }));
+
         for (const cat of formattedCategories) {
             const catRef = doc(db, 'workOrders', id, 'categories', cat.id);
             const { tasks, ...catRest } = cat;
-            
+
             // Save Category with name and catName
             batch.set(catRef, {
                 ...catRest,
                 catName: cat.name || cat.catName || '',
                 name: cat.name || cat.catName || '',
+                projectId: projectId,
                 updatedAt: new Date().toISOString()
             });
 
             if (tasks) {
                 for (const task of tasks) {
                     const { dailyreports, dailyReport, history, ...taskRest } = task;
-                    const assignees = await resolveAssignees(task.responsibleStaffIds || []);
-                    
+                    const assignees = assigneesByTaskIdForEval.get(task.id) || [];
+
                     // Single source of truth: store the new CamelCase task vocab directly (no LB translation).
                     // Reset progress for tasks that have not started work yet.
                     const notStarted = task.status === 'Draft' || task.status === 'Evaluating' || task.status === 'Assigned';
@@ -641,6 +715,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         assignees,
                         subtaskOperatorId: task.subtaskOperatorId || (task.responsibleStaffIds && task.responsibleStaffIds[0]) || "",
                         currentRevision: task.currentRevision || 'rev00',
+                        projectId: projectId,
                         isActive: true
                     });
 
@@ -651,6 +726,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         revisionId: revId,
                         revisionName: task.revisionName || 'Initial Revision',
                         status: 'active',
+                        projectId: projectId,
                         createdAt: task.revisionCreatedAt || new Date().toISOString()
                     });
 
@@ -710,7 +786,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             if (isHelperReport) {
                 const helpId = currentRev.replace('rev', 'help');
                 const helpDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId, 'help', helpId);
-                await setDoc(helpDocRef, { helpId, createdAt: new Date().toISOString() }, { merge: true });
+                await setDoc(helpDocRef, { helpId, projectId: taskDoc?.projectId || '', createdAt: new Date().toISOString() }, { merge: true });
 
                 const parentWO = allWorkOrders.find(w => w?.id === workOrderId);
                 const projectId = parentWO?.projectId || '';
@@ -770,11 +846,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             } else {
                 // ✅ Ensure revision document exists (prevents phantom doc bug where getDocs returns empty)
                 const revDocRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId, 'revisions', currentRev);
-                await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+                await setDoc(revDocRef, { revisionId: currentRev, projectId: taskDoc?.projectId || '', createdAt: new Date().toISOString() }, { merge: true });
 
                 // Save daily report with date YYYY-MM-DD as document ID for LB compatibility
                 const reportRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', parentTaskId, 'subtasks', subtaskId, 'revisions', currentRev, 'dailyReports', reportDate);
-                await setDoc(reportRef, finalReport);
+                await setDoc(reportRef, { ...finalReport, projectId: taskDoc?.projectId || '' });
 
                 // Step 2: Trigger daily report sync API immediately after successful write
                 try {
@@ -920,6 +996,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 revisionId: currentRev,
                 revisionName: updates.revisionName || 'Revision',
                 status: 'active',
+                projectId: taskData?.projectId || '',
                 createdAt: new Date().toISOString()
             }, { merge: true });
 
@@ -931,6 +1008,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     revisionName: revisionName,
                     taskName: taskName,
                     assignees: helperAssignees,
+                    projectId: taskData?.projectId || '',
                     createdAt: new Date(),
                     createdBy: user?.employeeId || user?.id || 'admin'
                 });
@@ -1041,6 +1119,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     assignees,
                     subtaskOperatorId: updates.responsibleStaffIds?.[0] || taskData.subtaskOperatorId || (taskData.responsibleStaffIds && taskData.responsibleStaffIds[0]) || "",
                     currentRevision: updates.currentRevision || taskData.currentRevision || 'rev00',
+                    projectId: taskData.projectId || '',
                     isActive: true,
                     isSupportRequest: updates.isSupportRequest !== undefined ? updates.isSupportRequest : (taskData.isSupportRequest || false),
                     isPickedUpBySupport: updates.isPickedUpBySupport !== undefined ? updates.isPickedUpBySupport : (taskData.isPickedUpBySupport || false),
@@ -1057,6 +1136,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 revisionId: currentRev,
                 revisionName: updates.revisionName || updates.notes || subtaskData?.revisionName || taskData?.revisionName || 'Revision',
                 status: 'active',
+                projectId: taskData.projectId || '',
                 createdAt: updates.revisionCreatedAt || taskData.revisionCreatedAt || new Date().toISOString()
             };
             await setDoc(revisionRef, revisionData, { merge: true });
@@ -1070,6 +1150,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     revisionName: revisionName,
                     taskName: taskName,
                     assignees: helperAssignees,
+                    projectId: taskData.projectId || '',
                     createdAt: new Date(),
                     createdBy: user?.employeeId || user?.id || 'admin'
                 });
@@ -1174,6 +1255,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 status: 'In Progress',
                 dailyProgress: 0,
                 currentRevision: 'rev00',
+                projectId: (woData as any).projectId || '',
                 isActive: true,
                 createdAt: now,
             });
@@ -1183,6 +1265,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 revisionId: 'rev00',
                 revisionName: 'Initial Revision',
                 status: 'active',
+                projectId: (woData as any).projectId || '',
                 createdAt: now,
             });
         }
@@ -1271,6 +1354,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 'revisions', currentRev,
                 'dailyReports', requestDate
             );
+            // Read the parent task doc first (tasks always carry projectId) so the new
+            // dailyReports doc can be stamped with it too.
+            const taskRefWoa = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
+            const taskSnapWoa = await getDoc(taskRefWoa);
+            const taskProjectId = taskSnapWoa.exists() ? (taskSnapWoa.data() as any).projectId || '' : '';
             await setDoc(reportRef, {
                 ...payload,
                 id: requestDate,
@@ -1283,11 +1371,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 approvedBy: approvedBy.uid,
                 approvedAt: now,
                 isRetroactive: true,
+                projectId: taskProjectId,
             }, { merge: true });
             // T-335: persists dailyProgress on the task doc. (Was also relied on to
             // force a re-fetch; the collectionGroup delta cache now refreshes directly,
             // but this write still carries real progress data, so it stays.)
-            const taskRefWoa = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
             await updateDoc(taskRefWoa, { dailyProgress: payload.progress, updatedAt: now });
         } else {
             const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
@@ -1524,7 +1612,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     const revisionRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
                     await setDoc(revisionRef, {
                         status: 'closed_approved',
-                        approvedAt: now
+                        approvedAt: now,
+                        projectId: taskData.projectId || ''
                     }, { merge: true });
 
                     // Send notification to the foreman responsible for this task
@@ -1558,7 +1647,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         defectCategories: decision.defectCategories || {},
                         contactName: decision.contactName || '',
                         contactPhone: decision.contactPhone || '',
-                        rejectedAt: now
+                        rejectedAt: now,
+                        projectId: taskData.projectId || ''
                     }, { merge: true });
                     
                     // Increment revision number
@@ -1603,7 +1693,8 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                         revisionId: nextRev,
                         revisionName: `Revision ${revNum + 1}`,
                         status: 'active',
-                        createdAt: now
+                        createdAt: now,
+                        projectId: taskData.projectId || ''
                     });
                     
                     // Send notification to the foreman originally assigned (or the WO owner foreman who will re-do it)
@@ -1701,6 +1792,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         const woRef = doc(db, 'workOrders', woId);
         const woSnap = await getDoc(woRef);
         if (!woSnap.exists()) throw new Error('Work Order not found');
+        const woData: any = woSnap.data() || {};
         const now = new Date().toISOString();
         let hasRejections = false;
         const rejectedCatNames: string[] = [];
@@ -1715,11 +1807,11 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 const phTaskId = catDoc.id;
                 const phSubtaskId = catDoc.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
                 await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'revisions', currentRev), {
-                    status: 'closed_approved', approvedAt: now
+                    status: 'closed_approved', approvedAt: now, projectId: woData.projectId || ''
                 }, { merge: true });
                 // Mirror to tasks/subtasks path (WOA-matching)
                 await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', phTaskId, 'subtasks', phSubtaskId, 'revisions', currentRev), {
-                    status: 'closed_approved', approvedAt: now
+                    status: 'closed_approved', approvedAt: now, projectId: woData.projectId || ''
                 }, { merge: true });
                 await updateDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id), {
                     customerStatus: 'approved', customerApprovedAt: now,
@@ -1744,17 +1836,17 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 const phSubtaskId = catDoc.id.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
                 const subtaskRef = doc(db, 'workOrders', woId, 'categories', catDoc.id, 'tasks', phTaskId, 'subtasks', phSubtaskId);
                 await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'revisions', currentRev), {
-                    status: 'closed_rejected', rejectReason: decision.reason || '', rejectedAt: now
+                    status: 'closed_rejected', rejectReason: decision.reason || '', rejectedAt: now, projectId: woData.projectId || ''
                 }, { merge: true });
                 await setDoc(doc(db, 'workOrders', woId, 'categories', catDoc.id, 'revisions', nextRev), {
-                    revisionId: nextRev, status: 'active', createdAt: now
+                    revisionId: nextRev, status: 'active', createdAt: now, projectId: woData.projectId || ''
                 });
                 // Mirror to tasks/subtasks path (WOA-matching)
                 await setDoc(doc(subtaskRef, 'revisions', currentRev), {
-                    status: 'closed_rejected', rejectReason: decision.reason || '', rejectedAt: now
+                    status: 'closed_rejected', rejectReason: decision.reason || '', rejectedAt: now, projectId: woData.projectId || ''
                 }, { merge: true });
                 await setDoc(doc(subtaskRef, 'revisions', nextRev), {
-                    revisionId: nextRev, revisionName: `Revision ${nextRev}`, status: 'active', createdAt: now
+                    revisionId: nextRev, revisionName: `Revision ${nextRev}`, status: 'active', createdAt: now, projectId: woData.projectId || ''
                 });
                 await updateDoc(subtaskRef, {
                     currentRevision: nextRev,
@@ -1952,38 +2044,44 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    const stable = useStableCallbacks({
+        getWorkOrderById,
+        updateTask,
+        cancelRejectedTask,
+        addWorkOrder,
+        updateWorkOrderStatus,
+        approvePreHandoverWO,
+        saveEvaluation,
+        addTaskUpdate,
+        deleteWorkOrder,
+        archiveWorkOrder,
+        markWorkOrderAsReviewed,
+        requestRetroactiveUnlock,
+        submitRetroactiveRequest,
+        approveRetroactiveRequest,
+        rejectRetroactiveRequest,
+        approvePhRetroactiveRequest,
+        rejectPhRetroactiveRequest,
+        generateDeliveryQrToken,
+        submitCustomerInspection,
+        submitPhCustomerInspection,
+        reviewRejectedPhWO,
+        logCustomerQrView,
+        markWorkOrderAsOpenedByAdmin,
+        requestSupport,
+    });
+
+    const value = useMemo(() => ({
+        workOrders,
+        projects,
+        staff,
+        contractors,
+        loading,
+        ...stable
+    }), [workOrders, projects, staff, contractors, loading, stable]);
+
     return (
-        <WorkOrderContext.Provider value={{
-            workOrders,
-            getWorkOrderById,
-            updateTask,
-            cancelRejectedTask,
-            addWorkOrder,
-            updateWorkOrderStatus,
-            approvePreHandoverWO,
-            saveEvaluation,
-            addTaskUpdate,
-            projects,
-            staff,
-            contractors,
-            loading,
-            deleteWorkOrder,
-            archiveWorkOrder,
-            markWorkOrderAsReviewed,
-            requestRetroactiveUnlock,
-            submitRetroactiveRequest,
-            approveRetroactiveRequest,
-            rejectRetroactiveRequest,
-            approvePhRetroactiveRequest,
-            rejectPhRetroactiveRequest,
-            generateDeliveryQrToken,
-            submitCustomerInspection,
-            submitPhCustomerInspection,
-            reviewRejectedPhWO,
-            logCustomerQrView,
-            markWorkOrderAsOpenedByAdmin,
-            requestSupport
-        }}>
+        <WorkOrderContext.Provider value={value}>
             {children}
         </WorkOrderContext.Provider>
     );

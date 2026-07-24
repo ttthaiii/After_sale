@@ -34,6 +34,49 @@ const getAfterPhotos = (task: any): string[] => {
     return Array.from(new Set(photosList.filter(Boolean)));
 };
 
+// T-craft (2026-07-23) — Critical #2 mitigation: the public /handover page has
+// no auth and no server-side rate limit, so repeated reloads of the same QR
+// link (accidental or scripted) each re-run the full nested Firestore read
+// (categories -> tasks -> subtasks -> revisions -> dailyReports). A single-slot
+// localStorage cache absorbs that: reloading the SAME woId within TTL reuses
+// the last fetched bundle instead of hitting Firestore again. This only helps
+// requests that go through this page's own JS (a script hitting Firestore
+// directly bypasses it) — accepted client-side-only tradeoff per user decision.
+const HANDOVER_CACHE_KEY = 'after_sale_handover_cache_v1';
+const HANDOVER_CACHE_TTL_MS = 60_000;
+
+interface HandoverCacheEntry {
+    woId: string;
+    ts: number;
+    workOrder: any;
+    projectName: string;
+    phCategoryReports: Record<string, any>;
+    contactNames: Record<string, string>;
+    contactPhones: Record<string, string>;
+}
+
+function readHandoverCache(woId: string): HandoverCacheEntry | null {
+    try {
+        const raw = window.localStorage.getItem(HANDOVER_CACHE_KEY);
+        if (!raw) return null;
+        const entry: HandoverCacheEntry = JSON.parse(raw);
+        if (entry.woId !== woId) return null;
+        if (Date.now() - entry.ts > HANDOVER_CACHE_TTL_MS) return null;
+        return entry;
+    } catch {
+        return null;
+    }
+}
+
+function writeHandoverCache(entry: HandoverCacheEntry) {
+    try {
+        window.localStorage.setItem(HANDOVER_CACHE_KEY, JSON.stringify(entry));
+    } catch {
+        // Storage full/unavailable (e.g. private browsing) — cache is a pure
+        // optimization, safe to silently skip.
+    }
+}
+
 export default function CustomerHandover() {
     const isMobile = useIsMobile();
     const [searchParams] = useSearchParams();
@@ -85,6 +128,18 @@ export default function CustomerHandover() {
                 setLoading(false);
                 return;
             }
+
+            const cached = readHandoverCache(woId);
+            if (cached) {
+                setWorkOrder(cached.workOrder);
+                setProjectName(cached.projectName);
+                setPhCategoryReports(cached.phCategoryReports);
+                setContactNames(cached.contactNames);
+                setContactPhones(cached.contactPhones);
+                setLoading(false);
+                return;
+            }
+
             try {
                 // Fetch WO
                 const woRef = doc(db, 'workOrders', woId);
@@ -156,6 +211,7 @@ export default function CustomerHandover() {
                     setWorkOrder(fullWorkOrder);
 
                     // If PreHandover: fetch dailyReports from current revision (latest per category)
+                    let phReportsForCache: Record<string, any> = {};
                     if (woData.type === 'PreHandover') {
                         const phReports: Record<string, any> = {};
                         for (const cat of categories) {
@@ -168,17 +224,20 @@ export default function CustomerHandover() {
                             } catch (_) {}
                         }
                         setPhCategoryReports(phReports);
+                        phReportsForCache = phReports;
                     }
 
                     // Log view
                     await logCustomerQrView(woSnap.id);
 
                     // Fetch Project details for name
+                    let resolvedProjectName = 'โครงการก่อสร้าง';
                     if (woData.projectId) {
                         const projRef = doc(db, 'projects', woData.projectId);
                         const projSnap = await getDoc(projRef);
                         if (projSnap.exists()) {
-                            setProjectName(projSnap.data().name || 'โครงการก่อสร้าง');
+                            resolvedProjectName = projSnap.data().name || 'โครงการก่อสร้าง';
+                            setProjectName(resolvedProjectName);
                         }
                     }
 
@@ -199,6 +258,16 @@ export default function CustomerHandover() {
                     
                     setContactNames(names);
                     setContactPhones(phones);
+
+                    writeHandoverCache({
+                        woId,
+                        ts: Date.now(),
+                        workOrder: fullWorkOrder,
+                        projectName: resolvedProjectName,
+                        phCategoryReports: phReportsForCache,
+                        contactNames: names,
+                        contactPhones: phones,
+                    });
                 }
             } catch (err) {
                 console.error("Error fetching Work Order handover data:", err);

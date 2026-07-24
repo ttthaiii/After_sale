@@ -80,8 +80,8 @@ const CRITICAL_WINDOW_MS = 7 * DAY_MS; // fixed 7-day "ใกล้ถึง SLA
 export type JobSLAStatus =
     | 'on-time'   // done, within deadline
     | 'late'      // done, past deadline
-    | 'normal'    // in-progress, >24h left
-    | 'critical'  // in-progress, <24h left
+    | 'normal'    // in-progress, >7 days left
+    | 'critical'  // in-progress, <=7 days left (CRITICAL_WINDOW_MS, user-locked 2026-07-15)
     | 'overdue'   // in-progress, past deadline
     | 'not-eligible'; // no counted subtask / no valid SLA (not gradeable)
 

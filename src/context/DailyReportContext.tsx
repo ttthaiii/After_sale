@@ -12,6 +12,7 @@ import { formatDate } from "../utils/date";
 import { isWoaWop as isWoaWopType } from "../utils/workOrder";
 import { useNavigate, useLocation } from "react-router-dom";
 import { logService } from "../services/logService";
+import { useStableCallbacks } from "../hooks/useStableCallbacks";
 import {
   LaborEntry,
   WorkTask,
@@ -309,6 +310,8 @@ export const getRequiredRegularPhotoCount = (laborList: any[]): number => {
 export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
     workOrders: _workOrders,
+    projects,
+    contractors,
     addTaskUpdate,
     updateTask,
     updateWorkOrderStatus,
@@ -473,8 +476,14 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [reportDate, setReportDate] = useState(
     todayTH(),
   );
-  const [realContractors, setRealContractors] = useState<RealContractor[]>([]);
-  const [realProjects, setRealProjects] = useState<RealProject[]>([]);
+  // T-craft (2026-07-23): realContractors/realProjects previously had their own onSnapshot
+  // listeners here, duplicating WorkOrderContext's `contractors`/`projects` listeners on the
+  // exact same collections. WorkOrderContext is always an ancestor provider (DailyReportProvider
+  // reads from useWorkOrders() below), so just alias its values instead of double-listening.
+  // Project ⊇ RealProject and Contractor ⊇ RealContractor structurally (same id/name fields),
+  // so this is a type-safe narrowing, not a behavior change.
+  const realContractors: RealContractor[] = contractors;
+  const realProjects: RealProject[] = projects;
   const [dailyContractors, setDailyContractors] = useState<DailyContractor[]>(
     [],
   );
@@ -551,25 +560,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    const unsubContractors = onSnapshot(
-      collection(db, "contractors"),
-      (snap) => {
-        setRealContractors(
-          snap.docs.map((d) => ({
-            ...(d.data() as Omit<RealContractor, "id">),
-            id: d.id,
-          })),
-        );
-      },
-    );
-    const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
-      setRealProjects(
-        snap.docs.map((d) => ({
-          ...(d.data() as Omit<RealProject, "id">),
-          id: d.id,
-        })),
-      );
-    });
+    // contractors/projects now come from WorkOrderContext (see realContractors/realProjects
+    // aliases above) — only dailyContractors still needs its own listener here.
     const unsubDailyContractors = onSnapshot(
       collection(db, "dailyContractors"),
       (snap) => {
@@ -582,8 +574,6 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       },
     );
     return () => {
-      unsubContractors();
-      unsubProjects();
       unsubDailyContractors();
     };
   }, []);
@@ -2440,12 +2430,12 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (selectedTaskInfo.task.isHelper) {
           const helpId = currentRev.replace('rev', 'help');
           const helpDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId);
-          await setDoc(helpDocRef, { helpId, createdAt: new Date().toISOString() }, { merge: true });
+          await setDoc(helpDocRef, { helpId, projectId: selectedTaskInfo.wo.projectId || '', createdAt: new Date().toISOString() }, { merge: true });
 
           draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "help", helpId, "dailyReportsDraft", reportDate);
         } else {
           const revDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev);
-          await setDoc(revDocRef, { revisionId: currentRev, createdAt: new Date().toISOString() }, { merge: true });
+          await setDoc(revDocRef, { revisionId: currentRev, projectId: selectedTaskInfo.wo.projectId || '', createdAt: new Date().toISOString() }, { merge: true });
 
           draftDocRef = doc(db, "workOrders", workOrderId, "categories", categoryId, "tasks", taskId, "subtasks", subtaskId, "revisions", currentRev, "dailyReportsDraft", reportDate);
         }
@@ -2974,6 +2964,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         revisionId: phRev,
         revisionName: phRev === 'rev00' ? 'Initial Revision' : `Revision ${phRev}`,
         status: 'submitted',
+        projectId: wo.projectId || '',
       };
       const taskRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'tasks', phTaskId);
       const subtaskRef = doc(taskRef, 'subtasks', phSubtaskId);
@@ -3069,17 +3060,54 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  const availableStaff = dailyContractors
+  const availableStaff = useMemo(() => dailyContractors
     .filter((c) => (c.department || "").toLowerCase().endsWith("wh"))
-    .filter((c) => !labor.some((l) => l.staffId === c.id));
+    .filter((c) => !labor.some((l) => l.staffId === c.id)), [dailyContractors, labor]);
 
-  const availableContractors = realContractors.filter(
+  const availableContractors = useMemo(() => realContractors.filter(
     (c) => !labor.some((l) => l.contractorId === c.id),
-  );
+  ), [realContractors, labor]);
 
-  return (
-    <DailyReportContext.Provider
-      value={{
+  const selectPhCatInfo = (info: { wo: any; cat: any } | null) => {
+    if (hasPhUnsavedChanges && info?.cat?.id !== selectedPhCatInfo?.cat?.id) {
+      const ok = window.confirm(
+        'คุณมีข้อมูลรายงานที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนหมวดงาน ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนหมวดงานหรือไม่?'
+      );
+      if (!ok) return;
+    }
+    setSelectedPhCatInfo(info);
+  };
+
+  const stable = useStableCallbacks({
+    updatePhCategoryProgress,
+    selectPhCatInfo,
+    submitPhDailyReport,
+    savePhDraft,
+    getPhDateStatus,
+    submitPhRetroactiveRequest,
+    handleSelectTask,
+    handleBatchAdd,
+    handleTimeChange,
+    handleRemoveSlotPhoto,
+    handleSlotPhotoUpload,
+    handleUploadLeaveCert,
+    handleRemoveLeaveCert,
+    handleConfirmReview,
+    handleBounceBackSLA,
+    handleSubmit,
+    handleFinalSubmit,
+    handleSaveDraft,
+    handleCancelEdit,
+    handleDateChange,
+    toggleShift,
+    togglePhShift,
+    getDateStatus,
+    getTaskImage,
+    openTimePicker,
+    isTimeOverlap,
+  });
+
+  const value = useMemo(() => ({
         workOrders,
         user,
         sendNotification,
@@ -3163,7 +3191,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsCustomerMockupOpen,
         mockupWorkOrder,
         setMockupWorkOrder,
-        
+
         availableStaff,
         availableContractors,
         newTasks,
@@ -3171,31 +3199,17 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         pendingInspectionTasks,
         pendingDeliveryWorkOrders,
         preHandoverWorkOrders,
-        updatePhCategoryProgress,
         selectedPhCatInfo,
         setSelectedPhCatInfo,
-        selectPhCatInfo: (info: { wo: any; cat: any } | null) => {
-          if (hasPhUnsavedChanges && info?.cat?.id !== selectedPhCatInfo?.cat?.id) {
-            const ok = window.confirm(
-              'คุณมีข้อมูลรายงานที่ยังไม่ได้บันทึกค้างอยู่ หากเปลี่ยนหมวดงาน ข้อมูลที่กรอกไว้ทั้งหมดจะสูญหาย\n\nต้องการเปลี่ยนหมวดงานหรือไม่?'
-            );
-            if (!ok) return;
-          }
-          setSelectedPhCatInfo(info);
-        },
         hasPhUnsavedChanges,
         showPhSummaryModal,
         setShowPhSummaryModal,
         phDailyHistory,
         phProgressBounds,
-        submitPhDailyReport,
-        savePhDraft,
         phDraftedDates,
-        getPhDateStatus,
         isPhReportDatePast3Days,
         phRetroactiveSubmitDone,
         setPhRetroactiveSubmitDone,
-        submitPhRetroactiveRequest,
         isPhEditingExisting,
         setIsPhEditingExisting,
         isPhExistingReport,
@@ -3207,36 +3221,50 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         submitRetroactiveRequest,
         generateDeliveryQrToken,
         submitCustomerInspection,
-        
-        handleSelectTask,
-        handleBatchAdd,
-        handleTimeChange,
-        handleRemoveSlotPhoto,
-        handleSlotPhotoUpload,
-        handleUploadLeaveCert,
-        handleRemoveLeaveCert,
-        handleConfirmReview,
-        handleBounceBackSLA,
-        handleSubmit,
-        handleFinalSubmit,
-        handleSaveDraft,
-        handleCancelEdit,
-        handleDateChange,
-        
-        toggleShift,
-        togglePhShift,
-        getDateStatus,
+
         isProgressNotePhotosEditable,
         hasHistoryForSelectedDate,
-        getTaskImage,
-        openTimePicker,
-        
+
         isReportDatePast3Days,
-        isTimeOverlap,
         progressBounds,
         draftedTaskIds,
-      }}
-    >
+
+        // Functions recreated every render are stabilized via useStableCallbacks
+        // (see hooks/useStableCallbacks.ts) so this value object only changes
+        // identity when something in the dependency list below actually changed —
+        // without this, every consumer re-rendered on every provider render.
+        ...stable,
+  }), [
+        workOrders, user, sendNotification, navigate, location, foremanId,
+        highlightedId, setHighlightedId, selectedTaskInfo, setSelectedTaskInfo, isTaskFinished,
+        searchTerm, setSearchTerm, progress, setProgress, note, setNote,
+        labor, setLabor, sitePhotos, setSitePhotos, laborRegularPhotos, setLaborRegularPhotos,
+        laborOtMorningPhotos, setLaborOtMorningPhotos, laborOtNoonPhotos, setLaborOtNoonPhotos,
+        laborOtEveningPhotos, setLaborOtEveningPhotos, activePhotoTab, setActivePhotoTab,
+        zoomImage, setZoomImage, isSidebarOpen, setIsSidebarOpen, showCalendarDropdown, setShowCalendarDropdown,
+        showUnlockModal, setShowUnlockModal, pendingUnlockDate, setPendingUnlockDate,
+        unlockReason, setUnlockReason, calendarYear, setCalendarYear, calendarMonth, setCalendarMonth,
+        isEditingExisting, setIsEditingExisting, showSummaryModal, setShowSummaryModal,
+        collapsedHelpers, setCollapsedHelpers, isUploading, setIsUploading,
+        uploadingLeaveCertId, setUploadingLeaveCertId, isSubmitting, setIsSubmitting,
+        submittingRef, retroactiveSubmitDone, setRetroactiveSubmitDone, activeModal, setActiveModal,
+        timePickerTarget, setTimePickerTarget, reportType, setReportType, reportDate, setReportDate,
+        realContractors, realProjects, dailyContractors,
+        modalAlert, setModalAlert, isReviewModalOpen, setIsReviewModalOpen, reviewTaskInfo, setReviewTaskInfo,
+        isCustomerMockupOpen, setIsCustomerMockupOpen, mockupWorkOrder, setMockupWorkOrder,
+        availableStaff, availableContractors, newTasks, inProgressTasks, pendingInspectionTasks,
+        pendingDeliveryWorkOrders, preHandoverWorkOrders, selectedPhCatInfo, setSelectedPhCatInfo,
+        hasPhUnsavedChanges, showPhSummaryModal, setShowPhSummaryModal, phDailyHistory, phProgressBounds,
+        phDraftedDates, isPhReportDatePast3Days, phRetroactiveSubmitDone, setPhRetroactiveSubmitDone,
+        isPhEditingExisting, setIsPhEditingExisting, isPhExistingReport,
+        addTaskUpdate, updateTask, updateWorkOrderStatus, requestRetroactiveUnlock, submitRetroactiveRequest,
+        generateDeliveryQrToken, submitCustomerInspection,
+        isProgressNotePhotosEditable, hasHistoryForSelectedDate, isReportDatePast3Days, progressBounds,
+        draftedTaskIds, stable,
+  ]);
+
+  return (
+    <DailyReportContext.Provider value={value}>
       {children}
     </DailyReportContext.Provider>
   );

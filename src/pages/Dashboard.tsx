@@ -824,6 +824,55 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
     );
 };
 
+// Hoisted out of Dashboard's render body (T-craft 2026-07-23) — was previously
+// defined fresh inside an IIFE on every render, giving React a brand-new
+// component identity each time and forcing a full remount of every visible
+// card instead of a normal prop-diff update.
+const SubtaskCard = React.memo(({ task, wo, categoryName, sla, isEval = false, navigate, getProjectName }: any) => {
+    const prog = task.dailyProgress ?? task.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(task.status) ? 100 : 0);
+    const name = task.name || task.taskName || task.subtaskName || task.description || '—';
+    const rawId = task.subtaskId || task.id || '';
+    const shortId = rawId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
+    const isDone = prog >= 100 || task.status === 'Complete';
+    const progColor = prog >= 80 ? '#10b981' : prog >= 40 ? '#0ea5e9' : '#f59e0b';
+    const revNum = task.currentRevision ? parseInt(task.currentRevision.replace('rev', '')) : null;
+    const bg = isDone ? '#f0fdf4' : '#f0f9ff';
+    const borderColor = isDone ? '#bbf7d0' : '#bae6fd';
+    const navTarget = isEval ? `/work-orders?id=${wo.id}` : `/daily-report?id=${wo.id}`;
+    const btnLabel = isEval ? '🔍 ติดตามสถานะ' : isDone ? '✅ งานเสร็จแล้ว' : '📝 บันทึกรายงาน';
+    const btnColor = isDone ? '#059669' : '#075985';
+    return (
+        <div onClick={() => navigate(navTarget)} style={{ padding: '1rem 1.25rem', background: bg, borderRadius: '20px', border: `1px solid ${borderColor}`, cursor: 'pointer', transition: 'all 0.2s ease' }}
+            onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>{shortId}</span>
+                        {isEval && revNum !== null && revNum > 0 && <span style={{ fontSize: '0.62rem', fontWeight: 900, padding: '1px 7px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '5px', color: '#b91c1c', whiteSpace: 'nowrap' }}>REV. {revNum}</span>}
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 7px', background: isDone ? 'rgba(16,185,129,0.1)' : 'rgba(14,165,233,0.1)', border: `1px solid ${isDone ? '#a7f3d0' : '#bae6fd'}`, borderRadius: '5px', color: isDone ? '#059669' : '#0369a1', whiteSpace: 'nowrap' }}>{categoryName}</span>
+                    </div>
+                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>📍 {wo.locationName} · 🏗️ {getProjectName(wo.projectId)}</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                    {sla && <span style={{ fontSize: '0.68rem', fontWeight: 800, color: sla.level === 'critical' ? '#b91c1c' : '#d97706', background: sla.level === 'critical' ? '#fee2e2' : '#fef3c7', padding: '2px 8px', borderRadius: '8px', whiteSpace: 'nowrap' }}>{sla.text}</span>}
+                    <span style={{ fontSize: '0.78rem', fontWeight: 900, color: isDone ? '#059669' : progColor }}>{prog}%</span>
+                </div>
+            </div>
+            {!isDone && (
+                <div style={{ marginTop: '8px' }}>
+                    <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '4px', overflow: 'hidden' }}>
+                        <div style={{ width: `${prog}%`, height: '100%', background: progColor, borderRadius: '4px', transition: 'width 0.5s ease' }} />
+                    </div>
+                </div>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); navigate(navTarget); }} style={{ width: '100%', marginTop: '10px', padding: '6px', background: 'rgba(0,0,0,0.03)', border: `1px solid ${borderColor}`, borderRadius: '10px', color: btnColor, fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                {btnLabel}
+            </button>
+        </div>
+    );
+});
+
 const Dashboard = () => {
     const { workOrders: allWorkOrders, projects, staff, loading } = useWorkOrders();
     // Shared collection also holds a separate "labor" system's records. Keep only
@@ -952,7 +1001,7 @@ const Dashboard = () => {
         }
 
         // 2. Job-level SLA (max-SLA-among-subtasks, 7-day fixed warning window)
-        const sla = computeJobSLA(wo);
+        const sla = getJobSla(wo);
         if (!sla.isEligible || sla.phase !== 'in-progress' || sla.deadlineMs === null) return null;
 
         if (sla.status === 'overdue') {
@@ -1047,6 +1096,16 @@ const Dashboard = () => {
             : workOrders;
         return base.filter((wo: any) => !wo.isArchived && wo.status !== 'Cancelled');
     }, [workOrders, user, isAdminOrManager, selectedForemanId, selectedForemanIds, selectedSCurveProject, isAllTime]);
+
+    // computeJobSLA is non-trivial (loops all subtasks + sorts history) and was previously
+    // recomputed independently across ~6 useMemo blocks + inside a per-day loop (sCurveData) —
+    // compute once per WO here and have every call site look it up instead.
+    const jobSlaByWoId = useMemo(() => {
+        const map = new Map<string, ReturnType<typeof computeJobSLA>>();
+        baseAccessibleWOs.forEach((wo: any) => { if (wo?.id) map.set(wo.id, computeJobSLA(wo)); });
+        return map;
+    }, [baseAccessibleWOs]);
+    const getJobSla = (wo: any) => (wo?.id && jobSlaByWoId.get(wo.id)) || computeJobSLA(wo);
 
     const availableProjectsThisMonth = useMemo(() => {
         if (!selectedMonth) return [];
@@ -1227,7 +1286,7 @@ const Dashboard = () => {
         if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
         if (taskSlaOutcomeFilter) {
             // เสร็จทัน/เลย SLA cards count job-level (per ใบงาน) outcomes — only completed jobs qualify.
-            const jobSla = computeJobSLA(t.parentWO);
+            const jobSla = getJobSla(t.parentWO);
             if (!jobSla.isEligible || jobSla.phase !== 'done') return false;
             if (taskSlaOutcomeFilter === 'onTime' && jobSla.status !== 'on-time') return false;
             if (taskSlaOutcomeFilter === 'late' && jobSla.status !== 'late') return false;
@@ -1345,7 +1404,7 @@ const Dashboard = () => {
             if (['Draft', 'Cancelled'].includes(wo.status)) return;
             // T-346: Executive Summary SLA is JOB-level (per ใบงาน) — one count per WO via the
             // central helper, graded in the completion month. Keeps it identical to the gauge/cards.
-            const jobSla = computeJobSLA(wo);
+            const jobSla = getJobSla(wo);
             if (jobSla.isEligible && jobSla.phase === 'done' && jobSla.completedMs !== null
                 && jobSla.completedMs >= startOfMonth && jobSla.completedMs <= endOfMonth) {
                 totalTaskCount++;
@@ -1369,7 +1428,7 @@ const Dashboard = () => {
         filteredWOs.forEach((wo: any) => {
             const isFocusMatch = !highlightedWOId || wo.id?.toString().trim() === highlightedWOId?.toString().trim();
             // T-346: "at-risk" is JOB-level — an in-progress job that is critical (<24h left) or overdue.
-            const sla = computeJobSLA(wo);
+            const sla = getJobSla(wo);
             if (sla.isEligible && sla.phase === 'in-progress' && (sla.status === 'critical' || sla.status === 'overdue')) {
                 if (isFocusMatch) highRisk++;
             }
@@ -1775,7 +1834,7 @@ const Dashboard = () => {
                 if (!pId) return;
                 // Job-level SLA (per ใบงาน): one case per WO via the central helper. Gate on the
                 // whole job being done + graded in the month it completed (completion-month window).
-                const sla = computeJobSLA(wo);
+                const sla = getJobSla(wo);
                 if (!sla.isEligible || sla.phase !== 'done' || sla.completedMs === null) return;
                 if (sla.completedMs < startOfMonth || sla.completedMs > endOfMonth) return;
                 // Access: admin/manager see all; a foreman sees jobs they have a counted subtask in.
@@ -1818,7 +1877,7 @@ const Dashboard = () => {
                 (t.responsibleStaffIds || [wo.reporterId].filter(Boolean)).some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId)));
             if (!isMyJob) return;
             // T-346: job-level SLA (per ใบงาน), graded in the completion month, via the central helper.
-            const sla = computeJobSLA(wo);
+            const sla = getJobSla(wo);
             if (!sla.isEligible || sla.phase !== 'done' || sla.completedMs === null) return;
             const endMs = sla.completedMs;
             const jobMonth = `${new Date(endMs).getFullYear()}-${String(new Date(endMs).getMonth() + 1).padStart(2, '0')}`;
@@ -1993,7 +2052,7 @@ const Dashboard = () => {
             projectWOs.forEach((wo: any) => {
                 // T-347: job-level (per ใบงาน) — computed once per WO; every subtask of the same WO
                 // shares this WO's deadline (max-SLA-among-subtasks), not its own per-task limit.
-                const jobSla = computeJobSLA(wo);
+                const jobSla = getJobSla(wo);
                 const jobDeadlineMs = jobSla.isEligible ? jobSla.deadlineMs : null;
                 const jobStartMs = jobSla.isEligible ? jobSla.startMs : null;
                 (wo.categories || []).forEach((cat: any) => {
@@ -2451,51 +2510,6 @@ const Dashboard = () => {
                                         {(() => {
                                             const isMySubtask = (t: any) => t.subtaskOperatorId && (t.subtaskOperatorId === user?.id || t.subtaskOperatorId === user?.employeeId);
 
-                                            const SubtaskCard = ({ task, wo, categoryName, sla, isEval = false }: any) => {
-                                                const prog = task.dailyProgress ?? task.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(task.status) ? 100 : 0);
-                                                const name = task.name || task.taskName || task.subtaskName || task.description || '—';
-                                                const rawId = task.subtaskId || task.id || '';
-                                                const shortId = rawId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
-                                                const isDone = prog >= 100 || task.status === 'Complete';
-                                                const progColor = prog >= 80 ? '#10b981' : prog >= 40 ? '#0ea5e9' : '#f59e0b';
-                                                const revNum = task.currentRevision ? parseInt(task.currentRevision.replace('rev', '')) : null;
-                                                const bg = isDone ? '#f0fdf4' : '#f0f9ff';
-                                                const borderColor = isDone ? '#bbf7d0' : '#bae6fd';
-                                                const navTarget = isEval ? `/work-orders?id=${wo.id}` : `/daily-report?id=${wo.id}`;
-                                                const btnLabel = isEval ? '🔍 ติดตามสถานะ' : isDone ? '✅ งานเสร็จแล้ว' : '📝 บันทึกรายงาน';
-                                                const btnColor = isDone ? '#059669' : '#075985';
-                                                return (
-                                                    <div onClick={() => navigate(navTarget)} style={{ padding: '1rem 1.25rem', background: bg, borderRadius: '20px', border: `1px solid ${borderColor}`, cursor: 'pointer', transition: 'all 0.2s ease' }}
-                                                        onMouseOver={(e) => (e.currentTarget.style.transform = 'translateX(4px)')} onMouseOut={(e) => (e.currentTarget.style.transform = 'translateX(0)')}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
-                                                                    <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>{shortId}</span>
-                                                                    {isEval && revNum !== null && revNum > 0 && <span style={{ fontSize: '0.62rem', fontWeight: 900, padding: '1px 7px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '5px', color: '#b91c1c', whiteSpace: 'nowrap' }}>REV. {revNum}</span>}
-                                                                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 7px', background: isDone ? 'rgba(16,185,129,0.1)' : 'rgba(14,165,233,0.1)', border: `1px solid ${isDone ? '#a7f3d0' : '#bae6fd'}`, borderRadius: '5px', color: isDone ? '#059669' : '#0369a1', whiteSpace: 'nowrap' }}>{categoryName}</span>
-                                                                </div>
-                                                                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-                                                                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>📍 {wo.locationName} · 🏗️ {getProjectName(wo.projectId)}</div>
-                                                            </div>
-                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                                                                {sla && <span style={{ fontSize: '0.68rem', fontWeight: 800, color: sla.level === 'critical' ? '#b91c1c' : '#d97706', background: sla.level === 'critical' ? '#fee2e2' : '#fef3c7', padding: '2px 8px', borderRadius: '8px', whiteSpace: 'nowrap' }}>{sla.text}</span>}
-                                                                <span style={{ fontSize: '0.78rem', fontWeight: 900, color: isDone ? '#059669' : progColor }}>{prog}%</span>
-                                                            </div>
-                                                        </div>
-                                                        {!isDone && (
-                                                            <div style={{ marginTop: '8px' }}>
-                                                                <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '4px', overflow: 'hidden' }}>
-                                                                    <div style={{ width: `${prog}%`, height: '100%', background: progColor, borderRadius: '4px', transition: 'width 0.5s ease' }} />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        <button onClick={(e) => { e.stopPropagation(); navigate(navTarget); }} style={{ width: '100%', marginTop: '10px', padding: '6px', background: 'rgba(0,0,0,0.03)', border: `1px solid ${borderColor}`, borderRadius: '10px', color: btnColor, fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>
-                                                            {btnLabel}
-                                                        </button>
-                                                    </div>
-                                                );
-                                            };
-
                                             if (selectedOpCategory === 'urgent') {
                                                 const urgentWOs = stats.urgentTasks || [];
                                                 const urgentFlat: any[] = urgentWOs.flatMap((wo: any) => {
@@ -2511,7 +2525,7 @@ const Dashboard = () => {
                                                 });
                                                 if (urgentFlat.length === 0) return <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานด่วนคงค้างในขณะนี้ 🎉</div>;
                                                 return urgentFlat.map((item: any, idx: number) => (
-                                                    <SubtaskCard key={`urg-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={item.sla} />
+                                                    <SubtaskCard key={`urg-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={item.sla} navigate={navigate} getProjectName={getProjectName} />
                                                 ));
                                             } else if (selectedOpCategory === 'evaluating') {
                                                 const isForCustomerEvalLocal = (wo: any) => {
@@ -2530,7 +2544,7 @@ const Dashboard = () => {
                                                     })
                                                 );
                                                 return evalFlat.length > 0 ? evalFlat.map((item: any, idx: number) => (
-                                                    <SubtaskCard key={`eval-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={null} isEval={true} />
+                                                    <SubtaskCard key={`eval-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={null} isEval={true} navigate={navigate} getProjectName={getProjectName} />
                                                 )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานรอประเมิน ขอบคุณที่เคลียร์งานครับ! 👍</div>;
                                             } else if (selectedOpCategory === 'inProgress') {
                                                 const _urgentWOIds = new Set((stats.urgentTasks || []).map((wo: any) => String(wo.id)));
@@ -2562,7 +2576,7 @@ const Dashboard = () => {
                                                             </div>
                                                         )}
                                                         {flat.length > 0 ? flat.map((item: any, idx: number) => (
-                                                            <SubtaskCard key={`ip-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={getSLATimeStatus(item.wo)} />
+                                                            <SubtaskCard key={`ip-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={getSLATimeStatus(item.wo)} navigate={navigate} getProjectName={getProjectName} />
                                                         )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานย่อยในกลุ่มนี้</div>}
                                                     </>
                                                 );
@@ -2599,21 +2613,26 @@ const Dashboard = () => {
                                                     );
                                                 });
                                             } else {
-                                                // 'all' — flat subtasks across all active WOs, sorted by SLA urgency
-                                                const activeWOs = allAccessibleWOs.filter((wo: any) => !isWorkOrderCompleted(wo)).sort((a: any, b: any) => {
+                                                // 'all' — flat subtasks across all active WOs, sorted by SLA urgency.
+                                                // SLA computed once per WO up front (was previously recomputed on
+                                                // every comparator call during sort, plus again per row on render).
+                                                const activeWOsWithSla = allAccessibleWOs
+                                                    .filter((wo: any) => !isWorkOrderCompleted(wo))
+                                                    .map((wo: any) => ({ wo, sla: getSLATimeStatus(wo) }));
+                                                activeWOsWithSla.sort((a, b) => {
                                                     const score = (s: any) => s?.level === 'critical' ? 0 : s?.level === 'warning' ? 1 : 2;
-                                                    return score(getSLATimeStatus(a)) - score(getSLATimeStatus(b));
+                                                    return score(a.sla) - score(b.sla);
                                                 });
-                                                const flat = activeWOs.flatMap((wo: any) =>
+                                                const flat = activeWOsWithSla.flatMap(({ wo, sla }: any) =>
                                                     (wo.categories || []).flatMap((cat: any) => {
                                                         const catTasks = cat.tasks || [];
                                                         const myCatTasks = catTasks.filter(isMySubtask);
                                                         const show = myCatTasks.length > 0 ? myCatTasks : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
-                                                        return show.map((t: any) => ({ task: t, wo, categoryName: cat.name }));
+                                                        return show.map((t: any) => ({ task: t, wo, categoryName: cat.name, sla }));
                                                     })
                                                 );
                                                 return flat.length > 0 ? flat.map((item: any, idx: number) => (
-                                                    <SubtaskCard key={`all-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={getSLATimeStatus(item.wo)} />
+                                                    <SubtaskCard key={`all-${idx}`} task={item.task} wo={item.wo} categoryName={item.categoryName} sla={item.sla} navigate={navigate} getProjectName={getProjectName} />
                                                 )) : <div style={{ textAlign: 'center', padding: '4rem', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานคงค้างในขณะนี้ 🎉</div>;
                                             }
                                         })()}

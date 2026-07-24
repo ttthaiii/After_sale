@@ -437,7 +437,7 @@ export default function CustomerInspectionMockup({
                                                         }}
                                                     >
                                                         {task.beforePhotoUrl ? (
-                                                            <img src={task.beforePhotoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Before" />
+                                                            <img src={task.beforePhotoUrl} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Before" />
                                                         ) : (
                                                             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>ไม่มีรูปภาพ</div>
                                                         )}
@@ -463,6 +463,7 @@ export default function CustomerInspectionMockup({
                                                                     >
                                                                         <img
                                                                             src={currentPhoto}
+                                                                            loading="lazy"
                                                                             style={{
                                                                                 width: '100%',
                                                                                 height: '100%',

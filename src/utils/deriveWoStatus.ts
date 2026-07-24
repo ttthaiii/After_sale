@@ -55,7 +55,13 @@ export function deriveWoStatus(tasks: MasterTask[]): WoStatus {
 
     // Rules 6-7 — customer era (WO already went to customer)
     if (reachedCustomer(tasks)) {
-        if (liveHas('Evaluating')) return 'customer_reject'; // ≥1 sent back to admin
+        // Bug fix (2026-07-23): must check that THIS live task itself already went to the
+        // customer (its own currentRevision beyond rev00) — reachedCustomer() only proves SOME
+        // task in the WO reached the customer (e.g. a Complete sibling). A live task still at
+        // rev00 is on its first admin-eval round and was never sent out; conflating the two
+        // mislabeled a brand-new Evaluating task alongside a Complete sibling as 'customer_reject'.
+        const liveHasReturnedFromCustomer = live.some(t => t.status === 'Evaluating' && (t.currentRevision ?? REV0) !== REV0);
+        if (liveHasReturnedFromCustomer) return 'customer_reject'; // ≥1 sent back to admin
         if (liveAllAre('pending_delivery')) return 'pending_delivery'; // out for inspection
         // otherwise a rework task is re-assigned / in progress → fall through to work rules
     }

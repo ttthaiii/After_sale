@@ -136,12 +136,14 @@ export default function OwnerReview() {
         );
     }
 
-    // Only a task still awaiting review ('Evaluating') is a valid target for approve/reject.
+    // Only a task still out for customer review ('pending_delivery' — the status
+    // SLAMonitor.tsx's "pending-delivery" column / handleInitiateClose puts a task into
+    // right before generating this QR link) is a valid target for approve/reject.
     // The QR link can be reopened (browser back, forwarded, a second stale tab) after the
     // task was already closed via this same link or via the FM's own SLAMonitor review —
     // without this guard that reopen could silently revert an already-Complete task back
     // to Evaluating (or double-approve it).
-    const alreadyHandled = !submitted && task.status !== 'Evaluating';
+    const alreadyHandled = !submitted && task.status !== 'pending_delivery';
     if (alreadyHandled) {
         return (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
@@ -170,7 +172,7 @@ export default function OwnerReview() {
         const taskRef = doc(db, 'workOrders', woId, 'categories', catId, 'tasks', taskId);
         const freshSnap = await getDoc(taskRef);
         const freshStatus = freshSnap.exists() ? freshSnap.data().status : undefined;
-        if (freshStatus !== 'Evaluating') {
+        if (freshStatus !== 'pending_delivery') {
             setTask((prev: any) => prev ? { ...prev, status: freshStatus } : prev);
             await showAlert('รายการงานนี้ถูกดำเนินการไปแล้ว ไม่สามารถอนุมัติหรือตีกลับซ้ำได้ กรุณาปิดหน้านี้');
             return false;

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 import { ResponsiveModal } from '../components/ui/ResponsiveModal';
 
 interface AlertContextType {
@@ -27,8 +27,10 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         resolverRef.current = null;
     };
 
+    const value = useMemo(() => ({ showAlert }), [showAlert]);
+
     return (
-        <AlertContext.Provider value={{ showAlert }}>
+        <AlertContext.Provider value={value}>
             {children}
             <ResponsiveModal isOpen={!!state} onClose={handleClose} maxWidth="380px" zIndex={20000}>
                 <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
