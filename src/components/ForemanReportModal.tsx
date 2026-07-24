@@ -975,7 +975,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                     </p>
                                 </div>
                             </div>
-                            <ModalCloseButton onClick={handleClose} size={20} style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
+                            <ModalCloseButton onClick={handleClose} buttonSize={44} style={{ borderRadius: '50%' }} />
                         </div>
 
                         {/* Scrollable Content */}

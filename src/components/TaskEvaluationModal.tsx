@@ -257,7 +257,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                         <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>ประเมินและมอบหมายงาน</h3>
                     </div>
 
-                    <ModalCloseButton onClick={onClose} size={20} style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={44} style={{ borderRadius: '50%' }} />
                 </div>
 
                 {/* Body */}

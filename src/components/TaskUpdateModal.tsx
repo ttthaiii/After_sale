@@ -136,7 +136,7 @@ const TaskUpdateModal = ({ isOpen, onClose, task, categoryId, workOrderId, categ
                                 }}
                             />
                         </div>
-                        <ModalCloseButton onClick={onClose} variant="dark" size={18} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                        <ModalCloseButton onClick={onClose} variant="dark" buttonSize={40} style={{ borderRadius: '50%' }} />
                     </div>
                 </div>
 

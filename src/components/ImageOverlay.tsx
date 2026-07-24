@@ -131,8 +131,8 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
                 <div style={{ marginLeft: 'auto', pointerEvents: 'auto' }}>
                     <ModalCloseButton
                         variant="dark"
-                        size={24}
-                        style={{ width: '44px', height: '44px', borderRadius: '50%' }}
+                        buttonSize={44}
+                        style={{ borderRadius: '50%' }}
                         onClick={() => onClose()}
                     />
                 </div>

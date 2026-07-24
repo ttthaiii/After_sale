@@ -67,7 +67,7 @@ const WorkOrderViewModal = ({ isOpen, onClose, wo, projects }: WorkOrderViewModa
                             </p>
                         </div>
                     </div>
-                    <ModalCloseButton onClick={onClose} size={20} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={40} style={{ borderRadius: '50%' }} />
                 </div>
 
                 {/* Content Section (Scrollable) */}

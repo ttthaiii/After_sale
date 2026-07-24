@@ -353,7 +353,7 @@ export const PreHandoverDetailPane: React.FC = () => {
               {wo.locationName || project?.name || '—'} · {cat.defectCount || 0} จุดตรวจสอบ
             </div>
           </div>
-          <ModalCloseButton onClick={() => selectPhCatInfo(null)} variant="dark" size={16} style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
+          <ModalCloseButton onClick={() => selectPhCatInfo(null)} variant="dark" style={{ borderRadius: '8px' }} />
         </div>
 
         {/* SLA + Scheduled date row */}

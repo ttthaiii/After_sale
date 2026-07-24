@@ -57,9 +57,9 @@ export const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
                 {onClose && (
                     <ModalCloseButton
                         onClick={onClose}
+                        buttonSize={isMobile ? 44 : 32}
                         style={{
                             position: 'absolute', top: '12px', right: '12px',
-                            width: isMobile ? '44px' : '32px', height: isMobile ? '44px' : '32px',
                             zIndex: 1,
                         }}
                     />

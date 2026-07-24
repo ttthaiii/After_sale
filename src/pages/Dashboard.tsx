@@ -498,7 +498,7 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                             </span>
                         </div>
                     </div>
-                    <ModalCloseButton onClick={onClose} size={20} style={{ width: '40px', height: '40px', borderRadius: '12px', flexShrink: 0 }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={40} style={{ borderRadius: '12px' }} />
                 </div>
 
                 {/* Body */}
@@ -3615,7 +3615,7 @@ const Dashboard = () => {
                                     {selectedLaborDetail.date ? `วันที่ ${formatDate(selectedLaborDetail.date)}` : 'สรุปภาพรวมทั้งหมด'}
                                 </p>
                             </div>
-                            <ModalCloseButton onClick={() => setSelectedLaborDetail(null)} size={20} style={{ width: '40px', height: '40px', borderRadius: '12px' }} />
+                            <ModalCloseButton onClick={() => setSelectedLaborDetail(null)} buttonSize={40} style={{ borderRadius: '12px' }} />
                         </div>
                         <div style={{ padding: '32px', maxHeight: '70vh', overflowY: 'auto' }}>
                             {(() => {

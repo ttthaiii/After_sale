@@ -142,7 +142,7 @@ export default function TaskReviewModal({
                             QR Code สำหรับให้ลูกค้าตรวจรับงาน
                         </h2>
                     </div>
-                    <ModalCloseButton onClick={onClose} size={18} style={{ width: '38px', height: '38px', borderRadius: '50%' }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={38} style={{ borderRadius: '50%' }} />
                 </div>
 
                 {/* Content */}

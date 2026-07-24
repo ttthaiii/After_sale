@@ -1379,7 +1379,7 @@ const SLAMonitor = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <ModalCloseButton onClick={() => setHistoryTask(null)} size={16} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                                <ModalCloseButton onClick={() => setHistoryTask(null)} style={{ borderRadius: '50%' }} />
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '1fr 1.6fr'), gap: '28px', alignItems: 'start' }}>

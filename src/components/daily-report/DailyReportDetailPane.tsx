@@ -2261,31 +2261,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                   )}
                                 </div>
                                 {l.shifts?.normal ? (
-                                  l.membership === "Internal" ? (
-                                    renderTimeInput(
-                                      l.id,
-                                      "normal",
-                                      l.shiftTimes?.day || "08:00 - 17:00",
-                                    )
-                                  ) : (
-                                     <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "4px",
-                                        background: "#f8fafc",
-                                        borderRadius: "8px",
-                                        border: "1px solid #e2e8f0",
-                                        padding: "2px 6px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: 700,
-                                        color: "#64748b",
-                                      }}
-                                    >
-                                      {" "}
-                                      
-                                      <Clock size={12} /> 08:00 - 17:00
-                                    </div>
+                                  renderTimeInput(
+                                    l.id,
+                                    "normal",
+                                    l.shiftTimes?.day || "08:00 - 17:00",
                                   )
                                 ) : (
                                    <span
@@ -2373,31 +2352,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                       )}
                                     </div>
                                     {l.shifts?.otMorning ? (
-                                      l.membership === "Internal" ? (
-                                        renderTimeInput(
-                                          l.id,
-                                          "otMorning",
-                                          otMorningTime,
-                                        )
-                                      ) : (
-                                         <div
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "4px",
-                                            background: "#f8fafc",
-                                            borderRadius: "8px",
-                                            border: "1px solid #e2e8f0",
-                                            padding: "2px 6px",
-                                            fontSize: "0.75rem",
-                                            fontWeight: 700,
-                                            color: "#64748b",
-                                          }}
-                                        >
-                                          {" "}
-                                          
-                                          <Clock size={12} /> 06:00 - 08:00
-                                        </div>
+                                      renderTimeInput(
+                                        l.id,
+                                        "otMorning",
+                                        otMorningTime,
                                       )
                                     ) : (
                                        <span
@@ -2596,31 +2554,10 @@ export const DailyReportDetailPane: React.FC = () => {
                                       )}
                                     </div>
                                     {l.shifts?.otEvening ? (
-                                      l.membership === "Internal" ? (
-                                        renderTimeInput(
-                                          l.id,
-                                          "otEvening",
-                                          otEveningTime,
-                                        )
-                                      ) : (
-                                         <div
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "4px",
-                                            background: "#f8fafc",
-                                            borderRadius: "8px",
-                                            border: "1px solid #e2e8f0",
-                                            padding: "2px 6px",
-                                            fontSize: "0.75rem",
-                                            fontWeight: 700,
-                                            color: "#64748b",
-                                          }}
-                                        >
-                                          {" "}
-                                          
-                                          <Clock size={12} /> 18:00 - 21:00
-                                        </div>
+                                      renderTimeInput(
+                                        l.id,
+                                        "otEvening",
+                                        otEveningTime,
                                       )
                                     ) : (
                                        <span
@@ -4746,8 +4683,8 @@ export const DailyReportDetailPane: React.FC = () => {
               
               <ModalCloseButton
                 onClick={() => setSelectedTaskInfo(null)}
-                size={20}
-                style={{ width: "44px", height: "44px", borderRadius: "50%" }}
+                buttonSize={44}
+                style={{ borderRadius: "50%" }}
               />
               {(!hasHistoryForSelectedDate || isEditingExisting) &&
                 !isTaskFinished &&
@@ -4844,8 +4781,8 @@ export const DailyReportDetailPane: React.FC = () => {
               >
                 <ModalCloseButton
                   variant="dark"
-                  size={18}
-                  style={{ position: "absolute", top: "16px", right: "16px", width: "44px", height: "44px", borderRadius: "50%" }}
+                  buttonSize={44}
+                  style={{ position: "absolute", top: "16px", right: "16px", borderRadius: "50%" }}
                   onClick={() => setPhotoPreviewOpen(false)}
                 />
                 {photoPreviewUrl && (
@@ -4896,8 +4833,7 @@ export const DailyReportDetailPane: React.FC = () => {
                 >
                   <ModalCloseButton
                     onClick={() => setShowSLAPopup(false)}
-                    size={14}
-                    style={{ position: "absolute", top: "12px", right: "12px", width: "32px", height: "32px", borderRadius: "50%" }}
+                    style={{ position: "absolute", top: "12px", right: "12px", borderRadius: "50%" }}
                   />
                   <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0f172a", marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
                     <Clock size={14} color="#2563eb" /> SLA

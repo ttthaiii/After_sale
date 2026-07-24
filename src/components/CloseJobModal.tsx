@@ -73,7 +73,7 @@ const CloseJobModal = ({ isOpen, onClose, onConfirm, workOrder, targetTaskId }: 
                             {tasksToVerify.length === 1 && ` • ${tasksToVerify[0].name}`}
                         </div>
                     </div>
-                    <ModalCloseButton onClick={onClose} size={20} style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={44} style={{ borderRadius: '50%' }} />
                 </div>
 
                 <div style={{ padding: isMobile ? '1.25rem 1rem' : '2rem 2.5rem', overflowY: 'auto', flex: 1, background: '#fcfcfd' }}>

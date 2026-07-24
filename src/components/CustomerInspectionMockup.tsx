@@ -347,7 +347,7 @@ export default function CustomerInspectionMockup({
                             หน้าจอจำลองการส่งมอบงานของลูกค้า (Customer Review Simulation)
                         </h2>
                     </div>
-                    <ModalCloseButton onClick={onClose} size={16} style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={36} style={{ borderRadius: '50%' }} />
                 </div>
 
                 {/* Content Area */}

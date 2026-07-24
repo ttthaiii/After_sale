@@ -701,7 +701,7 @@ const HistoryDetailModal = ({ isOpen, onClose, workOrder, projects, staff, curre
                         >
                             <Printer size={16} /> พิมพ์เอกสารใบส่งมอบงาน
                         </button>
-                        <ModalCloseButton onClick={onClose} size={20} style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
+                        <ModalCloseButton onClick={onClose} buttonSize={44} style={{ borderRadius: '50%' }} />
                     </div>
                 </div>
 

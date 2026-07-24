@@ -129,7 +129,7 @@ const PreHandoverAssignModal = ({ isOpen, onClose, wo, staffList, onConfirm }: P
                             <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{wo.id} · {wo.building ? `อาคาร ${wo.building}` : ''} ชั้น {wo.floor} ห้อง {wo.room}</p>
                         </div>
                     </div>
-                    <ModalCloseButton onClick={onClose} size={18} style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
+                    <ModalCloseButton onClick={onClose} buttonSize={36} style={{ borderRadius: '50%' }} />
                 </div>
 
                 {/* Body */}
