@@ -3,9 +3,10 @@ import {
   ClipboardList, Calendar, Users, Camera, CheckCircle2,
   FileText, Clock, Plus, Trash2, Loader2,
   ChevronLeft, AlertTriangle, ChevronRight, Activity, User, HardHat,
-  Edit2, XCircle,
+  Edit2, XCircle, Upload,
 } from 'lucide-react';
 import { useDailyReport } from '../../context/DailyReportContext';
+import PhotoSourcePicker from '../forms/PhotoSourcePicker';
 import { PreHandoverSummaryModal } from './PreHandoverSummaryModal';
 import { computeJobSLA } from '../../utils/jobSla';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -133,6 +134,7 @@ export const PreHandoverDetailPane: React.FC = () => {
     laborOtNoonPhotos,
     laborOtEveningPhotos,
     handleSlotPhotoUpload,
+    handleSitePhotosUpload,
     handleRemoveSlotPhoto,
     togglePhShift,
     openTimePicker,
@@ -771,11 +773,26 @@ export const PreHandoverDetailPane: React.FC = () => {
                         </button>
                       </div>
                     ))}
-                    <label style={{ width: 110, height: 110, border: '2px dashed #3b82f6', borderRadius: 14, background: '#eff6ff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#3b82f6', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', opacity: isUploading ? 0.6 : 1 }}>
-                      <Camera size={22} />
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800 }}>แนบรูป</span>
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleSlotPhotoUpload('site', sitePhotos.length, e)} disabled={isUploading} />
-                    </label>
+                    <PhotoSourcePicker
+                      component="label"
+                      enableGeoStamp
+                      multiple
+                      disabled={isUploading}
+                      onSelect={(files) => handleSitePhotosUpload(files)}
+                      sx={{
+                        width: '110px', height: '110px', border: '2px dashed #cbd5e1', borderRadius: '14px', background: '#ffffff',
+                        boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', opacity: isUploading ? 0.6 : 1, transition: 'all 0.15s',
+                        '&:hover': isUploading ? {} : { borderColor: '#3b82f6', background: '#eff6ff', boxShadow: '0 4px 10px rgba(59,130,246,0.18)', '& .upload-icon': { color: '#3b82f6' } },
+                        '&:active': isUploading ? {} : { transform: 'scale(0.96)' },
+                      }}
+                    >
+                      <span className="upload-icon" style={{ color: '#94a3b8', transition: 'color 0.2s', display: 'flex' }}>
+                        {isUploading ? <Loader2 className="animate-spin" size={22} /> : <Upload size={22} />}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8' }}>{isUploading ? 'กำลังอัป...' : 'แนบรูปภาพ'}</span>
+                    </PhotoSourcePicker>
                     {sitePhotos.length === 0 && (
                       <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 700, padding: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ color: '#ef4444' }}>⚠</span> ยังไม่มีรูปภาพหน้างาน — กรุณาแนบอย่างน้อย 2 รูป
@@ -808,11 +825,25 @@ export const PreHandoverDetailPane: React.FC = () => {
                                 </button>
                               </div>
                             ) : allowed ? (
-                              <label style={{ width: 120, height: 120, border: '2px dashed #cbd5e1', borderRadius: 14, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', opacity: isUploading ? 0.6 : 1 }}>
-                                <Camera size={22} />
-                                <span style={{ fontSize: '0.65rem', fontWeight: 800, textAlign: 'center' }}>แนบรูป</span>
-                                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleSlotPhotoUpload(shiftKey, slotIdx, e)} disabled={isUploading} />
-                              </label>
+                              <PhotoSourcePicker
+                                component="label"
+                                enableGeoStamp
+                                disabled={isUploading}
+                                onSelect={(files) => handleSlotPhotoUpload(shiftKey, slotIdx, files?.[0] || undefined)}
+                                sx={{
+                                  width: '120px', height: '120px', border: '2px dashed #cbd5e1', borderRadius: '14px', background: '#ffffff',
+                                  boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                  cursor: isUploading ? 'not-allowed' : 'pointer', gap: '6px', opacity: isUploading ? 0.6 : 1, transition: 'all 0.15s',
+                                  '&:hover': isUploading ? {} : { borderColor: '#3b82f6', background: '#eff6ff', boxShadow: '0 4px 10px rgba(59,130,246,0.18)', '& .upload-icon': { color: '#3b82f6' } },
+                                  '&:active': isUploading ? {} : { transform: 'scale(0.96)' },
+                                }}
+                              >
+                                <span className="upload-icon" style={{ color: '#94a3b8', transition: 'color 0.2s', display: 'flex' }}>
+                                  {isUploading ? <Loader2 className="animate-spin" size={22} /> : <Upload size={22} />}
+                                </span>
+                                <span style={{ fontSize: '0.65rem', fontWeight: 800, textAlign: 'center', color: '#94a3b8' }}>{isUploading ? 'กำลังอัป...' : 'แนบรูปภาพ'}</span>
+                              </PhotoSourcePicker>
                             ) : (
                               <div style={{ width: 120, height: 120, border: '1px dashed #e2e8f0', borderRadius: 14, background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', gap: '4px' }}>
                                 <span style={{ fontSize: '1.2rem' }}>🔒</span>

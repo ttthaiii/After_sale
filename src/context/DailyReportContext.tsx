@@ -180,7 +180,8 @@ interface DailyReportContextType {
   handleBatchAdd: (selectedIds: string[], config: BatchConfig) => void;
   handleTimeChange: (val: string) => void;
   handleRemoveSlotPhoto: (tab: string, index: number) => void;
-  handleSlotPhotoUpload: (tab: string, index: number, e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+  handleSlotPhotoUpload: (tab: string, index: number, file: File | undefined) => Promise<void>;
+  handleSitePhotosUpload: (files: FileList | null) => Promise<void>;
   handleUploadLeaveCert: (laborId: string, file: File | undefined) => Promise<void>;
   handleRemoveLeaveCert: (laborId: string) => void;
   handleConfirmReview: (woId: string, categoryId: string, taskId: string, status: string, updates: any) => Promise<void>;
@@ -1712,9 +1713,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const handleSlotPhotoUpload = async (
     tab: string,
     slotIndex: number,
-    e: React.ChangeEvent<HTMLInputElement>,
+    file: File | undefined,
   ) => {
-    const file = e.target.files?.[0];
     const targetWoId = selectedTaskInfo?.wo.id || selectedPhCatInfo?.wo.id;
     if (!file || !targetWoId) return;
     setIsUploading(true);
@@ -1747,7 +1747,41 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       await showAlert("อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsUploading(false);
-      if (e.target) e.target.value = "";
+    }
+  };
+
+  // Site photos are an open-ended list (no fixed slots like the labor OT shifts), so
+  // selecting several files at once just appends each one in turn under a single
+  // isUploading flag instead of flickering it per file.
+  const handleSitePhotosUpload = async (files: FileList | null) => {
+    const targetWoId = selectedTaskInfo?.wo.id || selectedPhCatInfo?.wo.id;
+    if (!files || files.length === 0 || !targetWoId) return;
+    // Snapshot into a plain array synchronously, before any `await`. PhotoSourcePicker
+    // resets the input's `value` right after calling onSelect — on some browsers that
+    // clears the same live FileList in place, so reading files[i]/files.length after an
+    // await here could see it already truncated mid-loop.
+    const fileArray = Array.from(files);
+    setIsUploading(true);
+    try {
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        const fileExt = file.name.split(".").pop();
+        const fileName = `progress_site_${Date.now()}_${i}.${fileExt}`;
+        const storagePath = `work_orders/${targetWoId}/progress/${fileName}`;
+        const storageRef = ref(storage, storagePath);
+        const compressedFile = await compressImage(file, 1280, 0.7);
+        const snapshot = await uploadBytes(storageRef, compressedFile, {
+          cacheControl: "public, max-age=31536000",
+          contentType: compressedFile.type || "image/jpeg",
+        });
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        setSitePhotos((prev) => [...prev, downloadURL]);
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      await showAlert("อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -3274,6 +3308,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     handleTimeChange,
     handleRemoveSlotPhoto,
     handleSlotPhotoUpload,
+    handleSitePhotosUpload,
     handleUploadLeaveCert,
     handleRemoveLeaveCert,
     handleConfirmReview,

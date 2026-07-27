@@ -25,8 +25,10 @@ import {
   LayoutDashboard,
   Package,
   User,
+  Upload,
 } from "lucide-react";
 import { useDailyReport, filterHistoryByRevision } from "../../context/DailyReportContext";
+import PhotoSourcePicker from "../forms/PhotoSourcePicker";
 import { SLACountdown } from "./SLACountdowns";
 import { computeJobSLA, SLA_HOURS_MAP } from "../../utils/jobSla";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
@@ -71,6 +73,7 @@ export const DailyReportDetailPane: React.FC = () => {
     setReportType,
     handleRemoveSlotPhoto,
     handleSlotPhotoUpload,
+    handleSitePhotosUpload,
     handleUploadLeaveCert,
     handleRemoveLeaveCert,
     handleSubmit,
@@ -3712,59 +3715,57 @@ export const DailyReportDetailPane: React.FC = () => {
                           </div>
                         ))}
                         {isProgressNotePhotosEditable && !selectedTaskInfo?.task?.isHelper && (
-                           <label
-                            style={{
-                              width: 110,
-                              height: 110,
-                              border: "2px dashed #3b82f6",
-                              borderRadius: 14,
-                              background: "#eff6ff",
+                          <PhotoSourcePicker
+                            component="label"
+                            enableGeoStamp
+                            multiple
+                            disabled={isUploading}
+                            onSelect={(files) => handleSitePhotosUpload(files)}
+                            sx={{
+                              width: "110px",
+                              height: "110px",
+                              borderRadius: "14px",
+                              border: "2px dashed #cbd5e1",
+                              background: "#ffffff",
+                              boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
                               display: "flex",
                               flexDirection: "column",
                               alignItems: "center",
                               justifyContent: "center",
-                              color: "#3b82f6",
                               cursor: isUploading ? "not-allowed" : "pointer",
                               gap: "6px",
-                              transition: "all 0.2s",
+                              transition: "all 0.15s",
                               opacity: isUploading ? 0.6 : 1,
+                              "&:hover": isUploading
+                                ? {}
+                                : {
+                                    borderColor: "#3b82f6",
+                                    background: "#eff6ff",
+                                    boxShadow: "0 4px 10px rgba(59,130,246,0.18)",
+                                    "& .upload-icon": { color: "#3b82f6" },
+                                  },
+                              "&:active": isUploading ? {} : { transform: "scale(0.96)" },
                             }}
                           >
-                            {isUploading ? (
-                               <Loader2
-                                className="animate-spin"
-                                size={22}
-                              />
-                            ) : (
-                               <Camera size={22} />
-                            )}{" "}
-                            
+                            <span className="upload-icon" style={{ color: "#94a3b8", transition: "color 0.2s", display: "flex" }}>
+                              {isUploading ? (
+                                 <Loader2 className="animate-spin" size={22} />
+                              ) : (
+                                 <Upload size={22} />
+                              )}
+                            </span>
+
                             <span
                               style={{
                                 fontSize: "0.65rem",
-                                fontWeight: 900,
+                                fontWeight: 800,
                                 textAlign: "center",
+                                color: "#94a3b8",
                               }}
                             >
-                              {isUploading ? "กำลังอัป..." : "เพิ่มรูป"}
-                            </span>{" "}
-                            
-                            <input
-                              type="file"
-                              accept="image/*"
-                              style={{
-                                display: "none",
-                              }}
-                              onChange={(e) =>
-                                handleSlotPhotoUpload(
-                                  "site",
-                                  sitePhotos.length,
-                                  e,
-                                )
-                              }
-                              disabled={isUploading}
-                            />
-                          </label>
+                              {isUploading ? "กำลังอัป..." : "แนบรูปภาพ"}
+                            </span>
+                          </PhotoSourcePicker>
                         )}
                         {displaySitePhotos.length === 0 && (
                            <div
@@ -4082,61 +4083,64 @@ export const DailyReportDetailPane: React.FC = () => {
                                         </span>
                                       </div>
                                     ) : (
-                                      <label
-                                      style={{
-                                        width: 120,
-                                        height: 120,
-                                        border: "2px dashed #cbd5e1",
-                                        borderRadius: 14,
-                                        background: "#fff",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        color: "#94a3b8",
-                                        cursor: isUploading
-                                          ? "not-allowed"
-                                          : "pointer",
-                                        gap: "6px",
-                                        transition: "all 0.2s",
-                                        opacity: isUploading ? 0.6 : 1,
-                                      }}
-                                    >
-                                      {isUploading ? (
-                                         <Loader2
-                                          className="animate-spin"
-                                          size={22}
-                                        />
-                                      ) : (
-                                         <Camera size={22} />
-                                      )}{" "}
-                                      
-                                      <span
-                                        style={{
-                                          fontSize: "0.65rem",
-                                          fontWeight: 800,
-                                          textAlign: "center",
-                                        }}
-                                      >
-                                        แนบรูป
-                                      </span>{" "}
-                                      
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        style={{
-                                          display: "none",
-                                        }}
-                                        onChange={(e) =>
+                                      <PhotoSourcePicker
+                                        component="label"
+                                        enableGeoStamp
+                                        disabled={isUploading}
+                                        onSelect={(files) =>
                                           handleSlotPhotoUpload(
                                             shiftKey,
                                             slotIdx,
-                                            e,
+                                            files?.[0] || undefined,
                                           )
                                         }
-                                        disabled={isUploading}
-                                      />
-                                    </label>
+                                        sx={{
+                                          width: "120px",
+                                          height: "120px",
+                                          border: "2px dashed #cbd5e1",
+                                          borderRadius: "14px",
+                                          background: "#ffffff",
+                                          boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          cursor: isUploading
+                                            ? "not-allowed"
+                                            : "pointer",
+                                          gap: "6px",
+                                          transition: "all 0.15s",
+                                          opacity: isUploading ? 0.6 : 1,
+                                          "&:hover": isUploading
+                                            ? {}
+                                            : {
+                                                borderColor: "#3b82f6",
+                                                background: "#eff6ff",
+                                                boxShadow: "0 4px 10px rgba(59,130,246,0.18)",
+                                                "& .upload-icon": { color: "#3b82f6" },
+                                              },
+                                          "&:active": isUploading ? {} : { transform: "scale(0.96)" },
+                                        }}
+                                      >
+                                        <span className="upload-icon" style={{ color: "#94a3b8", transition: "color 0.2s", display: "flex" }}>
+                                          {isUploading ? (
+                                             <Loader2 className="animate-spin" size={22} />
+                                          ) : (
+                                             <Upload size={22} />
+                                          )}
+                                        </span>
+
+                                        <span
+                                          style={{
+                                            fontSize: "0.65rem",
+                                            fontWeight: 800,
+                                            textAlign: "center",
+                                            color: "#94a3b8",
+                                          }}
+                                        >
+                                          {isUploading ? "กำลังอัป..." : "แนบรูปภาพ"}
+                                        </span>
+                                      </PhotoSourcePicker>
                                   )
                                 ) : (
                                      <div
