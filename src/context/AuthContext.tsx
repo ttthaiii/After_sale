@@ -34,17 +34,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const showAlert = useAlert();
     const [loading, setLoading] = useState(true);
 
-    // ✅ Force new session reset to prevent multi-tab jumping issues
+    // Login persists across app/browser restarts (localStorage) — one device per
+    // user, so there's no shared-device risk of inheriting someone else's session.
     const STORAGE_KEY = 'after_sale_v2_session_auth';
 
     // Persist login state
     useEffect(() => {
-        // 🔒 Explicitly clear old localStorage to prevent interference
+        // 🔒 Explicitly clear old localStorage keys to prevent interference
         localStorage.removeItem('after_sale_v1_auth');
         localStorage.removeItem('after_sale_user');
-        
-        const savedUser = sessionStorage.getItem(STORAGE_KEY);
-        
+
+        // One-time migration: pick up a session saved before the localStorage switch.
+        const legacySession = sessionStorage.getItem(STORAGE_KEY);
+        if (legacySession && !localStorage.getItem(STORAGE_KEY)) {
+            localStorage.setItem(STORAGE_KEY, legacySession);
+        }
+        sessionStorage.removeItem(STORAGE_KEY);
+
+        const savedUser = localStorage.getItem(STORAGE_KEY);
+
         if (savedUser) {
             try {
                 const parsedUser = JSON.parse(savedUser);
@@ -53,10 +61,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 }
             } catch (err) {
                 console.error("Failed to parse session:", err);
-                sessionStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(STORAGE_KEY);
             }
         }
-        
+
         setLoading(false);
     }, []);
 
@@ -77,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         avatar: userData.profileImage || `https://ui-avatars.com/api/?background=random&name=${userData.name}`,
                         assignedProjects: userData.projectLocationIds || []
                     };
-                    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
                     return updated;
                 });
             }
@@ -150,7 +158,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 };
 
                 setUser(loggedInUser);
-                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
                 
                 // ✅ Log Action
                 await logService.trackAction({
@@ -200,7 +208,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         };
 
                         setUser(loggedInUser);
-                        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
                         return true;
                     }
                 }
@@ -230,8 +238,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             });
         }
         setUser(null);
-        sessionStorage.removeItem(STORAGE_KEY);
-        sessionStorage.removeItem('after_sale_user');
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem('after_sale_user');
     }, [user]);
 
     const value = useMemo(() => ({

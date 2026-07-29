@@ -61,6 +61,161 @@ const hasShiftPhotos = (lbs: any): boolean => {
   });
   return regHas || otHas;
 };
+
+// ----------------------------------------------------------------------
+// Multi-job-per-day support:
+// พนักงาน 1 คนอาจมีมากกว่า 1 daily report (คนละ task/subtask) ในวันเดียวกัน
+// (เช่น เช้าทำงาน A บ่ายทำงาน B) — เก็บ contribution ของแต่ละงานแยกไว้ใน
+// jobSegments ตาม taskId+subtaskId แล้ว "คำนวณผลรวมใหม่จากทั้งหมดทุกครั้ง"
+// (ไม่ใช่บวก/ทับค่าเดิมตรงๆ) เพื่อให้ sync ซ้ำ (แก้ไข report เดิม) idempotent
+// ----------------------------------------------------------------------
+const SHIFT_KEYS = ['normal', 'otMorning', 'otNoon', 'otEvening'] as const;
+type ShiftKey = (typeof SHIFT_KEYS)[number];
+const shiftTimeField = (key: ShiftKey): string => (key === 'normal' ? 'day' : key);
+const shiftPhotoField = (key: ShiftKey): string => (key === 'normal' ? 'regular' : key);
+
+const parseRangeToMinutes = (str: string | undefined): [number, number] | null => {
+  if (!str) return null;
+  const parts = str.split(' - ');
+  if (parts.length !== 2) return null;
+  const [sh, sm] = parts[0].trim().split(':').map(Number);
+  const [eh, em] = parts[1].trim().split(':').map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
+  return [sh * 60 + sm, eh * 60 + em];
+};
+
+const formatMinutes = (m: number): string => {
+  const h = Math.floor(m / 60).toString().padStart(2, '0');
+  const mm = (m % 60).toString().padStart(2, '0');
+  return `${h}:${mm}`;
+};
+
+// เวลาครอบคลุมกว้างสุด (เร็วสุด-ช้าสุด) ของกะเดียวกันข้ามหลายงาน — ใช้แค่โชว์
+// ช่วงเข้า-ออกให้ Labor เทียบกับสแกนนิ้ว "ห้าม" เอาไปคำนวณชั่วโมงใหม่ (ต้อง sum
+// จาก hours ของแต่ละงานแยกกันเท่านั้น ไม่งั้นช่วงที่หายไปจริงๆกลางวันจะถูกนับเป็นชั่วโมงทำงาน)
+const mergeTimeEnvelope = (ranges: string[]): string | undefined => {
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  for (const r of ranges) {
+    const parsed = parseRangeToMinutes(r);
+    if (!parsed) continue;
+    minStart = Math.min(minStart, parsed[0]);
+    maxEnd = Math.max(maxEnd, parsed[1]);
+  }
+  if (minStart === Infinity) return undefined;
+  return `${formatMinutes(minStart)} - ${formatMinutes(maxEnd)}`;
+};
+
+const rangesOverlap = (a: [number, number], b: [number, number]): boolean =>
+  a[0] < b[1] && b[0] < a[1];
+
+// normalize รูปให้เป็น array เสมอ ไม่ว่า source จะเป็น array (ปัจจุบัน) หรือ
+// {in,out}/{in,lunch,afternoon,out} (รูปแบบเก่า)
+const toPhotoArray = (data: any): string[] => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data.filter(Boolean);
+  if (typeof data === 'object') return [data.in, data.lunch, data.afternoon, data.out].filter(Boolean);
+  return [];
+};
+
+interface JobSegmentEntry {
+  taskId: string;
+  subtaskId: string | null;
+  taskName: string;
+  subtaskName: string | null;
+  location: string;
+  shifts: Record<ShiftKey, boolean>;
+  hours: Record<ShiftKey, number>;
+  shiftTimes: Partial<Record<'day' | 'otMorning' | 'otNoon' | 'otEvening', string>>;
+  photos: Partial<Record<'regular' | 'otMorning' | 'otNoon' | 'otEvening', string[]>>;
+  sourceReport: string;
+  lastUpdated: string;
+}
+
+// คำนวณ expectedHours/expectedShifts/shiftTimes/laborByShift ใหม่ทั้งหมดจาก
+// breakdown ของทุกงานในวันนั้น (ไม่ใช่ค่าจาก report เดียว) — log-only overlap
+// warning: ไม่มีระบบไหน (After-Sale หรือ Labor) กัน overlap ในสาย data นี้ไว้เลย
+const aggregateJobSegments = (
+  jobSegments: Record<string, JobSegmentEntry>,
+  employeeId: string,
+  activeDate: string
+) => {
+  const entries = Object.values(jobSegments);
+  // เรียงตามเวลาเริ่มงาน ใช้จัดลำดับรูป boundary (เร็วสุด/ช้าสุด) ให้สมเหตุสมผล
+  const startOf = (seg: JobSegmentEntry): number => {
+    for (const key of SHIFT_KEYS) {
+      const r = parseRangeToMinutes(seg.shiftTimes[shiftTimeField(key) as keyof typeof seg.shiftTimes]);
+      if (r) return r[0];
+    }
+    return 0;
+  };
+  entries.sort((a, b) => startOf(a) - startOf(b));
+
+  const expectedHours: Record<ShiftKey, number> = { normal: 0, otMorning: 0, otNoon: 0, otEvening: 0 };
+  const expectedShifts: Record<ShiftKey, boolean> = { normal: false, otMorning: false, otNoon: false, otEvening: false };
+  const shiftTimes: Record<string, string> = {};
+  const laborByShift: Record<string, string[]> = {};
+
+  for (const key of SHIFT_KEYS) {
+    const timeField = shiftTimeField(key);
+    const photoField = shiftPhotoField(key);
+
+    let sum = 0;
+    const ranges: string[] = [];
+    for (const seg of entries) {
+      sum += seg.hours[key] || 0;
+      const r = (seg.shiftTimes as any)[timeField];
+      if (r) ranges.push(r);
+    }
+    expectedHours[key] = sum;
+    expectedShifts[key] = sum > 0 || entries.some((seg) => seg.shifts[key]);
+
+    const envelope = mergeTimeEnvelope(ranges);
+    if (envelope) shiftTimes[timeField] = envelope;
+
+    // overlap ระหว่าง 2 งานในกะเดียวกัน = ข้อมูลผิดพลาด (คนเดียวทำ 2 ที่พร้อมกันไม่ได้)
+    // ไม่ block การเขียน แค่ log ไว้ให้ตรวจสอบ
+    const parsedPairs = ranges
+      .map((r) => ({ str: r, parsed: parseRangeToMinutes(r) }))
+      .filter((p): p is { str: string; parsed: [number, number] } => !!p.parsed);
+    for (let i = 0; i < parsedPairs.length; i++) {
+      for (let j = i + 1; j < parsedPairs.length; j++) {
+        if (rangesOverlap(parsedPairs[i].parsed, parsedPairs[j].parsed)) {
+          console.warn(
+            `[syncDailyReport] OVERLAP DETECTED: employee=${employeeId} date=${activeDate} shift=${key} ` +
+              `"${parsedPairs[i].str}" vs "${parsedPairs[j].str}" — ตรวจสอบข้อมูล, ชั่วโมงที่ sum อาจเกินจริง`
+          );
+        }
+      }
+    }
+
+    // รูป: ไม่มีที่เก็บพอสำหรับทุกรูปของทุกงาน (Labor ยังอ่านได้แค่ boundary)
+    // เอา "เข้า(รูปแรกสุด)/ออก(รูปท้ายสุด)" ของ "งานนั้นเอง" (ไม่ใช่ตัด array
+    // ตามตำแหน่งดิบ — งานกลางที่มีรูปมากกว่า 2 ใบ ต้องไม่โดนตัดรูปเข้างานทิ้ง)
+    // จากงานแรกสุด + งานสุดท้ายของวันเป็นตัวแทน (เก็บรูปครบทุกงานจริงๆไว้ใน
+    // jobSegments ให้ Track 2 ของ Labor ไปดึงใช้ทีหลังได้ — ไม่มีการเสียข้อมูลที่นั่น)
+    const boundaryInOut = (arr: string[]): string[] =>
+      arr.length > 1 ? [arr[0], arr[arr.length - 1]] : arr;
+
+    const withPhotos = entries.filter((seg) => (seg.photos as any)[photoField]?.length);
+    if (withPhotos.length > 0) {
+      let flat: string[];
+      if (photoField === 'regular' && withPhotos.length > 1) {
+        const first = (withPhotos[0].photos as any).regular as string[];
+        const last = (withPhotos[withPhotos.length - 1].photos as any).regular as string[];
+        flat = [...boundaryInOut(first), ...boundaryInOut(last)];
+      } else {
+        flat = withPhotos.flatMap((seg) => (seg.photos as any)[photoField] as string[]);
+      }
+      if (flat.length > 0) {
+        laborByShift[photoField] = photoField === 'regular' ? flat.slice(0, 4) : flat;
+      }
+    }
+  }
+
+  return { expectedHours, expectedShifts, shiftTimes, laborByShift };
+};
+
 /**
  * HTTP Endpoint: syncDailyReport
  *
@@ -228,25 +383,39 @@ export const syncDailyReport = functions
         const shifts = entry.shifts || {};
         const shiftTimes = entry.shiftTimes || {};
 
-        // คำนวณชั่วโมงแต่ละกะ
+        // คำนวณชั่วโมงของ "งานนี้" เท่านั้น (ยังไม่รวมงานอื่นในวันเดียวกัน — รวมทีหลังตอน aggregate)
         const normalHours = shifts.normal ? calculateHours(shiftTimes.day || '', true) : 0;
         const otMorningHours = shifts.otMorning ? calculateHours(shiftTimes.otMorning || '', false) : 0;
         const otNoonHours = shifts.otNoon ? calculateHours(shiftTimes.otNoon || '', false) : 0;
         const otEveningHours = shifts.otEvening ? calculateHours(shiftTimes.otEvening || '', false) : 0;
 
-        const timesheet: any = {
-          employeeNumber: employeeId,
-          date: activeDate,
-          projectLocationId: projectLocationId,
-          isActive: true,
-          status: reportData.status ?? null, // สถานะรายงานต้นทาง (เช่น "draft") — copy มาเก็บไว้ ค่าล่าสุดเขียนทับเสมอเมื่อ sync รอบใหม่
-          expectedShifts: {
+        const jobPhotos: JobSegmentEntry['photos'] = {};
+        if (shifts.normal) {
+          const arr = toPhotoArray(effectiveLaborByShift.regular);
+          if (arr.length > 0) jobPhotos.regular = arr;
+        }
+        for (const s of ['otMorning', 'otNoon', 'otEvening'] as const) {
+          if (!shifts[s]) continue;
+          const arr = toPhotoArray(effectiveLaborByShift[s]);
+          if (arr.length > 0) jobPhotos[s] = arr;
+        }
+
+        // คีย์ด้วย taskId+subtaskId — ระบุตัวตนของ "งานนี้" เพื่อให้ sync ซ้ำ
+        // (เช่นแก้ไข report เดิม) แทนที่แค่ entry ของงานนี้ ไม่บวกชั่วโมงซ้ำ
+        const jobKey = `${taskId}_${subtaskId || 'none'}`;
+        const segmentEntry: JobSegmentEntry = {
+          taskId,
+          subtaskId: subtaskId || null,
+          taskName,
+          subtaskName: subtaskName || null,
+          location: locationName,
+          shifts: {
             normal: shifts.normal || false,
             otMorning: shifts.otMorning || false,
             otNoon: shifts.otNoon || false,
             otEvening: shifts.otEvening || false,
           },
-          expectedHours: {
+          hours: {
             normal: normalHours,
             otMorning: otMorningHours,
             otNoon: otNoonHours,
@@ -258,6 +427,34 @@ export const syncDailyReport = functions
             ...(shifts.otNoon && shiftTimes.otNoon ? { otNoon: shiftTimes.otNoon } : {}),
             ...(shifts.otEvening && shiftTimes.otEvening ? { otEvening: shiftTimes.otEvening } : {}),
           },
+          photos: jobPhotos,
+          sourceReport: cleanPath,
+          lastUpdated: new Date().toISOString(),
+        };
+
+        // อ่านของเดิมก่อนเขียน เพื่อรวม breakdown ของงานนี้เข้ากับงานอื่นที่ sync
+        // ไปแล้วในวันเดียวกัน (คนละ taskId/subtaskId) แล้วคำนวณผลรวมใหม่จาก
+        // breakdown ทั้งหมดเสมอ — ไม่ใช่เขียนทับด้วยค่าของ report ใบนี้ใบเดียว
+        const existingSnap = await timesheetRef.get();
+        const jobSegments: Record<string, JobSegmentEntry> = {
+          ...(existingSnap.exists ? existingSnap.data()?.jobSegments || {} : {}),
+          [jobKey]: segmentEntry,
+        };
+
+        const aggregate = aggregateJobSegments(jobSegments, employeeId, activeDate);
+
+        const timesheet: any = {
+          employeeNumber: employeeId,
+          date: activeDate,
+          projectLocationId: projectLocationId,
+          isActive: true,
+          status: reportData.status ?? null, // สถานะรายงานต้นทาง (เช่น "draft") — ค่าล่าสุดเขียนทับเสมอเมื่อ sync รอบใหม่
+          expectedShifts: aggregate.expectedShifts,
+          expectedHours: aggregate.expectedHours,
+          shiftTimes: aggregate.shiftTimes,
+          // breakdown ละเอียดต่องาน (multi-job-per-day) — เก็บไว้ให้ Labor
+          // ฝั่ง work-hour-monitoring ไปใช้แสดงทีละงานได้ทีหลัง (ไม่ต้องรอ sync ใหม่)
+          jobSegments,
           workLogs: admin.firestore.FieldValue.arrayUnion({
             taskId,
             taskName,
@@ -277,50 +474,9 @@ export const syncDailyReport = functions
         if (sitePhotos.length > 0) {
           photosUpdate.site = admin.firestore.FieldValue.arrayUnion(...sitePhotos);
         }
-        if (Object.keys(effectiveLaborByShift).length > 0) {
-          const shiftPhotos: any = {};
-
-          // Handle Regular (Array or Map) — เฉพาะพนักงานที่ทำกะปกติ
-          if (shifts.normal && effectiveLaborByShift.regular) {
-            const regData = effectiveLaborByShift.regular;
-            const regUpdate: any = {};
-            if (Array.isArray(regData)) {
-              // New structure: Array of 4 indices
-              regData.forEach((url, idx) => {
-                if (url) regUpdate[idx.toString()] = url;
-              });
-            } else if (typeof regData === 'object') {
-              // Legacy/Map structure: in, out
-              if (regData.in) regUpdate.in = regData.in;
-              if (regData.out) regUpdate.out = regData.out;
-            }
-            if (Object.keys(regUpdate).length > 0) {
-              shiftPhotos.regular = regUpdate;
-            }
-          }
-
-          // Handle OT Shifts (Maps: in, out) — เฉพาะพนักงานที่ทำ OT shift นั้น ๆ จริง
-          const otShifts = ['otMorning', 'otNoon', 'otEvening'] as const;
-          for (const s of otShifts) {
-            // ✅ Guard: ข้ามถ้าพนักงานคนนี้ไม่ได้ทำ shift นี้
-            if (!shifts[s]) continue;
-
-            const shiftData = effectiveLaborByShift[s];
-            if (shiftData && typeof shiftData === 'object' && !Array.isArray(shiftData)) {
-              const otUpdate: any = {};
-              if (shiftData.in) otUpdate.in = shiftData.in;
-              if (shiftData.out) otUpdate.out = shiftData.out;
-              if (Object.keys(otUpdate).length > 0) {
-                shiftPhotos[s] = otUpdate;
-              }
-            }
-          }
-
-          if (Object.keys(shiftPhotos).length > 0) {
-            photosUpdate.laborByShift = shiftPhotos;
-          }
+        if (Object.keys(aggregate.laborByShift).length > 0) {
+          photosUpdate.laborByShift = aggregate.laborByShift;
         }
-
         if (Object.keys(photosUpdate).length > 0) {
           timesheet.photos = photosUpdate;
         }

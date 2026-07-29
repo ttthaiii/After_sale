@@ -2464,7 +2464,7 @@ const Dashboard = () => {
                                     transform: selectedOpCategory === cat ? 'translateY(-6px)' : 'none',
                                 });
                                 return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(auto-fit, minmax(210px, 1fr))', 'repeat(2, 1fr)'), gap: isMobile ? '12px' : '1.5rem', marginBottom: '2.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(auto-fit, minmax(210px, 1fr))', 'repeat(2, minmax(0, 1fr))'), gap: isMobile ? '12px' : '1.5rem', marginBottom: '2.5rem' }}>
                                         <StatCard
                                             title="เร่งด่วน SLA"
                                             value={urgentSubtaskCount}
@@ -2761,13 +2761,15 @@ const Dashboard = () => {
                                             const slaOnTime = _hcMet;
                                             const slaLate = _hcTot - _hcMet;
                                             return (
-                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4,1fr)', 'repeat(2,1fr)'), gap: '12px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4,1fr)', 'repeat(2, minmax(0, 1fr))'), gap: '12px' }}>
                                             {/* WO dual-number card */}
                                             <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><FileText size={120} /></div>
-                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><FileText size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '12px' }}>ใบงาน</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '12px' }}>
+                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><FileText size={16} /></div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>ใบงาน</div>
+                                                    </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                                                         <div>
                                                             <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.totalInMonth}</div>
@@ -2784,9 +2786,11 @@ const Dashboard = () => {
                                             {/* Task dual-number card */}
                                             <div style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><CheckCircle2 size={120} /></div>
-                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><CheckCircle2 size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '12px' }}>รายการย่อย</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '12px' }}>
+                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><CheckCircle2 size={16} /></div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>รายการย่อย</div>
+                                                    </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                                                         <div>
                                                             <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{totalTasks}</div>
@@ -2803,9 +2807,11 @@ const Dashboard = () => {
                                             {/* On-time SLA card — click filters Task Performance Details to completed+on-time jobs */}
                                             <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'onTime' ? '' : 'onTime'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'onTime' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'late' ? 0.55 : 1 }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><Zap size={120} /></div>
-                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><Zap size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เสร็จทัน SLA</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}>
+                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><Zap size={16} /></div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>เสร็จทัน SLA</div>
+                                                    </div>
                                                     <div style={{ fontSize: scaleFont(isMobile, '3.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaOnTime}</div>
                                                     <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'onTime' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : `จาก ${slaOnTime + slaLate} รายการที่เสร็จ →`}</div>
                                                 </div>
@@ -2813,9 +2819,11 @@ const Dashboard = () => {
                                             {/* Late SLA card — click filters Task Performance Details to completed+late jobs */}
                                             <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'late' ? '' : 'late'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: slaLate > 0 ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'late' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'onTime' ? 0.55 : 1 }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><AlertTriangle size={120} /></div>
-                                                <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', color: '#fff', display: 'inline-flex' }}><AlertTriangle size={18} /></div>
                                                 <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: '10px' }}>เลย SLA</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}>
+                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><AlertTriangle size={16} /></div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>เลย SLA</div>
+                                                    </div>
                                                     <div style={{ fontSize: scaleFont(isMobile, '3.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaLate}</div>
                                                     <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'late' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : slaLate > 0 ? 'รายการเกินกำหนด → ดูรายละเอียด' : 'ทุกงานทันกำหนด 🎉'}</div>
                                                 </div>
@@ -3164,7 +3172,7 @@ const Dashboard = () => {
                                 <div id="job-details-section" className={highlightedSection === 'job-details-section' ? 'section-highlight' : ''} style={{ gridColumn: '1/-1', background: '#ffffff', padding: '1.5rem 2rem', borderRadius: '32px', border: '1px solid #e2e8f0', transition: 'all 0.5s' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
                                         <SectionHeader title="รายละเอียดรายการงานที่ดำเนินการ (Task Performance Details)" icon={<Activity size={24} />} subtitle="รายการงานย่อยทั้งหมดที่คุณรับผิดชอบ แยกตามใบงานอ้างอิง" />
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', width: isMobile ? '100%' : undefined }}>
                                             {highlightedWOId && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '5px 10px' }}>
                                                     <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#2563eb' }}>#{highlightedWOId.slice(-6)}</span>
@@ -3632,7 +3640,7 @@ const Dashboard = () => {
                                     });
                                 });
                                 return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(3, 1fr)', 'repeat(2,1fr)'), gap: '1.5rem', marginBottom: '2.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(3, 1fr)', 'repeat(2, minmax(0, 1fr))'), gap: '1.5rem', marginBottom: '2.5rem' }}>
                                         <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', padding: '24px', borderRadius: '24px', border: '1px solid #bfdbfe', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.08)' }}>
                                             <div style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Users size={14} /> จำนวนคนงานรวม
