@@ -37,6 +37,11 @@ const CATEGORIES_LIST = [
     'งานพื้น/พื้นไม้ลามิเนต',
 ];
 
+// Sentinel select value for "type your own category" — never a real category
+// name, so it can't collide with anything a user types (feedback 2026-08-04).
+const OTHER_CATEGORY_VALUE = '__OTHER__';
+const isCustomCategory = (category: string) => !CATEGORIES_LIST.includes(category);
+
 // A task is "decided" (locked from foreman edits) once it has moved past evaluation
 const DECIDED_STATUSES = ['Assigned', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'];
 const isItemDecided = (item: any) => DECIDED_STATUSES.includes(item.status);
@@ -567,6 +572,14 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         // PreHandover (WOP): require at least 1 attached document before a real submit.
         if (!isDraft && formState.type === 'PreHandover' && phDocuments.length === 0) {
             await showAlert('กรุณาแนบไฟล์เอกสารอย่างน้อย 1 ไฟล์');
+            setIsSubmitting(false);
+            return;
+        }
+
+        // PreHandover: a group left on "หมวดอื่นๆ" with no typed name has no real
+        // category — block a real submit the same way a blank required field would.
+        if (!isDraft && formState.type === 'PreHandover' && groups.some(g => !g.category?.trim())) {
+            await showAlert('กรุณาพิมพ์ชื่อหมวดงานให้ครบก่อนส่ง (มีหมวดที่เลือก "อื่นๆ" แต่ยังไม่ได้พิมพ์ชื่อ)');
             setIsSubmitting(false);
             return;
         }
@@ -1180,15 +1193,27 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                         {/* Data rows — no labels, uniform height */}
                                         {groups.map((group, idx) => (
                                             <div key={group.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 76px 34px' : '1fr 160px 40px', gap: isMobile ? '8px' : '12px', padding: isMobile ? '10px 12px' : '10px 16px', alignItems: 'center', borderBottom: idx < groups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                                <div style={{ position: 'relative' }}>
-                                                    <select
-                                                        value={group.category}
-                                                        onChange={(e) => updateGroupCategory(group.id, e.target.value)}
-                                                        style={{ width: '100%', padding: '9px 32px 9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', color: '#111827', fontSize: '0.9rem', outline: 'none', appearance: 'none', height: '40px' }}
-                                                    >
-                                                        {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
-                                                    </select>
-                                                    <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={14} /></div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    <div style={{ position: 'relative' }}>
+                                                        <select
+                                                            value={isCustomCategory(group.category) ? OTHER_CATEGORY_VALUE : group.category}
+                                                            onChange={(e) => updateGroupCategory(group.id, e.target.value === OTHER_CATEGORY_VALUE ? '' : e.target.value)}
+                                                            style={{ width: '100%', padding: '9px 32px 9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', color: '#111827', fontSize: '0.9rem', outline: 'none', appearance: 'none', height: '40px' }}
+                                                        >
+                                                            {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+                                                            <option value={OTHER_CATEGORY_VALUE}>หมวดอื่นๆ</option>
+                                                        </select>
+                                                        <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={14} /></div>
+                                                    </div>
+                                                    {isCustomCategory(group.category) && (
+                                                        <input
+                                                            type="text"
+                                                            value={group.category}
+                                                            onChange={(e) => updateGroupCategory(group.id, e.target.value)}
+                                                            placeholder="พิมพ์ชื่อหมวดงาน"
+                                                            style={{ width: '100%', padding: '8px 12px', background: '#ffffff', border: '1px solid #10b981', borderRadius: '8px', color: '#111827', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', height: '38px' }}
+                                                        />
+                                                    )}
                                                 </div>
                                                 <input
                                                     type="number"

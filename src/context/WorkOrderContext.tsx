@@ -152,8 +152,13 @@ const formatCategoriesAndTasks = (woId: string, categories: any[], woType?: stri
         const catName = (cat.name || '').trim().toLowerCase();
         const listIndex = CATEGORIES_LIST.findIndex(n => n.trim().toLowerCase() === catName);
 
-        // 1-indexed category type position; fallback to array position if name not found
-        const position = listIndex >= 0 ? listIndex + 1 : catIndex + 1;
+        // 1-indexed category type position. A name not in the fixed list (e.g. a
+        // user-typed "หมวดอื่นๆ" category) falls back to a slot number well past
+        // the list's own range (1-16) — using catIndex+1 directly would collide
+        // with a real listed category's position and silently overwrite it in
+        // Firestore, since both share the same [projectPrefix]-[jobCode]-[position]-[woSeq]
+        // doc id (feedback 2026-08-04).
+        const position = listIndex >= 0 ? listIndex + 1 : 500 + catIndex;
         const formattedPosition = String(position).padStart(4, '0');
 
         // Category ID: [ProjectPrefix]-[ProjectCode]-[CategorySeq]-[WOSeq] (e.g. LR-WOA-0003-0001)

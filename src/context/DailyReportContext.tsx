@@ -248,6 +248,18 @@ export const filterHistoryByRevision = (
   });
 };
 
+// Persisted labor payloads never include `id` (it's a UI-only field), so any
+// labor array loaded straight from a saved report/draft has every entry's id
+// missing. The per-row delete button filters by `item.id !== l.id` — with all
+// ids undefined that filter drops every row instead of just the clicked one
+// (feedback 2026-08-04). Stamp a fresh unique id onto anything that lacks one
+// right after loading, before it ever reaches setLabor.
+export const ensureLaborIds = (list: any[]): any[] =>
+  (list || []).map((l) => ({
+    ...l,
+    id: l.id || `L-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  }));
+
 export const calculateWorkingHours = (timeRange: string): number => {
   if (!timeRange) return 8;
   const match = timeRange.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/);
@@ -742,7 +754,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             const draftData = draftSnap.data();
             setProgress(draftData.progress ?? defaultProgress);
             setNote(draftData.note || "");
-            setLabor(draftData.labor || []);
+            setLabor(ensureLaborIds(draftData.labor || []));
             setSitePhotos(draftData.sitePhotos || []);
             setLaborRegularPhotos(draftData.laborRegularPhotos || []);
             setLaborOtMorningPhotos(draftData.laborOtMorningPhotos || []);
@@ -1366,6 +1378,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     workOrderId: string,
     taskId: string,
     taskName: string,
+    previousLaborList: LaborEntry[] = [],
   ) => {
     const DEFAULT_SHIFT_TIME: Record<string, string> = {
       normal: "08:00 - 17:00",
@@ -1398,7 +1411,21 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }))
       .filter((c) => c.workerId && c.shifts.length > 0);
 
-    if (claimants.length === 0) return;
+    // Workers who were on this task's previously-saved report but were removed
+    // in this edit (e.g. taken off to be reassigned elsewhere) never get their
+    // own loop iteration below — their day-lock claim for this task would
+    // otherwise linger forever and falsely block them from being added to a
+    // new task on the same day (feedback 2026-08-04).
+    const currentWorkerIds = new Set(claimants.map((c) => c.workerId));
+    const removedWorkerIds = Array.from(
+      new Set(
+        previousLaborList
+          .map((l) => l.staffId || l.contractorId)
+          .filter((id): id is string => !!id && !currentWorkerIds.has(id)),
+      ),
+    );
+
+    if (claimants.length === 0 && removedWorkerIds.length === 0) return;
 
     await runTransaction(db, async (transaction) => {
       const conflicts: string[] = [];
@@ -1427,6 +1454,18 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           ...claimant.shifts.map(({ shiftKey, timeRange }) => ({ workOrderId, taskId, taskName, shiftKey, timeRange })),
         ];
         writes.push({ ref: lockRef, claims: newClaims });
+      }
+
+      for (const workerId of removedWorkerIds) {
+        const lockRef = doc(db, "laborDayLocks", `${workerId}_${reportDate}`);
+        const snap = await transaction.get(lockRef);
+        const existingClaims: any[] = (snap.exists() ? (snap.data() as any).claims : []) || [];
+        const remainingClaims = existingClaims.filter(
+          (c) => !(c.workOrderId === workOrderId && c.taskId === taskId)
+        );
+        if (remainingClaims.length !== existingClaims.length) {
+          writes.push({ ref: lockRef, claims: remainingClaims });
+        }
       }
 
       if (conflicts.length > 0) {
@@ -1994,19 +2033,6 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
     }
-    const allowedMinVal = progressBounds.min > 0 ? progressBounds.min : -1;
-    if (progress <= allowedMinVal) {
-      await showAlert(
-        `ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${progressBounds.min}% (ตามประวัติก่อนหน้า)`,
-      );
-      return;
-    }
-    if (progress > progressBounds.max) {
-      await showAlert(
-        `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`,
-      );
-      return;
-    }
     const history = selectedTaskInfo.task.history || [];
     const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
     const existingHistory = filteredHistory.find(
@@ -2018,6 +2044,29 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (existingHistory && !isEditingExisting) {
       await showAlert(
         `คุณเคยส่งรายงานของวันที่ ${formatDate(reportDate)} ไปแล้วในใบงานนี้ หากต้องการแก้ไขกรุณากดปุ่มแก้ไขข้อมูล`,
+      );
+      return;
+    }
+    // Editing today's own already-saved report (e.g. just adding/removing a
+    // worker) already satisfied the "must exceed prior day" rule once, at
+    // creation — re-checking it against progressBounds.min on every edit
+    // blocks a same-value resave whenever today's progress happens to equal
+    // the prior day's (feedback 2026-08-04). Only a brand-new day's entry
+    // needs to clear progressBounds.min; an edit just can't go backward.
+    const allowedMinVal = isEditingExisting && existingHistory
+      ? (existingHistory.progress > 0 ? existingHistory.progress - 1 : -1)
+      : (progressBounds.min > 0 ? progressBounds.min : -1);
+    if (progress <= allowedMinVal) {
+      await showAlert(
+        isEditingExisting && existingHistory
+          ? `ความคืบหน้าต้องไม่น้อยกว่าค่าที่บันทึกไว้เดิม (${existingHistory.progress}%)`
+          : `ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${progressBounds.min}% (ตามประวัติก่อนหน้า)`,
+      );
+      return;
+    }
+    if (progress > progressBounds.max) {
+      await showAlert(
+        `ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${progressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`,
       );
       return;
     }
@@ -2353,6 +2402,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         selectedTaskInfo.wo.id,
         selectedTaskInfo.task.id,
         (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName || selectedTaskInfo.task.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim(),
+        existingHistory?.labor || [],
       );
 
       await addTaskUpdate(
@@ -2561,12 +2611,21 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
+      const draftHistory = selectedTaskInfo.task.history || [];
+      const draftFilteredHistory = filterHistoryByRevision(draftHistory, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
+      const draftExistingHistory = draftFilteredHistory.find(
+        (h) => {
+          const matchesHelper = selectedTaskInfo.task.isHelper ? h.isSupportReport === true : h.isSupportReport !== true;
+          return h.date?.split("T")[0] === reportDate && matchesHelper;
+        }
+      );
       await claimLaborDayLocks(
         labor,
         reportDate,
         selectedTaskInfo.wo.id,
         selectedTaskInfo.task.id,
         (selectedTaskInfo.task.name || selectedTaskInfo.task.taskName || selectedTaskInfo.task.id).replace(/\s*\(REV\.\s*\d+\)/gi, '').trim(),
+        draftExistingHistory?.labor || [],
       );
 
       await addTaskUpdate(
@@ -2829,7 +2888,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const d = resolvedSnap.data();
         setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
         setNote(d.note || '');
-        setLabor(d.labor || []);
+        setLabor(ensureLaborIds(d.labor || []));
         // Support both new format (photos.site/laborByShift) and legacy (sitePhotos/laborPhotos)
         setSitePhotos(d.photos?.site || d.sitePhotos || []);
         setLaborRegularPhotos(d.photos?.laborByShift?.regular || d.laborPhotos?.regular || []);
@@ -2847,7 +2906,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
             const d = draftSnap.data();
             setProgress(d.progress ?? selectedPhCatInfo.cat.dailyProgress ?? 0);
             setNote(d.note || '');
-            setLabor(d.labor || []);
+            setLabor(ensureLaborIds(d.labor || []));
             setSitePhotos(d.photos?.site || d.sitePhotos || []);
             setLaborRegularPhotos(d.photos?.laborByShift?.regular || d.laborPhotos?.regular || []);
             setLaborOtMorningPhotos(d.photos?.laborByShift?.otMorning || d.laborPhotos?.otMorning || []);
@@ -3029,10 +3088,19 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       await showAlert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
       return;
     }
-    // Progress bounds validation (same as AfterSale)
-    const allowedMinVal = phProgressBounds.min > 0 ? phProgressBounds.min : -1;
+    // Progress bounds validation (same as AfterSale). Editing today's own
+    // already-saved report shouldn't have to clear progressBounds.min again —
+    // that was already satisfied when it was first created; an edit just
+    // can't go backward below its own saved value (feedback 2026-08-04).
+    const allowedMinVal = isPhEditingExisting && existingHistReport
+      ? (existingHistReport.progress > 0 ? existingHistReport.progress - 1 : -1)
+      : (phProgressBounds.min > 0 ? phProgressBounds.min : -1);
     if (progress <= allowedMinVal) {
-      await showAlert(`ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${phProgressBounds.min}% (ตามประวัติก่อนหน้า)`);
+      await showAlert(
+        isPhEditingExisting && existingHistReport
+          ? `ความคืบหน้าต้องไม่น้อยกว่าค่าที่บันทึกไว้เดิม (${existingHistReport.progress}%)`
+          : `ความคืบหน้าสำหรับวันที่เลือกต้องมากกว่า ${phProgressBounds.min}% (ตามประวัติก่อนหน้า)`,
+      );
       return;
     }
     if (progress > phProgressBounds.max) {
@@ -3118,6 +3186,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         wo.id,
         phTaskId,
         (cat.name || (cat as any).categoryName || phTaskId),
+        existingHistReport?.labor || [],
       );
       await setDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReports', reportDate), payload);
       await Promise.all([
@@ -3254,7 +3323,8 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // "is this actually done" gate (QR eligibility, pending-delivery buckets)
       // from firing off it (user-confirmed 2026-07-24).
       const progressUpdate = { dailyProgress: progress, progressStatus: 'draft', lastProgressUpdate: new Date().toISOString() };
-      await claimLaborDayLocks(labor, reportDate, wo.id, phTaskId, (cat.name || (cat as any).categoryName || phTaskId));
+      const draftExistingPhReport = phDailyHistory.find((h: any) => h.id === reportDate || h.date === reportDate);
+      await claimLaborDayLocks(labor, reportDate, wo.id, phTaskId, (cat.name || (cat as any).categoryName || phTaskId), draftExistingPhReport?.labor || []);
       await setDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReports', reportDate), payload);
       await Promise.all([
         updateDoc(subtaskRef, progressUpdate),
