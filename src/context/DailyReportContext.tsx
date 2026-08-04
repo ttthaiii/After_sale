@@ -3193,6 +3193,24 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         updateDoc(subtaskRef, progressUpdate),
         updateDoc(taskRef, progressUpdate),
       ]);
+      // Trigger daily report sync API (mirrors WOA flow in WorkOrderContext.addTaskUpdate) —
+      // without this, PreHandover (WOP) daily reports never produce a DailyEmployeeTimesheets record.
+      try {
+        const phReportPath = `workOrders/${wo.id}/categories/${cat.id}/tasks/${phTaskId}/subtasks/${phSubtaskId}/revisions/${phRev}/dailyReports/${reportDate}`;
+        console.log('Syncing WOP daily report to LB API...', { reportPath: phReportPath, reportDate });
+        const syncResponse = await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/syncDailyReport', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reportPath: phReportPath, reportDate }),
+        });
+        if (!syncResponse.ok) {
+          console.error('Failed to sync WOP daily report:', syncResponse.status, await syncResponse.text());
+        } else {
+          console.log('Successfully synced WOP daily report to LB API');
+        }
+      } catch (syncError) {
+        console.error('Error calling syncDailyReport API for WOP:', syncError);
+      }
       // Delete draft if exists
       try {
         await deleteDoc(doc(subtaskRef, 'revisions', phRev, 'dailyReportsDraft', reportDate));
@@ -3330,6 +3348,24 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         updateDoc(subtaskRef, progressUpdate),
         updateDoc(taskRef, progressUpdate),
       ]);
+      // Trigger daily report sync API (mirrors WOA flow in WorkOrderContext.addTaskUpdate) —
+      // without this, PreHandover (WOP) daily reports never produce a DailyEmployeeTimesheets record.
+      try {
+        const phReportPath = `workOrders/${wo.id}/categories/${cat.id}/tasks/${phTaskId}/subtasks/${phSubtaskId}/revisions/${phRev}/dailyReports/${reportDate}`;
+        console.log('Syncing WOP draft daily report to LB API...', { reportPath: phReportPath, reportDate });
+        const syncResponse = await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/syncDailyReport', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reportPath: phReportPath, reportDate }),
+        });
+        if (!syncResponse.ok) {
+          console.error('Failed to sync WOP draft daily report:', syncResponse.status, await syncResponse.text());
+        } else {
+          console.log('Successfully synced WOP draft daily report to LB API');
+        }
+      } catch (syncError) {
+        console.error('Error calling syncDailyReport API for WOP draft:', syncError);
+      }
       const snap = await getDocs(collection(subtaskRef, 'revisions', phRev, 'dailyReports'));
       const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
