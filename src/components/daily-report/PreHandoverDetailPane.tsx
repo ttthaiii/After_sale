@@ -1067,7 +1067,7 @@ export const PreHandoverDetailPane: React.FC = () => {
         >
           ปิด
         </button>
-        {isPhReportDatePast3Days && !isPhExistingReport ? (
+        {isPhReportDatePast3Days ? (
           <button
             onClick={submitPhRetroactiveRequest}
             disabled={phRetroactiveSubmitDone || isSubmitting}

@@ -373,12 +373,12 @@ const Evaluation = () => {
                 senderId: user?.id || 'admin',
                 senderName: (user as any)?.name || 'Admin',
                 title: 'คำขอรับรองย้อนหลัง (ก่อนโอน) ได้รับการอนุมัติแล้ว',
-                message: `วันที่ ${selectedPhRetroReq.id} หมวด "${selectedPhRetroReq.catName}" ถูกปลดล็อค 48 ชั่วโมง — กรุณากรอกรายงานและส่งได้เลย`,
+                message: `ข้อมูลวันที่ ${selectedPhRetroReq.id} หมวด "${selectedPhRetroReq.catName}" ถูกบันทึกลงระบบแล้ว`,
                 type: 'success',
                 targetPath: `/daily-report`
             });
             setSelectedPhRetroReq(null);
-            setModalAlert({ isOpen: true, title: 'อนุมัติสำเร็จ', message: 'ปลดล็อควันที่แล้ว โฟรแมนสามารถกรอกรายงานย้อนหลังได้ภายใน 48 ชั่วโมง', type: 'success' });
+            setModalAlert({ isOpen: true, title: 'อนุมัติสำเร็จ', message: 'ข้อมูลถูกบันทึกลงระบบเรียบร้อยแล้ว และแจ้งเตือนโฟรแมนแล้ว', type: 'success' });
         } catch (err: any) {
             setModalAlert({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: err.message || 'ไม่สามารถอนุมัติได้', type: 'error' });
         } finally {
@@ -900,6 +900,12 @@ const Evaluation = () => {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.78rem', color: '#475569' }}>
                                         <div>📅 วันที่ขอแก้: <strong>{req.id}</strong></div>
                                         <div>📍 {req.locationName || '-'}</div>
+                                        {req.payload && (
+                                            <div style={{ display: 'flex', gap: '12px' }}>
+                                                <span>📊 โปรเกรส: <strong>{req.payload?.progress ?? '-'}%</strong></span>
+                                                <span>👷 คนงาน: <strong>{req.payload?.labor?.length || 0} คน</strong></span>
+                                            </div>
+                                        )}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px', borderTop: '1px solid #f1f5f9' }}>
                                         <UserCircle size={14} color="#0d9488" />
@@ -1279,9 +1285,67 @@ const Evaluation = () => {
                             </div>
                         </div>
 
+                        {/* Payload */}
+                        {selectedPhRetroReq.payload && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div style={{ flex: 1, background: '#eff6ff', borderRadius: '12px', padding: '10px 14px', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1d4ed8' }}>{selectedPhRetroReq.payload?.progress ?? '-'}%</div>
+                                        <div style={{ fontSize: '0.73rem', color: '#3b82f6', fontWeight: 700 }}>ความคืบหน้า</div>
+                                    </div>
+                                    <div style={{ flex: 1, background: '#f0fdf4', borderRadius: '12px', padding: '10px 14px', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#16a34a' }}>{selectedPhRetroReq.payload?.labor?.length || 0}</div>
+                                        <div style={{ fontSize: '0.73rem', color: '#22c55e', fontWeight: 700 }}>คนงาน (คน)</div>
+                                    </div>
+                                    <div style={{ flex: 1, background: '#fdf4ff', borderRadius: '12px', padding: '10px 14px', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#7c3aed', marginTop: '2px' }}>{selectedPhRetroReq.payload?.type || '-'}</div>
+                                        <div style={{ fontSize: '0.73rem', color: '#a855f7', fontWeight: 700 }}>ประเภทงาน</div>
+                                    </div>
+                                </div>
+
+                                {selectedPhRetroReq.payload?.labor?.length > 0 && (
+                                    <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '12px 14px' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '6px' }}>รายการคนงาน</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                            {selectedPhRetroReq.payload.labor.map((l: any, i: number) => (
+                                                <div key={i} style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>{l.workerName || l.staffName || `คนงาน ${i + 1}`}</span>
+                                                    <span style={{ color: '#64748b' }}>
+                                                        {[l.shifts?.normal && 'ปกติ', l.shifts?.otMorning && 'OT เช้า', l.shifts?.otNoon && 'OT เที่ยง', l.shifts?.otEvening && 'OT เย็น'].filter(Boolean).join(', ')}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedPhRetroReq.payload?.note && (
+                                    <div style={{ background: '#fffbeb', borderRadius: '12px', padding: '10px 14px', border: '1px solid #fde68a' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400e', marginBottom: '4px' }}>หมายเหตุ</div>
+                                        <div style={{ fontSize: '0.82rem', color: '#78350f', lineHeight: 1.5 }}>{selectedPhRetroReq.payload.note}</div>
+                                    </div>
+                                )}
+
+                                {selectedPhRetroReq.payload?.photos && Object.values(selectedPhRetroReq.payload.photos).flat().filter(Boolean).length > 0 && (
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '6px' }}>รูปภาพ ({Object.values(selectedPhRetroReq.payload.photos).flat().filter(Boolean).length} รูป)</div>
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {(Object.values(selectedPhRetroReq.payload.photos).flat().filter(Boolean) as string[]).slice(0, 6).map((url, i) => (
+                                                <img key={i} src={url} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }} alt="" />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Notice */}
                         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '12px 14px', fontSize: '0.82rem', color: '#92400e', lineHeight: 1.6 }}>
-                            <strong>การอนุมัติจะ:</strong> ปลดล็อควันที่นี้ให้โฟรแมนสามารถกรอกและส่งรายงานได้ภายใน <strong>48 ชั่วโมง</strong> โดยไม่มีการเขียนข้อมูลลงระบบโดยตรง โฟรแมนต้องกรอกและยืนยันรายงานด้วยตนเอง
+                            {selectedPhRetroReq.payload ? (
+                                <><strong>การอนุมัติจะ:</strong> บันทึกข้อมูลด้านบนลงระบบทันที ไม่ต้องให้โฟรแมนกรอกซ้ำ</>
+                            ) : (
+                                <><strong>การอนุมัติจะ:</strong> ปลดล็อควันที่นี้ให้โฟรแมนสามารถกรอกและส่งรายงานได้ภายใน <strong>48 ชั่วโมง</strong> โดยไม่มีการเขียนข้อมูลลงระบบโดยตรง โฟรแมนต้องกรอกและยืนยันรายงานด้วยตนเอง (คำขอเก่าก่อนระบบแนบข้อมูลอัตโนมัติ)</>
+                            )}
                         </div>
 
                         <div><strong style={{ fontSize: '0.82rem', color: '#475569' }}>ผู้ส่งคำขอ:</strong> {selectedPhRetroReq.requestedBy || 'โฟรแมน'} · {selectedPhRetroReq.requestedAt ? new Date(selectedPhRetroReq.requestedAt).toLocaleString('th-TH') : ''}</div>
@@ -1301,7 +1365,7 @@ const Evaluation = () => {
                                         disabled={phRetroActionLoading}
                                         style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', background: phRetroActionLoading ? '#99f6e4' : '#0d9488', color: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: phRetroActionLoading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px rgba(13,148,136,0.2)' }}
                                     >
-                                        {phRetroActionLoading ? 'กำลังดำเนินการ...' : '✓ อนุมัติ — ปลดล็อควันที่'}
+                                        {phRetroActionLoading ? 'กำลังดำเนินการ...' : (selectedPhRetroReq.payload ? '✓ อนุมัติ — บันทึกข้อมูล' : '✓ อนุมัติ — ปลดล็อควันที่')}
                                     </button>
                                 </div>
                             ) : (

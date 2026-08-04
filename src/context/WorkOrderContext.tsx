@@ -1452,17 +1452,81 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
     ) => {
         const now = new Date().toISOString();
         const reqRef = doc(db, 'workOrders', woId, 'categories', catId, 'phRetroactiveRequests', requestDate);
-        // Unlock the date on the category for 48 hours
+        const reqSnap = await getDoc(reqRef);
+        if (!reqSnap.exists()) throw new Error('REQUEST_NOT_FOUND');
+        const req: any = reqSnap.data();
+        if (req.status !== 'pending') throw new Error('REQUEST_NOT_PENDING');
+
         const catRef = doc(db, 'workOrders', woId, 'categories', catId);
         const catSnap = await getDoc(catRef);
-        const existing = catSnap.data() || {};
-        const phUnlockedDates = existing.phUnlockedDates || {};
-        phUnlockedDates[requestDate] = {
-            unlockedUntil: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-            approvedBy: approvedBy.uid,
-            approvedAt: now,
-        };
-        await updateDoc(catRef, { phUnlockedDates });
+        const catData: any = catSnap.data() || {};
+        const woSnap = await getDoc(doc(db, 'workOrders', woId));
+        const woData: any = woSnap.exists() ? woSnap.data() : {};
+
+        if (req.payload) {
+            // Request already carries the full report (captured at submit time,
+            // 2026-08-04 fix) — write it straight into the real dailyReports doc
+            // on approval, same as WOA's approveRetroactiveRequest, so the foreman
+            // doesn't have to come back and re-enter the report after approval.
+            const currentRev = catData.currentRevision || 'rev00';
+            const phTaskId = catId;
+            const phSubtaskId = catId.replace(/^[A-Z]{2,4}-(?=[A-Z]{3}-)/i, '');
+            const taskRef = doc(db, 'workOrders', woId, 'categories', catId, 'tasks', phTaskId);
+            const subtaskRef = doc(taskRef, 'subtasks', phSubtaskId);
+            const reportRef = doc(subtaskRef, 'revisions', currentRev, 'dailyReports', requestDate);
+            await setDoc(reportRef, {
+                ...req.payload,
+                id: requestDate,
+                date: requestDate,
+                createdBy: req.requestedById,
+                createdAt: req.requestedAt,
+                updatedBy: approvedBy.uid,
+                updatedAt: now,
+                revisionId: currentRev,
+                revisionName: currentRev === 'rev00' ? 'Initial Revision' : `Revision ${currentRev}`,
+                status: 'submitted',
+                projectId: woData.projectId || '',
+                approvedBy: approvedBy.uid,
+                approvedAt: now,
+                isRetroactive: true,
+            }, { merge: true });
+            const progressUpdate = { dailyProgress: req.payload.progress, progressStatus: 'submitted', lastProgressUpdate: now };
+            await Promise.all([
+                updateDoc(subtaskRef, progressUpdate),
+                updateDoc(taskRef, progressUpdate),
+            ]);
+            // Same sync call submitPhDailyReport makes on a normal submit —
+            // without it this report would never produce a DailyEmployeeTimesheets
+            // record (the same class of gap fixed for the direct-submit path).
+            try {
+                const reportPath = `workOrders/${woId}/categories/${catId}/tasks/${phTaskId}/subtasks/${phSubtaskId}/revisions/${currentRev}/dailyReports/${requestDate}`;
+                const syncResponse = await fetch('https://asia-southeast1-after-sale-system.cloudfunctions.net/syncDailyReport', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reportPath, reportDate: requestDate }),
+                });
+                if (!syncResponse.ok) {
+                    console.error('Failed to sync approved WOP retroactive report:', syncResponse.status, await syncResponse.text());
+                }
+            } catch (syncError) {
+                console.error('Error calling syncDailyReport API for approved WOP retroactive report:', syncError);
+            }
+            try {
+                await deleteDoc(doc(subtaskRef, 'revisions', currentRev, 'dailyReportsDraft', requestDate));
+            } catch (_) {}
+        } else {
+            // Legacy request submitted before payload-capture existed — fall back
+            // to the old unlock-only behavior so an already-pending request isn't
+            // broken by this fix.
+            const phUnlockedDates = catData.phUnlockedDates || {};
+            phUnlockedDates[requestDate] = {
+                unlockedUntil: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                approvedBy: approvedBy.uid,
+                approvedAt: now,
+            };
+            await updateDoc(catRef, { phUnlockedDates });
+        }
+
         await updateDoc(reqRef, { status: 'approved', approvedBy, resolvedAt: now });
     };
 

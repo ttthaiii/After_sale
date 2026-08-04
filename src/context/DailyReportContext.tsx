@@ -3020,11 +3020,73 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (hasPhUnsavedChanges) (window as any).hasUnsavedChanges = true;
   }, [hasPhUnsavedChanges]);
 
+  // Captures the current form state into the request doc (mirrors WOA's
+  // submitRetroactiveRequest) so approvePhRetroactiveRequest can write the
+  // real dailyReports doc straight from the approval — no foreman re-entry
+  // "loop" after admin approval (user-flagged 2026-08-04 gap vs WOA).
   const submitPhRetroactiveRequest = async (): Promise<void> => {
     if (!selectedPhCatInfo) return;
     const { wo, cat } = selectedPhCatInfo;
+    const foremanEmpId = user?.employeeId || user?.id || '';
+    const reqRef = doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phRetroactiveRequests', reportDate);
+    // Block duplicate pending — mirrors WOA's submitRetroactiveRequest DUPLICATE_PENDING
+    // guard (WorkOrderContext.tsx). WOP's request doc ID is the date itself, so without
+    // this check a second submit would silently setDoc-overwrite the still-pending
+    // request's already-captured payload (user-flagged 2026-08-04).
+    const existingSnap = await getDoc(reqRef);
+    if (existingSnap.exists() && (existingSnap.data() as any).status === 'pending') {
+      setPhRetroactiveSubmitDone(true);
+      await showAlert("มีคำขอรับรองสำหรับวันนี้รออยู่แล้ว กรุณารอการรับรองก่อน");
+      return;
+    }
+    const laborPayload = labor
+      .filter(l => l.shifts?.normal || l.shifts?.otMorning || l.shifts?.otNoon || l.shifts?.otEvening)
+      .map(l => ({
+        membership: l.membership || 'Internal',
+        workerId: l.staffId || l.contractorId || (l as any).id || '',
+        workerName: l.staffName || l.affiliation || '',
+        staffId: l.staffId || '',
+        staffName: l.staffName || '',
+        contractorId: l.contractorId || '',
+        employeeId: l.employeeId || '',
+        shiftTimes: {
+          day: l.shifts?.normal ? l.shiftTimes?.day || '08:00 - 17:00' : null,
+          otMorning: l.shifts?.otMorning ? l.shiftTimes?.otMorning || '06:00 - 08:00' : null,
+          otNoon: l.shifts?.otNoon ? '12:00 - 13:00' : null,
+          otEvening: l.shifts?.otEvening ? l.shiftTimes?.otEvening || '18:00 - 21:00' : null,
+        },
+        shifts: {
+          normal: l.shifts?.normal || false,
+          otMorning: l.shifts?.otMorning || false,
+          otNoon: l.shifts?.otNoon || false,
+          otEvening: l.shifts?.otEvening || false,
+        },
+        expectedShifts: {
+          normal: l.shifts?.normal || false,
+          otMorning: l.shifts?.otMorning || false,
+          otNoon: l.shifts?.otNoon || false,
+          otEvening: l.shifts?.otEvening || false,
+        },
+        expectedHours: {
+          normal: l.shifts?.normal ? calculateWorkingHours(l.shiftTimes?.day || '08:00 - 17:00') : 0,
+          otMorning: l.shifts?.otMorning ? 2 : 0,
+          otNoon: l.shifts?.otNoon ? 1 : 0,
+          otEvening: l.shifts?.otEvening ? 3 : 0,
+        },
+        amount: l.amount || 1,
+        recordedBy: l.recordedBy || foremanEmpId,
+      }));
+    const photosPayload = {
+      site: sitePhotos.filter(Boolean),
+      laborByShift: {
+        regular: laborRegularPhotos.filter(Boolean),
+        otMorning: laborOtMorningPhotos.filter(Boolean),
+        otNoon: laborOtNoonPhotos.filter(Boolean),
+        otEvening: laborOtEveningPhotos.filter(Boolean),
+      },
+    };
     await setDoc(
-      doc(db, 'workOrders', wo.id, 'categories', cat.id, 'phRetroactiveRequests', reportDate),
+      reqRef,
       {
         requestDate: reportDate,
         requestedBy: user?.name || 'ไม่ระบุ',
@@ -3034,8 +3096,28 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         woId: wo.id,
         catId: cat.id,
         catName: cat.name,
+        payload: {
+          progress,
+          note,
+          type: 'Normal',
+          labor: laborPayload,
+          photos: photosPayload,
+        },
       }
     );
+    // Notify Admin — mirrors WOA's caller-side sendNotification after submitRetroactiveRequest
+    // (this was previously missing for WOP; Admin only found out by opening /evaluation).
+    try {
+      await sendNotification({
+        recipientRole: 'Admin',
+        senderId: user?.id || foremanEmpId,
+        senderName: (user as any)?.name || (user as any)?.displayName || 'โฟรแมน',
+        title: 'คำขอรับรองข้อมูลย้อนหลัง (ก่อนโอน)',
+        message: `${(user as any)?.name || 'โฟรแมน'} ขอรับรองข้อมูลวันที่ ${reportDate} หมวด "${cat.name}" (${wo.id}) — กรุณาตรวจสอบ`,
+        type: 'warning',
+        targetPath: '/evaluation',
+      });
+    } catch (_) {}
     setPhRetroactiveSubmitDone(true);
   };
 
@@ -3105,6 +3187,15 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
     if (progress > phProgressBounds.max) {
       await showAlert(`ความคืบหน้าสำหรับวันที่เลือกต้องไม่เกิน ${phProgressBounds.max}% (เนื่องจากมีข้อมูลวันที่หลังจากนี้ลงไปแล้ว)`);
+      return;
+    }
+    // Same "needs admin approval" gate savePhDraft uses — a locked (>3 day) date
+    // can't be final-submitted directly either, even if a draft already exists
+    // for it (matches WOA's handleSubmit gate — user-confirmed 2026-08-04: an
+    // existing draft must not bypass the retroactive-approval requirement).
+    if (isPhReportDatePast3Days) {
+      await submitPhRetroactiveRequest();
+      await showAlert("เกินกำหนด 3 วัน — ส่งคำขอรับรองข้อมูลย้อนหลังให้ Admin แล้ว");
       return;
     }
     submittingRef.current = true;
