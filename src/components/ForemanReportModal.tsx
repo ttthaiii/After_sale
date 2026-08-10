@@ -18,22 +18,51 @@ import { gridCols } from './ui/responsiveGrid';
 import { ModalCloseButton } from './ui/ModalCloseButton';
 
 // Helper to get all categories for dropdown
+// REGISTRY (superset) — every category name the system has EVER known, incl. legacy
+// combined ones. Used ONLY by isCustomCategory so a legacy value on an old WO is never
+// mistaken for a user-typed "custom" category. Order/positions here are irrelevant to
+// display; the identity/ID mapping lives in WorkOrderContext.CATEGORIES_LIST.
 const CATEGORIES_LIST = [
     'หมวดงานทั่วไป (General)',
     'งานโครงสร้าง',
-    'งานปูนฉาบ/ผิวพื้นผนัง',
-    'งานกระเบื้อง/สุขภัณฑ์',
+    'งานปูนฉาบ/ผิวพื้นผนัง',        // legacy — merged into ฉาบ-สี-ฝ้า, kept for old WOs
+    'งานกระเบื้อง/สุขภัณฑ์',        // legacy — split into กระเบื้อง + สุขภัณฑ์, kept for old WOs
     'งานไฟฟ้า',
     'งานระบบประปา/สุขาภิบาล',
-    'งานสี/เคลือบผิว',
-    'งานฝ้าเพดาน',
+    'งานสี/เคลือบผิว',              // legacy — merged into ฉาบ-สี-ฝ้า, kept for old WOs
+    'งานฝ้าเพดาน',                  // legacy — merged into ฉาบ-สี-ฝ้า, kept for old WOs
     'งานบานประตู/หน้าต่าง',
     'งานอลูมิเนียม/มุ้งลวด',
     'งานเฟอร์นิเจอร์บิวท์อิน',
     'งานระบบปรับอากาศ (Air)',
     'งานระบบโทรศัพท์/อินเตอร์เน็ต',
-    'งานระบบแจ้งเหตุเพลิงใหม่',
     'งานระบบความปลอดภัย',
+    'งานระบบแจ้งเหตุเพลิงใหม่',
+    'งานพื้น/พื้นไม้ลามิเนต',
+    'งานกระเบื้อง',                 // new (WorkOrderContext pos 17)
+    'งานสุขภัณฑ์',                  // new (WorkOrderContext pos 18)
+    'งานฉาบ-สี-ฝ้า (ตกแต่งผิว)',    // new (WorkOrderContext pos 19)
+];
+
+// DISPLAY list — the curated picklist a foreman actually sees for a NEW work order.
+// Decoupled from the registry above: the merged/split taxonomy (2026-08-10). Legacy
+// combined names are intentionally omitted here so new WOs can't pick them, but they
+// still render for an OLD WO on edit via the legacy-fallback in the <select> below.
+const CATEGORY_OPTIONS = [
+    'หมวดงานทั่วไป (General)',
+    'งานโครงสร้าง',
+    'งานฉาบ-สี-ฝ้า (ตกแต่งผิว)',
+    'งานกระเบื้อง',
+    'งานสุขภัณฑ์',
+    'งานไฟฟ้า',
+    'งานระบบประปา/สุขาภิบาล',
+    'งานบานประตู/หน้าต่าง',
+    'งานอลูมิเนียม/มุ้งลวด',
+    'งานเฟอร์นิเจอร์บิวท์อิน',
+    'งานระบบปรับอากาศ (Air)',
+    'งานระบบโทรศัพท์/อินเตอร์เน็ต',
+    'งานระบบความปลอดภัย',
+    'งานระบบแจ้งเหตุเพลิงใหม่',
     'งานพื้น/พื้นไม้ลามิเนต',
 ];
 
@@ -41,6 +70,15 @@ const CATEGORIES_LIST = [
 // name, so it can't collide with anything a user types (feedback 2026-08-04).
 const OTHER_CATEGORY_VALUE = '__OTHER__';
 const isCustomCategory = (category: string) => !CATEGORIES_LIST.includes(category);
+
+// Options to render for a given select: the curated list, plus the group's own
+// current value when it's a known-but-hidden LEGACY name (so editing an old WO shows
+// its category instead of silently snapping to the first option). Custom/free-text
+// values are handled separately by the OTHER_CATEGORY_VALUE path.
+const optionsForCategory = (current: string): string[] =>
+    (!current || CATEGORY_OPTIONS.includes(current) || isCustomCategory(current))
+        ? CATEGORY_OPTIONS
+        : [current, ...CATEGORY_OPTIONS];
 
 // A task is "decided" (locked from foreman edits) once it has moved past evaluation
 const DECIDED_STATUSES = ['Assigned', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'];
@@ -165,7 +203,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
     const [groups, setGroups] = useState<DefectGroup[]>([
         {
             id: crypto.randomUUID(),
-            category: CATEGORIES_LIST[0],
+            category: CATEGORY_OPTIONS[0],
             items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }]
         }
     ]);
@@ -237,7 +275,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                     }));
                     setGroups(loadedGroups.length > 0
                         ? loadedGroups
-                        : [{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [], defectCount: 0 }]);
+                        : [{ id: crypto.randomUUID(), category: CATEGORY_OPTIONS[0], items: [], defectCount: 0 }]);
                 } else {
                     // AfterSale: Map Categories → Groups with photo fallback chain
                     // Cancelled (taskArchived) tasks are hidden from the form — kept in archivedTasks instead.
@@ -290,9 +328,9 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             setPhSla('14-30d');
             setArchivedTasks({});
             if (initialWorkType === 'PreHandover') {
-                setGroups([{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [], defectCount: 0 }]);
+                setGroups([{ id: crypto.randomUUID(), category: CATEGORY_OPTIONS[0], items: [], defectCount: 0 }]);
             } else {
-                setGroups([{ id: crypto.randomUUID(), category: CATEGORIES_LIST[0], items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }] }]);
+                setGroups([{ id: crypto.randomUUID(), category: CATEGORY_OPTIONS[0], items: [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }] }]);
             }
         }
     }, [isOpen, initialWorkType, user?.name, editWorkOrder]);
@@ -302,7 +340,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         const isPreHandover = formState.type === 'PreHandover';
         setGroups([...groups, {
             id: crypto.randomUUID(),
-            category: CATEGORIES_LIST[0],
+            category: CATEGORY_OPTIONS[0],
             items: isPreHandover ? [] : [{ id: crypto.randomUUID(), position: '', detail: '', amount: 1, unit: 'จุด', images: [], estimatedSla: '24h' }],
             defectCount: isPreHandover ? 0 : undefined
         }]);
@@ -1200,7 +1238,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                             onChange={(e) => updateGroupCategory(group.id, e.target.value === OTHER_CATEGORY_VALUE ? '' : e.target.value)}
                                                             style={{ width: '100%', padding: '9px 32px 9px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', color: '#111827', fontSize: '0.9rem', outline: 'none', appearance: 'none', height: '40px' }}
                                                         >
-                                                            {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+                                                            {optionsForCategory(group.category).map(c => <option key={c} value={c}>{c}</option>)}
                                                             <option value={OTHER_CATEGORY_VALUE}>หมวดอื่นๆ</option>
                                                         </select>
                                                         <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }}><ChevronDown size={14} /></div>
@@ -1281,7 +1319,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                             onChange={(e) => updateGroupCategory(group.id, e.target.value)}
                                                             disabled={checkGroupHasReadOnlyItems(group)}
                                                         >
-                                                            {CATEGORIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+                                                            {optionsForCategory(group.category).map(c => <option key={c} value={c}>{c}</option>)}
                                                         </select>
                                                         <Wrench size={16} color={checkGroupHasReadOnlyItems(group) ? '#94a3b8' : '#6366f1'} />
                                                     </div>

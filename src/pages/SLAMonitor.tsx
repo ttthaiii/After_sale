@@ -6,7 +6,6 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
 import { computeJobSLA } from '../utils/jobSla';
-import { getJobCode } from '../utils/workOrder';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { logService } from '../services/logService';
@@ -287,8 +286,7 @@ const SLAMonitor = () => {
         });
 
         if (currentRole === 'Admin') {
-            // WOA/WOP decided via wo.type (getJobCode), not id string-matching — see [[woa-wop-type-helper]].
-            filteredWOs = filteredWOs.filter((wo) => getJobCode(wo) === 'WOA');
+            filteredWOs = filteredWOs.filter((wo) => (wo.id || '').toUpperCase().includes('WOA'));
         }
 
         if (currentRole === 'Foreman') {
@@ -380,20 +378,84 @@ const SLAMonitor = () => {
             .filter(wo => !selectedProjectId || wo.projectId === selectedProjectId);
     }, [workOrders, searchTerm, selectedProjectId]);
 
+    // Base WOA membership: the work orders that feed the WOA board, BEFORE any
+    // staff/project/search/date/sla filter. Single source reused by activeStaffIds
+    // + activeProjects so the predicate can't drift between them.
+    const visibleWoaWos = useMemo(() => {
+        const now = new Date();
+        const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        let base = workOrders.filter((wo) => {
+            if ((wo as any).type === 'PreHandover') return false;
+            if (wo.status === 'Draft' || wo.isArchived) return false;
+            if (wo.status === 'Complete') {
+                const completedDate = (wo as any).updatedAt || wo.createdAt || '';
+                if (!completedDate) return false;
+                const d = new Date(completedDate);
+                const woYM = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                return woYM === currentYM;
+            }
+            return true;
+        });
+        if (currentRole === 'Admin') base = base.filter((wo) => (wo.id || '').toUpperCase().includes('WOA'));
+        if (currentRole === 'Foreman') {
+            base = base.filter((wo) => {
+                const matchesUser = (id: string) => id === currentUserId || (!!user?.employeeId && id === user.employeeId);
+                const isReporter = matchesUser(wo.reporterId || '');
+                const isResponsible = wo.categories.some((c: any) => c.tasks.some((t: any) => t.responsibleStaffIds?.some((id: string) => matchesUser(id))));
+                return isReporter || isResponsible;
+            });
+        }
+        return base;
+    }, [workOrders, currentRole, currentUserId, user]);
+
     const activeStaffIds = useMemo(() => {
         const ids = new Set<string>();
-        flattenedTasks.forEach((task) => {
-            if (task.responsibleStaffIds) {
-                task.responsibleStaffIds.forEach((id: string) => ids.add(id));
-            }
-        });
+        if (viewMode === 'preHandover') {
+            // WOP: foreman is category.assignedForemanId — resolve to staff.id (line 915 rule).
+            phWorkOrders.forEach((wo: any) => {
+                (wo.categories || []).forEach((cat: any) => {
+                    const fid = cat.assignedForemanId;
+                    if (!fid) return;
+                    const s = staff.find((st) => st.id === fid || st.employeeId === fid);
+                    if (s) ids.add(s.id);
+                });
+            });
+        } else {
+            // WOA: from the shared base (NOT the staff-filtered list — that made this
+            // circular). Narrow by the selected project so the staff list tracks it.
+            let base = visibleWoaWos;
+            if (selectedProjectId) base = base.filter((wo) => wo.projectId === selectedProjectId);
+            base.forEach((wo) => {
+                (wo.categories || []).forEach((cat: any) => {
+                    (cat.tasks || []).forEach((t: any) => {
+                        (t.responsibleStaffIds || []).forEach((id: string) => ids.add(id));
+                    });
+                });
+            });
+        }
         return ids;
-    }, [flattenedTasks]);
+    }, [viewMode, visibleWoaWos, phWorkOrders, staff, selectedProjectId]);
 
     const activeProjects = useMemo(() => {
-        const projectIdsWithWOs = new Set(workOrders.filter((wo) => wo.status !== 'Draft').map((wo) => wo.projectId));
-        return projects.filter((p) => projectIdsWithWOs.has(p.id));
-    }, [projects, workOrders]);
+        // View-aware + non-circular: derive from the tab's source WOs, NOT from a
+        // project-filtered list (phWorkOrders already applies the project filter).
+        const ids = viewMode === 'preHandover'
+            ? new Set(workOrders.filter((wo) => (wo as any).type === 'PreHandover' && !wo.isArchived).map((wo) => wo.projectId))
+            : new Set(visibleWoaWos.map((wo) => wo.projectId));
+        return projects.filter((p) => ids.has(p.id));
+    }, [projects, viewMode, visibleWoaWos, workOrders]);
+
+    // Map a WOP work order's job-level SLA to the 4 filter buckets used by the
+    // "สถานะ SLA" dropdown (same buckets as WOA). null = not gradeable → hidden when a filter is on.
+    const wopSlaBucket = (wo: any): 'overdue' | 'warning' | 'normal' | 'completed' | null => {
+        const j = computeJobSLA(wo);
+        if (!j.isEligible) return null;
+        if (j.phase === 'done') return 'completed';
+        if (j.status === 'overdue') return 'overdue';
+        if (j.status === 'critical') return 'warning';
+        if (j.status === 'normal') return 'normal';
+        return null;
+    };
 
     const commonInputStyle = {
         background: '#fff',
@@ -527,14 +589,14 @@ const SLAMonitor = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem', background: '#fff', padding: '10px 16px', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#94a3b8', marginRight: '4px' }}>แสดง:</span>
                 <button
-                    onClick={() => setViewMode('afterSale')}
+                    onClick={() => { setViewMode('afterSale'); setSelectedStaffId(currentRole === 'Foreman' ? currentUserId : ''); }}
                     style={{ padding: '8px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: viewMode === 'afterSale' ? '#0f172a' : '#f1f5f9', color: viewMode === 'afterSale' ? '#fff' : '#64748b', fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: isMobile ? 1 : undefined }}
                 >
                     🔧 งานหลังขาย
                     <span style={{ background: viewMode === 'afterSale' ? 'rgba(255,255,255,0.2)' : '#e2e8f0', color: viewMode === 'afterSale' ? '#fff' : '#64748b', fontSize: '0.7rem', fontWeight: 900, padding: '1px 7px', borderRadius: '100px' }}>{flattenedTasks.length}</span>
                 </button>
                 <button
-                    onClick={() => setViewMode('preHandover')}
+                    onClick={() => { setViewMode('preHandover'); setSelectedStaffId(currentRole === 'Foreman' ? currentUserId : ''); }}
                     style={{ padding: '8px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: viewMode === 'preHandover' ? '#0d9488' : '#f1f5f9', color: viewMode === 'preHandover' ? '#fff' : '#64748b', fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: isMobile ? 1 : undefined }}
                 >
                     🏗️ ตรวจรับก่อนโอน
@@ -553,7 +615,7 @@ const SLAMonitor = () => {
                 ].map((column) => {
                     const columnTasks = flattenedTasks.filter((t) => {
                         // columns key directly off task.status — the single source of truth
-                        if (column.id === 'pending-eval') return t.status === 'Evaluating' || t.status === 'Rejected';
+                        if (column.id === 'pending-eval') return t.status === 'Evaluating' || (t.status === 'Rejected' && t.taskArchived !== true);
                         if (column.id === 'assigned-unstarted') return t.status === 'Assigned';
                         if (column.id === 'in-progress') return t.status === 'In Progress';
                         if (column.id === 'for-checking') return t.status === 'For Checking';
@@ -883,7 +945,7 @@ const SLAMonitor = () => {
             {viewMode === 'preHandover' && (
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '12px' : '24px', overflowX: isMobile ? 'visible' : 'auto', paddingBottom: '16px' }}>
                     {[
-                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived },
+                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived && !((cat.tasks?.length ?? 0) > 0 && cat.tasks.every((t: any) => t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true))) },
                         { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
                         // A draft-only 100% (progressStatus: 'draft') still counts as "in
                         // progress" here, not "waiting for customer" — matches the same
@@ -893,9 +955,17 @@ const SLAMonitor = () => {
                         { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && cat.progressStatus !== 'draft' && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
                         { id: 'completed',        label: 'สำเร็จ',                 color: '#059669', test: (_cat: any, wo: any) => !!wo.isArchived },
                     ].map((col) => {
-                        const items = phWorkOrders.flatMap((wo: any) =>
+                        const items = phWorkOrders
+                            .filter((wo: any) => !activeSlaFilter || wopSlaBucket(wo) === activeSlaFilter)
+                            .flatMap((wo: any) =>
                             (wo.categories || [])
                                 .filter((cat: any) => col.test(cat, wo))
+                                .filter((cat: any) => {
+                                    if (!selectedStaffId) return true;
+                                    const s = staff.find((st: any) => st.id === selectedStaffId);
+                                    if (!s) return false;
+                                    return cat.assignedForemanId === s.id || cat.assignedForemanId === s.employeeId;
+                                })
                                 .map((cat: any) => ({ ...cat, _wo: wo }))
                         );
                         const colKey = `ph:${col.id}`;

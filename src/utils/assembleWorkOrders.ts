@@ -354,6 +354,12 @@ function assembleCategoriesForWo(idx: CacheIndex, woId: string): Category[] {
       if (rev != null) wopMergedFields.currentRevision = rev;
       const prog = (wopTask as any).dailyProgress;
       if (prog != null) wopMergedFields.dailyProgress = prog;
+      // Lift progressStatus too — the QR-eligibility guard (cat.progressStatus !==
+      // 'draft') lives on the category, so a draft-only 100% must carry its 'draft'
+      // marker up here or the guard never sees it and the delivery-QR button
+      // unlocks off an unsubmitted draft (single source: savePhDraft writes it).
+      const pStatus = (wopTask as any).progressStatus;
+      if (pStatus != null) wopMergedFields.progressStatus = pStatus;
     }
 
     categories.push({ ...catData, ...wopMergedFields, id: catDoc.id, tasks } as Category);

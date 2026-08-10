@@ -599,15 +599,10 @@ export const PreHandoverDetailPane: React.FC = () => {
                                 >
                                   {isActive && <CheckCircle2 size={12} color="#fff" />}
                                 </div>
-                                {isActive && (
-                                  l.membership === 'Internal'
-                                    ? renderPhTimeInput(l.id, s.key === 'normal' ? 'normal' : s.key, rangeStr)
-                                    : (
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '2px 5px', fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>
-                                        <Clock size={10} />{rangeStr}
-                                      </div>
-                                    )
-                                )}
+                                {/* Time editable for BOTH Internal and Subco — the picker save path
+                                    (renderPhTimeInput → openTimePicker → handleTimeChange) keys purely on
+                                    labor id with no membership logic, so Subco reuses it as-is (2026-08-10). */}
+                                {isActive && renderPhTimeInput(l.id, s.key === 'normal' ? 'normal' : s.key, rangeStr)}
                               </div>
                             </td>
                           );

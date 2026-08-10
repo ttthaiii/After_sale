@@ -114,6 +114,13 @@ const CATEGORIES_LIST = [
     'งานระบบแจ้งเหตุเพลิงใหม่',       // pos 14 → 0014
     'งานระบบความปลอดภัย',              // pos 15 → 0015
     'งานพื้น/พื้นไม้ลามิเนต',          // pos 16 → 0016
+    // Append-only (2026-08-10): new taxonomy. Rows 1-16 above are the persistent
+    // identity of every existing WO's category doc id — NEVER reorder/rename them.
+    // Legacy combined names (pos 4 กระเบื้อง/สุขภัณฑ์, pos 3 ปูนฉาบ, pos 7 สี, pos 8 ฝ้า)
+    // stay above so old WOs still resolve to their original code; new WOs pick these.
+    'งานกระเบื้อง',                    // pos 17 → 0017
+    'งานสุขภัณฑ์',                     // pos 18 → 0018
+    'งานฉาบ-สี-ฝ้า (ตกแต่งผิว)',       // pos 19 → 0019
 ];
 
 // ✅ Helper to format category and task IDs according to the LB structure
