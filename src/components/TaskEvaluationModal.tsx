@@ -261,7 +261,7 @@ const TaskEvaluationModal = ({ isOpen, onClose, task, workOrderId, onConfirm }: 
                 </div>
 
                 {/* Body */}
-                <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '75vh', overflowY: 'auto' }}>
+                <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1, minHeight: 0, overflowY: 'auto' }}>
 
                     {/* Task Info Summary */}
                     <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '12px', border: '1px solid #dbeafe' }}>
