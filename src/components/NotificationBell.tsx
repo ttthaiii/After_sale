@@ -11,8 +11,10 @@ import { useIsMobile } from '../hooks/useIsMobile';
 // straight down on mobile (top:100%) so it never runs off a phone screen.
 const NotificationBell = () => {
     const { user } = useAuth();
-    const { unreadCount, notifications, markAsRead } = useNotifications();
+    const { unreadCount, notifications, markAsRead, markAllAsRead } = useNotifications();
     const [showNotifications, setShowNotifications] = useState(false);
+    const [showConfirmAll, setShowConfirmAll] = useState(false);
+    const [isMarkingAll, setIsMarkingAll] = useState(false);
     const navigate = useNavigate();
     const isMobile = useIsMobile();
 
@@ -76,7 +78,26 @@ const NotificationBell = () => {
                 }}>
                     <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>การแจ้งเตือน</h3>
-                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>ทั้งหมด {notifications.length}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {unreadCount > 0 && (
+                                <button
+                                    onClick={() => setShowConfirmAll(true)}
+                                    style={{
+                                        background: '#eef2ff',
+                                        border: '1px solid #e0e7ff',
+                                        color: '#4f46e5',
+                                        borderRadius: '8px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    อ่านทั้งหมด
+                                </button>
+                            )}
+                            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>ทั้งหมด {notifications.length}</span>
+                        </div>
                     </div>
                     <div style={{ overflowY: 'auto', flex: 1, padding: '8px' }}>
                         {notifications.length === 0 ? (
@@ -141,6 +162,84 @@ const NotificationBell = () => {
                                 )
                             })
                         )}
+                    </div>
+                </div>
+            )}
+
+            {showConfirmAll && (
+                <div
+                    onClick={() => !isMarkingAll && setShowConfirmAll(false)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(15, 23, 42, 0.45)',
+                        zIndex: 2000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '16px'
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#fff',
+                            borderRadius: '16px',
+                            boxShadow: '0 20px 40px -12px rgba(0,0,0,0.25)',
+                            width: 'min(360px, 100%)',
+                            padding: '22px',
+                            textAlign: 'center'
+                        }}
+                    >
+                        <div style={{
+                            width: '52px', height: '52px', borderRadius: '50%',
+                            background: '#eef2ff', color: '#4f46e5',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 14px'
+                        }}>
+                            <Bell size={24} />
+                        </div>
+                        <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                            ยืนยันอ่านทั้งหมด
+                        </h3>
+                        <p style={{ margin: '0 0 20px', fontSize: '0.88rem', color: '#6b7280', lineHeight: 1.5 }}>
+                            ทำเครื่องหมายว่าอ่านแล้วทั้งหมด {unreadCount} รายการใช่หรือไม่? การแจ้งเตือนจะยังอยู่ในรายการ แต่ตัวเลขแจ้งเตือนจะหายไป
+                        </p>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={() => setShowConfirmAll(false)}
+                                disabled={isMarkingAll}
+                                style={{
+                                    flex: 1, padding: '11px', borderRadius: '10px',
+                                    background: '#f3f4f6', border: '1px solid #e5e7eb',
+                                    color: '#374151', fontWeight: 700, cursor: 'pointer'
+                                }}
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (isMarkingAll) return;
+                                    setIsMarkingAll(true);
+                                    try {
+                                        await markAllAsRead();
+                                        setShowConfirmAll(false);
+                                    } finally {
+                                        setIsMarkingAll(false);
+                                    }
+                                }}
+                                disabled={isMarkingAll}
+                                style={{
+                                    flex: 1, padding: '11px', borderRadius: '10px',
+                                    background: '#4f46e5', border: 'none',
+                                    color: '#fff', fontWeight: 700,
+                                    cursor: isMarkingAll ? 'wait' : 'pointer',
+                                    opacity: isMarkingAll ? 0.7 : 1
+                                }}
+                            >
+                                {isMarkingAll ? 'กำลังทำ...' : 'ยืนยัน'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -429,6 +429,26 @@ const Evaluation = () => {
     const handleModalConfirm = async (updates: Partial<MasterTask>) => {
         if (!currentTask || !selectedWorkOrder) return;
 
+        // Multi-admin duplicate-action guard: selectedWorkOrder is kept real-time in sync,
+        // so re-read this task's live status. If it was still 'Evaluating' when the modal
+        // opened but another admin has since decided it, block the overwrite (no double
+        // write / double notification). Precise condition — does NOT block same-admin
+        // sequential multi-task evaluation or re-deciding an already-Rejected task.
+        const liveTask = selectedWorkOrder.categories
+            .flatMap(c => c.tasks)
+            .find(t => t.id === currentTask.id);
+        if (currentTask.status === 'Evaluating' && liveTask && liveTask.status !== 'Evaluating') {
+            const statusThai: Record<string, string> = { Assigned: 'มอบหมายงานแล้ว', Rejected: 'ปฏิเสธแล้ว' };
+            setModalAlert({
+                isOpen: true,
+                title: 'งานนี้ถูกดำเนินการแล้ว',
+                message: `งาน "${currentTask.name}" ถูกดำเนินการโดยแอดมินท่านอื่นแล้ว (สถานะ: ${statusThai[liveTask.status] || liveTask.status}) ระบบจึงไม่บันทึกซ้ำ`,
+                type: 'warning'
+            });
+            setIsEvalModalOpen(false);
+            return;
+        }
+
         const status = updates.status as 'Assigned' | 'Rejected';
         setTaskDecisions(prev => ({ ...prev, [currentTask.id]: status }));
 

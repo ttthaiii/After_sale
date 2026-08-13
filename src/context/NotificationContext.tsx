@@ -138,16 +138,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, [user, notifications]);
 
     const markAllAsRead = useCallback(async () => {
+        if (!user) return;
         try {
-            const unreadNotifications = notifications.filter(n => !n.isRead);
-            const promises = unreadNotifications.map(n =>
-                updateDoc(doc(db, 'notifications', n.id), { isRead: true })
+            // Per-user clearing: role-based notifications track readers in readBy[]
+            // (append ONLY this user's id — never touches other admins' unread state);
+            // direct notifications use isRead. Mirrors markAsRead for both types.
+            const unreadForUser = notifications.filter(n =>
+                n.recipientRole ? !n.readBy?.includes(user.id) : !n.isRead
             );
+            const promises = unreadForUser.map(n => {
+                const notificationRef = doc(db, 'notifications', n.id);
+                return n.recipientRole
+                    ? updateDoc(notificationRef, { readBy: [...(n.readBy || []), user.id] })
+                    : updateDoc(notificationRef, { isRead: true });
+            });
             await Promise.all(promises);
         } catch (error) {
             console.error("Error marking all as read:", error);
         }
-    }, [notifications]);
+    }, [user, notifications]);
 
     const sendNotification = useCallback(async (notificationData: Omit<Notification, 'id' | 'isRead' | 'createdAt'>) => {
         try {
