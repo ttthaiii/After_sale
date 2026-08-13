@@ -41,6 +41,7 @@ import {
     Line,
 } from 'recharts';
 import ForemanCalendar from '../components/ForemanCalendar';
+import ForemanDailyLaborSummary from '../components/ForemanDailyLaborSummary';
 import WorkOrderViewModal from '../components/WorkOrderViewModal';
 import HistoryDetailModal from '../components/HistoryDetailModal';
 import MasterFilter from '../components/MasterFilter';
@@ -2681,6 +2682,14 @@ const Dashboard = () => {
                                 </div>
                             </div>
 
+                            {/* Daily Labor Summary — foreman-only card at the bottom of the operations view */}
+                            {isForeman && (
+                                <ForemanDailyLaborSummary
+                                    workOrders={workOrders}
+                                    currentUserId={user?.id || ''}
+                                    currentEmployeeId={user?.employeeId}
+                                />
+                            )}
                         </>
                     ) : (
                         /* Insights Mode */
