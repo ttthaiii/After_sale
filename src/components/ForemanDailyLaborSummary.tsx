@@ -149,6 +149,7 @@ const ForemanDailyLaborSummary = ({ workOrders, currentUserId, currentEmployeeId
     const isMobile = useIsMobile();
     const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
     const [showCal, setShowCal] = useState(false);
+    const [nameFilter, setNameFilter] = useState('');
 
     const dayStr = toDayStr(selectedDay);
     const todayStr = toDayStr(new Date());
@@ -265,6 +266,20 @@ const ForemanDailyLaborSummary = ({ workOrders, currentUserId, currentEmployeeId
     }, [workOrders, currentUserId, currentEmployeeId]);
 
     const hasData = woGroups.length > 0;
+
+    // Worker-name filter: options come from the day's data; a stale filter (worker not on the newly
+    // selected day) auto-clears via activeFilter so the dropdown never shows a blank value.
+    const nameOptions = useMemo(() => {
+        const seen = new Set<string>();
+        const out: { key: string; name: string }[] = [];
+        woGroups.forEach(wg => wg.workers.forEach(w => { if (!seen.has(w.key)) { seen.add(w.key); out.push({ key: w.key, name: w.name }); } }));
+        return out.sort((a, b) => a.name.localeCompare(b.name));
+    }, [woGroups]);
+    const activeFilter = nameFilter && nameOptions.some(o => o.key === nameFilter) ? nameFilter : '';
+    const displayGroups = activeFilter
+        ? woGroups.map(wg => ({ ...wg, workers: wg.workers.filter(w => w.key === activeFilter) })).filter(wg => wg.workers.length > 0)
+        : woGroups;
+
     const shiftDay = (delta: number) => setSelectedDay(prev => { const n = new Date(prev); n.setDate(n.getDate() + delta); return n; });
     const dateLabel = `${selectedDay.getDate()} ${THAI_MONTHS[selectedDay.getMonth()]} ${selectedDay.getFullYear() + 543}`;
 
@@ -297,6 +312,15 @@ const ForemanDailyLaborSummary = ({ workOrders, currentUserId, currentEmployeeId
                         <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>วันนี้ใช้ใครไปบ้าง ทำงานอะไร กี่ ชม.</p>
                     </div>
                 </div>
+                {hasData && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', whiteSpace: 'nowrap' }}>ดูเฉพาะ:</span>
+                        <select value={activeFilter} onChange={e => setNameFilter(e.target.value)} style={{ padding: '7px 10px', borderRadius: '10px', border: `1px solid ${activeFilter ? '#c7d2fe' : '#e5e7eb'}`, background: activeFilter ? '#eef2ff' : '#f9fafb', color: '#334155', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', maxWidth: '210px' }}>
+                            <option value="">คนงานทั้งหมด ({nameOptions.length} คน)</option>
+                            {nameOptions.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
+                        </select>
+                    </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
                     <button onClick={() => shiftDay(-1)} aria-label="วันก่อนหน้า" style={navBtnStyle}><span style={navGlyphStyle}>‹</span></button>
                     <button onClick={() => setShowCal(v => !v)} aria-label="เลือกวันที่จากปฏิทิน" style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: isMobile ? '132px' : '154px', justifyContent: 'center', fontWeight: 800, color: '#334155', fontSize: '0.9rem', padding: '7px 10px', borderRadius: '10px', border: `1px solid ${showCal ? '#c7d2fe' : '#e5e7eb'}`, background: showCal ? '#eef2ff' : '#f9fafb', cursor: 'pointer' }}>
@@ -338,7 +362,7 @@ const ForemanDailyLaborSummary = ({ workOrders, currentUserId, currentEmployeeId
             ) : isMobile ? (
                 // Mobile: WO section header, then per-worker cards inside (WO not repeated per line)
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                    {woGroups.map(wg => (
+                    {displayGroups.map(wg => (
                         <div key={wg.woId}>
                             <div style={{ marginBottom: '8px' }}><WoHeader wg={wg} compact /></div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -383,11 +407,20 @@ const ForemanDailyLaborSummary = ({ workOrders, currentUserId, currentEmployeeId
             ) : (
                 // Desktop: one block per WO — WO header on top, worker rows inside (no repeated WO column)
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                    {woGroups.map(wg => (
+                    {displayGroups.map(wg => (
                         <div key={wg.woId} style={{ border: '1px solid #e5e9f0', borderRadius: '18px', overflow: 'hidden' }}>
                             <div style={{ padding: '11px 16px', background: '#f8fafc', borderBottom: '1px solid #eef2f7' }}><WoHeader wg={wg} /></div>
                             <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem', minWidth: '680px' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem', minWidth: '680px', tableLayout: 'fixed' }}>
+                                    <colgroup>
+                                        <col style={{ width: '22%' }} />
+                                        <col style={{ width: '30%' }} />
+                                        <col style={{ width: '9.6%' }} />
+                                        <col style={{ width: '9.6%' }} />
+                                        <col style={{ width: '9.6%' }} />
+                                        <col style={{ width: '9.6%' }} />
+                                        <col style={{ width: '9.6%' }} />
+                                    </colgroup>
                                     <thead>
                                         <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800 }}>
                                             <th style={thStyle}>คนงาน</th>
