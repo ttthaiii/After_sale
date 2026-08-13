@@ -748,6 +748,11 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             if (!isDraft) {
                 newWorkOrder.status = deriveWoStatus(categories.flatMap(c => c.tasks) as MasterTask[]);
             }
+
+            // AfterSale (WOA): persist optional attached documents in the same layer as WOP.
+            if (categories.length > 0) {
+                (categories[0] as any).documents = phDocuments;
+            }
         }
 
         newWorkOrder.categories = categories;
@@ -1206,6 +1211,35 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                         <ChevronDown size={16} />
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* AfterSale (WOA): optional document attachment (same layer as WOP) */}
+                                    {isAfterSale && (
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>
+                                                เอกสารแนบ (Documents)
+                                            </label>
+                                            <div style={{ background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {phDocuments.map((doc, idx) => (
+                                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', borderRadius: '8px', padding: '8px 12px', border: '1px solid #bbf7d0' }}>
+                                                        <FileText size={16} color="#059669" style={{ flexShrink: 0 }} />
+                                                        <span style={{ flex: 1, fontSize: '0.85rem', color: '#065f46', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</span>
+                                                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', flexShrink: 0 }}>{(doc.size / 1024).toFixed(0)} KB</span>
+                                                        <button onClick={() => removeDocument(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', display: 'flex', alignItems: 'center' }}>
+                                                            <X size={14} strokeWidth={3} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button
+                                                    onClick={() => document.getElementById('hidden-pdf-input')?.click()}
+                                                    disabled={isUploadingDoc}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: isUploadingDoc ? '#f1f5f9' : '#f0f9ff', border: '1px dashed #0284c7', borderRadius: '8px', color: '#0284c7', cursor: isUploadingDoc ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                                                >
+                                                    {isUploadingDoc ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+                                                    {isUploadingDoc ? 'กำลังอัปโหลด...' : 'แนบไฟล์ PDF'}
+                                                </button>
                                             </div>
                                         </div>
                                     )}
