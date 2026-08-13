@@ -945,15 +945,21 @@ const SLAMonitor = () => {
             {viewMode === 'preHandover' && (
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '12px' : '24px', overflowX: isMobile ? 'visible' : 'auto', paddingBottom: '16px' }}>
                     {[
-                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived && !((cat.tasks?.length ?? 0) > 0 && cat.tasks.every((t: any) => t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true))) },
-                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => wo.status !== 'Complete' && ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived && !((cat.tasks?.length ?? 0) > 0 && cat.tasks.every((t: any) => t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true))) },
+                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => wo.status !== 'Complete' && !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
                         // A draft-only 100% (progressStatus: 'draft') still counts as "in
                         // progress" here, not "waiting for customer" — matches the same
                         // rule as the WOA board's done-pending-qr test below
                         // (user-confirmed 2026-07-24).
-                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => (cat.dailyProgress || 0) > 0 && ((cat.dailyProgress || 0) < 100 || cat.progressStatus === 'draft') && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
-                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => (cat.dailyProgress || 0) >= 100 && cat.progressStatus !== 'draft' && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
-                        { id: 'completed',        label: 'สำเร็จ',                 color: '#059669', test: (_cat: any, wo: any) => !!wo.isArchived },
+                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => wo.status !== 'Complete' && (cat.dailyProgress || 0) > 0 && ((cat.dailyProgress || 0) < 100 || cat.progressStatus === 'draft') && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => wo.status !== 'Complete' && (cat.dailyProgress || 0) >= 100 && cat.progressStatus !== 'draft' && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        // Customer-rated WOP → wo.status === 'Complete' (set on customer approval,
+                        // no isArchived flag is ever written). Match History's completion signal
+                        // (isWorkOrderFullyCompleted) so a rated order lands here, not "กำลังทำ".
+                        // wo.status === 'Complete' happens ONLY when every category is approved
+                        // (a partial reject is 'customer_reject'), so this can't pull an unfinished WO.
+                        // The four earlier columns exclude status==='Complete' to avoid a duplicate. (2026-08-13)
+                        { id: 'completed',        label: 'สำเร็จ',                 color: '#059669', test: (_cat: any, wo: any) => wo.status === 'Complete' || !!wo.isArchived },
                     ].map((col) => {
                         const items = phWorkOrders
                             .filter((wo: any) => !activeSlaFilter || wopSlaBucket(wo) === activeSlaFilter)

@@ -1273,9 +1273,13 @@ const Dashboard = () => {
     }, [filteredData, user, projects, selectedForemanId]);
 
     const getTaskDisplayStatus = (t: any): string => {
+        // "เสร็จสมบูรณ์" = customer inspected + rated. WOA carries Complete on the task;
+        // WOP carries it on the parent WO (wo.status='Complete'; the category/task status
+        // stays 'pending_delivery'). System-wide single source = status==='Complete'
+        // (matches SLAMonitor + History + the WO-group header) — NOT raw 100% progress. (2026-08-13)
+        if (t.status === 'Complete' || t.woStatus === 'Complete') return 'เสร็จสมบูรณ์';
         if (t.status === 'For Checking' || t.status === 'pending_delivery') return 'รอลูกค้าประเมิน';
-        const p = t.dailyProgress ?? t.progress ?? (t.status === 'Complete' ? 100 : 0);
-        if (p === 100 || t.status === 'Complete') return 'เสร็จสมบูรณ์';
+        const p = t.dailyProgress ?? t.progress ?? 0;
         if (p > 0) return 'กำลังดำเนินการ';
         return 'ยังไม่เริ่ม';
     };
@@ -3313,9 +3317,12 @@ const Dashboard = () => {
                                                             : (isTaskDone && isWoCompleted && woCompletedAt ? woCompletedAt : null);
 
                                                         // Calendar days from startDate to completion
-                                                        const tStartDate = task.startDate ? new Date(task.startDate.split('T')[0] + 'T08:00:00+07:00') : null;
-                                                        const calDaysUsed = (tStartDate && taskCompletedAt)
-                                                            ? Math.max(1, Math.ceil((taskCompletedAt.getTime() - tStartDate.getTime()) / 86400000)) : null;
+                                                        // calDaysUsed uses the WOP-aware start (taskStartDate = task.startDate ||
+                                                        // wo.scheduledDate for WOP, computed at 3294) so a completed WOP shows
+                                                        // ช่วงเวลาที่ใช้ instead of "—". WOA unchanged: taskStartDate === the old
+                                                        // task.startDate-only value whenever task.startDate is present. (2026-08-13)
+                                                        const calDaysUsed = (taskStartDate && taskCompletedAt)
+                                                            ? Math.max(1, Math.ceil((taskCompletedAt.getTime() - taskStartDate.getTime()) / 86400000)) : null;
 
                                                         // +/- days vs task deadline
                                                         const taskDaysDiff = (isWoCompleted && taskCompletedAt)
@@ -3326,14 +3333,35 @@ const Dashboard = () => {
                                                             ? parseInt(String(task.currentRevision).replace(/[^0-9]/g, '')) || 0 : 0;
 
                                                         // Total labor hours — history[].labor[].expectedHours (ไม่คูณ amount)
+                                                        // Per-labor-row working hours. WOA carries expectedHours; WOP (PreHandover)
+                                                        // has only `shifts` booleans → derive with WOA's own constants (normal 8 /
+                                                        // otMorning 2 / otNoon 1 / otEvening 3). isWop-gated → WOA byte-identical. (2026-08-13)
+                                                        const rowHours = (l: any): number => {
+                                                            const eh = l.expectedHours || {};
+                                                            let hrs = (eh.normal || 0) + (eh.otNoon || 0) + (eh.otEvening || 0) + (eh.otMorning || 0);
+                                                            if (hrs === 0 && isWop) {
+                                                                const sh = l.shifts || {};
+                                                                hrs = (sh.normal ? 8 : 0) + (sh.otMorning ? 2 : 0) + (sh.otNoon ? 1 : 0) + (sh.otEvening ? 3 : 0);
+                                                            }
+                                                            return hrs;
+                                                        };
+                                                        // ชม.รวม = total man-hours (every worker, every day) — total effort.
                                                         const totalLaborHrs = (task.history || []).reduce((sum: number, h: any) =>
-                                                            sum + ((h.labor || []).reduce((s: number, l: any) => {
-                                                                const eh = l.expectedHours || {};
-                                                                return s + (eh.normal || 0) + (eh.otNoon || 0) + (eh.otEvening || 0) + (eh.otMorning || 0);
-                                                            }, 0)), 0);
-                                                        // วันทำจริง: ≥8ชม. = วัน, <8ชม. = แสดงเป็นชม.
-                                                        const workDaysVal = totalLaborHrs >= 8 ? Math.round(totalLaborHrs / 8) : null;
-                                                        const workHrsOnly = totalLaborHrs > 0 && totalLaborHrs < 8 ? totalLaborHrs : null;
+                                                            sum + ((h.labor || []).reduce((s: number, l: any) => s + rowHours(l), 0)), 0);
+                                                        // วันทำจริง = actual CALENDAR DATES worked, NOT man-hours/8. Each date's
+                                                        // coverage is de-duped across workers (max single-worker hours — 4 workers in
+                                                        // one day = 1 day, not 4) and capped at one workday (8h; OT stays in ชม.รวม).
+                                                        // Partial dates pool: two 4h days = 8h = 1 day. Keeps วันทำจริง ≤ ช่วงเวลาที่ใช้.
+                                                        // Shared with WOA — single-worker case is byte-identical (max == sum per date). (2026-08-13)
+                                                        const dateCoverage = new Map<string, number>();
+                                                        (task.history || []).forEach((h: any) => {
+                                                            const dayHrs = (h.labor || []).reduce((mx: number, l: any) => Math.max(mx, rowHours(l)), 0);
+                                                            if (dayHrs > 0) dateCoverage.set(h.date, Math.max(dateCoverage.get(h.date) || 0, dayHrs));
+                                                        });
+                                                        let effWorkHrs = 0;
+                                                        dateCoverage.forEach((h) => { effWorkHrs += Math.min(8, h); });
+                                                        const workDaysVal = effWorkHrs >= 8 ? Math.round(effWorkHrs / 8) : null;
+                                                        const workHrsOnly = effWorkHrs > 0 && effWorkHrs < 8 ? effWorkHrs : null;
 
                                                         const fmtDeadline = (d: Date) => {
                                                             const dd = d.getDate().toString().padStart(2,'0');
@@ -3516,39 +3544,36 @@ const Dashboard = () => {
                                                                     </td>
 
                                                                     <td style={{ padding: '0 4px', textAlign: 'center' }}>
-                                                                        {(task.status === 'For Checking' || task.status === 'pending_delivery') ? (
-                                                                            <span style={{
-                                                                                padding: '2px 7px',
-                                                                                background: '#fff7ed',
-                                                                                color: '#ea580c',
-                                                                                borderRadius: '8px',
-                                                                                fontSize: '0.7rem',
-                                                                                fontWeight: 800,
-                                                                                display: 'inline-flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '4px',
-                                                                                border: '1px solid #fed7aa'
-                                                                            }}>
-                                                                                <UserCheck size={14} />
-                                                                                รอลูกค้าประเมิน
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span style={{
-                                                                                padding: '2px 7px',
-                                                                                background: p === 100 ? '#ecfdf5' : p > 0 ? '#eff6ff' : '#f8fafc',
-                                                                                color: p === 100 ? '#10b981' : p > 0 ? '#3b82f6' : '#64748b',
-                                                                                borderRadius: '8px',
-                                                                                fontSize: '0.7rem',
-                                                                                fontWeight: 800,
-                                                                                display: 'inline-flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '6px',
-                                                                                border: `1px solid ${p === 100 ? '#d1fae5' : p > 0 ? '#dbeafe' : '#f1f5f9'}`
-                                                                            }}>
-                                                                                {p === 100 ? <CheckCircle2 size={14} /> : p > 0 ? <Clock size={14} /> : <AlertCircle size={14} />}
-                                                                                {p === 100 ? 'เสร็จสมบูรณ์' : p > 0 ? 'กำลังดำเนินการ' : 'ยังไม่เริ่ม'}
-                                                                            </span>
-                                                                        )}
+                                                                        {(() => {
+                                                                            // Single source: same label fn as the status filter, keyed on
+                                                                            // status==='Complete' (customer rated), never raw 100% progress.
+                                                                            const s = getTaskDisplayStatus(task);
+                                                                            const cfg = s === 'เสร็จสมบูรณ์'
+                                                                                ? { bg: '#ecfdf5', color: '#10b981', border: '#d1fae5', Icon: CheckCircle2 }
+                                                                                : s === 'รอลูกค้าประเมิน'
+                                                                                ? { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa', Icon: UserCheck }
+                                                                                : s === 'กำลังดำเนินการ'
+                                                                                ? { bg: '#eff6ff', color: '#3b82f6', border: '#dbeafe', Icon: Clock }
+                                                                                : { bg: '#f8fafc', color: '#64748b', border: '#f1f5f9', Icon: AlertCircle };
+                                                                            const Icon = cfg.Icon;
+                                                                            return (
+                                                                                <span style={{
+                                                                                    padding: '2px 7px',
+                                                                                    background: cfg.bg,
+                                                                                    color: cfg.color,
+                                                                                    borderRadius: '8px',
+                                                                                    fontSize: '0.7rem',
+                                                                                    fontWeight: 800,
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '4px',
+                                                                                    border: `1px solid ${cfg.border}`
+                                                                                }}>
+                                                                                    <Icon size={14} />
+                                                                                    {s}
+                                                                                </span>
+                                                                            );
+                                                                        })()}
                                                                     </td>
                                                                     <td style={{ textAlign: 'right', paddingRight: '0.75rem' }}>
                                                                         <button 
