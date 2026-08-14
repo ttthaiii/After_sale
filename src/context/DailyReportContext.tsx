@@ -424,7 +424,11 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       filteredHistory.reduce((max: number, h: any) => Math.max(max, h.progress), 0) || 0;
     const actualProgress = Math.max(currentTask.dailyProgress || 0, historyMax);
     return (
-      actualProgress >= 100 ||
+      // A draft-only 100% (progressStatus: 'draft') is NOT finished — it must stay
+      // editable + submittable, mirroring the app-wide isReallyDone100 predicate
+      // (WorkOrderGroupList.tsx:247). Without this check a 100% draft hid the edit
+      // button + submit footer, trapping the foreman with no way forward. (2026-08-14)
+      (actualProgress >= 100 && currentTask.progressStatus !== 'draft') ||
       [
         "Completed",
         "Verified",
