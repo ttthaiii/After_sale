@@ -2015,13 +2015,30 @@ const Dashboard = () => {
                     const revCount = t.currentRevision ? parseInt(String(t.currentRevision).replace(/[^0-9]/g, '')) || 0 : 0;
                     map[name].totalRev += revCount;
                     const history = t.history || [];
-                    // ใช้ logic เดียวกับ Task Performance Details table (expectedHours)
-                    const totalLaborHrs = history.reduce((sum: number, h: any) =>
-                        sum + (h.labor || []).reduce((s: number, l: any) => {
-                            const eh = l.expectedHours || {};
-                            return s + (eh.normal || 0) + (eh.otNoon || 0) + (eh.otEvening || 0) + (eh.otMorning || 0);
-                        }, 0), 0);
-                    const workDays = totalLaborHrs >= 8 ? Math.round(totalLaborHrs / 8) : (totalLaborHrs > 0 ? 1 : 0);
+                    // Days-to-complete = ACTUAL calendar dates worked — mirrors the Task Performance
+                    // Details table's rowHours + dateCoverage (Dashboard.tsx:3354-3378). WOP (ก่อนโอน)
+                    // carries no expectedHours → derive from `shifts` booleans (8/2/1/3). Dates are
+                    // de-duped across workers (max single-worker hrs/date, capped 8h) so a 4-worker day
+                    // counts as 1 day, not 4. NOTE: logic duplicated from the table for safety (no table
+                    // edit); extract to a shared helper when the director dashboard consolidates this.
+                    const isWop = wo.workOrderCode === 'WOP' || (wo as any).type === 'PreHandover';
+                    const rowHours = (l: any): number => {
+                        const eh = l.expectedHours || {};
+                        let hrs = (eh.normal || 0) + (eh.otNoon || 0) + (eh.otEvening || 0) + (eh.otMorning || 0);
+                        if (hrs === 0 && isWop) {
+                            const sh = l.shifts || {};
+                            hrs = (sh.normal ? 8 : 0) + (sh.otMorning ? 2 : 0) + (sh.otNoon ? 1 : 0) + (sh.otEvening ? 3 : 0);
+                        }
+                        return hrs;
+                    };
+                    const dateCoverage = new Map<string, number>();
+                    history.forEach((h: any) => {
+                        const dayHrs = (h.labor || []).reduce((mx: number, l: any) => Math.max(mx, rowHours(l)), 0);
+                        if (dayHrs > 0) dateCoverage.set(h.date, Math.max(dateCoverage.get(h.date) || 0, dayHrs));
+                    });
+                    let effWorkHrs = 0;
+                    dateCoverage.forEach((h) => { effWorkHrs += Math.min(8, h); });
+                    const workDays = effWorkHrs >= 8 ? Math.round(effWorkHrs / 8) : (effWorkHrs > 0 ? 1 : 0);
                     if (workDays > 0) {
                         map[name].totalDays += workDays;
                         map[name].completedCount++;
