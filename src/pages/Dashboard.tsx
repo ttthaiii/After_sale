@@ -2002,7 +2002,13 @@ const Dashboard = () => {
                     const isMine = isAdminOrManager || tResp.some((id: string) => id === user?.id || (user?.employeeId && id === user.employeeId));
                     if (!isMine) return;
                     const isWaitingEval = t.status === 'For Checking' || t.status === 'pending_delivery';
-                    const isDone = !isWaitingEval && (t.status === 'Complete' || (t.dailyProgress === 100 && t.progressStatus !== 'draft'));
+                    // WOP (ก่อนโอน): completion lands on the parent WO (wo.status='Complete'); the subtask
+                    // status stays 'pending_delivery'. Mirror getTaskDisplayStatus (Dashboard.tsx:1281,
+                    // t.status==='Complete' || t.woStatus==='Complete') so a customer-accepted WOP is
+                    // counted here, not dropped as "waiting eval". When wo.status !== 'Complete' the
+                    // expression is unchanged → zero WOA behavior change.
+                    const isDone = wo.status === 'Complete'
+                        || (!isWaitingEval && (t.status === 'Complete' || (t.dailyProgress === 100 && t.progressStatus !== 'draft')));
                     if (!isDone) return;
                     if (!map[name]) map[name] = { count: 0, totalDays: 0, completedCount: 0, totalRev: 0 };
                     map[name].count++;
