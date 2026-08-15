@@ -1358,6 +1358,13 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
         // Determine save path — same logic as addTaskUpdate
         const isWOA = isWoaWopType(allWorkOrders.find(w => w?.id === workOrderId));
         const now = new Date().toISOString();
+        // Remember the Firestore-resolved active revision from the WOA branch so the
+        // draft delete below targets the SAME rev the report was written to (single
+        // source). Otherwise the delete re-derives the rev from the admin's in-memory
+        // cache only (no Firestore fallback) and can miss — leaving the foreman's
+        // isPendingRetroactive draft in place, so the "waiting for approval" banner
+        // never clears after approval.
+        let resolvedWoaRev: string | null = null;
 
         if (isWOA) {
             // Derive subtask ID the same way addTaskUpdate does
@@ -1377,6 +1384,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                     }
                 } catch (_) {}
             }
+            resolvedWoaRev = currentRev;
             const reportRef = doc(db,
                 'workOrders', workOrderId,
                 'categories', categoryId,
@@ -1472,7 +1480,7 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             const draftSubId = getSubtaskId(taskId);
             const woMem2 = allWorkOrders.find(w => w?.id === workOrderId);
             const taskMem2 = woMem2?.categories?.find((c: any) => c?.id === categoryId)?.tasks?.find((t: any) => t?.id === taskId);
-            const draftRev = taskMem2?.currentRevision || 'rev00';
+            const draftRev = resolvedWoaRev || taskMem2?.currentRevision || 'rev00';
             const draftRef = isWOA
                 ? doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', draftSubId, 'revisions', draftRev, 'dailyReportsDraft', requestDate)
                 : doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'dailyreportDraft', requestDate);
