@@ -1390,6 +1390,16 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
             const taskRefWoa = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
             const taskSnapWoa = await getDoc(taskRefWoa);
             const taskProjectId = taskSnapWoa.exists() ? (taskSnapWoa.data() as any).projectId || '' : '';
+            // Mirror the normal submit (addTaskUpdate ~:867-869): ensure the revision
+            // doc physically exists (with projectId) BEFORE writing the report.
+            // Otherwise the revision stays a "phantom" doc that the foreman's
+            // non-privileged `revisions` collectionGroup listener (projectId-filtered,
+            // useRealtimeWorkOrders) never delivers — so assembleWorkOrders cannot
+            // aggregate the approved report into the foreman's task.history, the
+            // foreman sees no report for the date, and the >3-day pane re-shows
+            // "ส่งขอรับรอง" forever (the reported re-request loop).
+            const revDocRefRetro = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId, 'revisions', currentRev);
+            await setDoc(revDocRefRetro, { revisionId: currentRev, projectId: taskProjectId, createdAt: now }, { merge: true });
             await setDoc(reportRef, {
                 ...payload,
                 id: requestDate,
