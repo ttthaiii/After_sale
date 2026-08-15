@@ -1404,10 +1404,29 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 isRetroactive: true,
                 projectId: taskProjectId,
             }, { merge: true });
-            // T-335: persists dailyProgress on the task doc. (Was also relied on to
-            // force a re-fetch; the collectionGroup delta cache now refreshes directly,
-            // but this write still carries real progress data, so it stays.)
-            await updateDoc(taskRefWoa, { dailyProgress: payload.progress, updatedAt: now });
+            // Mirror the canonical WOA submit (addTaskUpdate ~:924-953) and the WOP
+            // retroactive path (approvePhRetroactiveRequest ~:1500-1504): an approved
+            // retroactive request IS a real submission, so stamp progressStatus:'submitted'
+            // (+ status/completedAt) on BOTH task and subtask, then recompute the WO.
+            // Previously this wrote only dailyProgress, leaving progressStatus at 'draft',
+            // so the handover QR never appeared (the reported bug). (T-335 re-fetch note:
+            // the collectionGroup delta cache refreshes directly; this write carries real
+            // progress data, so it stays — now with the full submitted-completion state.)
+            const isCompletedRetro = payload.progress === 100;
+            const progressUpdateRetro: any = {
+                dailyProgress: payload.progress,
+                progressStatus: 'submitted',
+                status: isCompletedRetro ? 'For Checking' : 'In Progress',
+                updatedAt: now,
+                ...(isCompletedRetro ? { completedAt: now } : {}),
+            };
+            const subtaskRefWoa = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId, 'subtasks', subtaskId);
+            await Promise.all([
+                updateDoc(taskRefWoa, progressUpdateRetro),
+                updateDoc(subtaskRefWoa, progressUpdateRetro),
+            ]);
+            const woStatusRetro = await recomputeWoStatus(workOrderId);
+            await updateDoc(doc(db, 'workOrders', workOrderId), { status: woStatusRetro, lastUpdate: now });
         } else {
             const taskRef = doc(db, 'workOrders', workOrderId, 'categories', categoryId, 'tasks', taskId);
             const taskSnap = await getDoc(taskRef);
