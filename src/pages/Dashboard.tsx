@@ -1435,7 +1435,10 @@ const Dashboard = () => {
                     const isCompleted = t.status === 'Complete';
                     // งานถึง 100% แล้ว = นับ SLA ฝั่งช่าง
                     const isWorkDone = isCompleted || isWaitingCustomerEval || (t.dailyProgress ?? t.progress ?? 0) === 100;
-                    if (isCompleted) closed++;
+                    // "เสร็จแล้ว" (การ์ดรายการย่อย · ข้อมูลภายใน) = งานที่ทำถึง 100% แล้ว — นับที่ความคืบหน้าจริง
+                    // ไม่ผูกกับการออก QR / ลูกค้าประเมิน (รวมงานที่ 100% แต่ยังเป็น draft ด้วย เพราะเป็นมุมมองภายใน).
+                    const isTaskDone100 = (t.dailyProgress ?? t.progress ?? 0) === 100 || isCompleted;
+                    if (isTaskDone100) closed++;
                     else if (!isWorkDone) open++;
                 });
             });
