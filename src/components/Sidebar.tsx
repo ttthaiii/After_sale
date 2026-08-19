@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LayoutDashboard, ClipboardList, Clock, LogOut, CheckCircle2, Users, Archive } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Clock, LogOut, CheckCircle2, Users, Archive, BarChart3 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 
 interface SidebarProps {
@@ -24,6 +24,12 @@ const Sidebar = ({ onNavigate, isMobile }: SidebarProps) => {
             path: '/dashboard',
             icon: <LayoutDashboard size={20} />,
             roles: ['Foreman', 'Approver', 'Admin', 'Manager']
+        },
+        {
+            label: 'แดชบอร์ด ผอ.',
+            path: '/director',
+            icon: <BarChart3 size={20} />,
+            roles: ['Director', 'Approver', 'Admin', 'Manager']
         },
         {
             label: 'ใบงานและติดตามผล',

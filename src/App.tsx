@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './pages/Dashboard';
+import DirectorDashboard from './pages/DirectorDashboard';
 import Entry from './pages/Entry';
 import SLAMonitor from './pages/SLAMonitor';
 import DailyReport from './pages/DailyReport';
@@ -31,6 +32,7 @@ function App() {
                                 <Route path="/" element={<MainLayout />}>
                                     <Route index element={<Navigate to="/dashboard" replace />} />
                                     <Route path="dashboard" element={<Dashboard />} />
+                                    <Route path="director" element={<DirectorDashboard />} />
                                     <Route path="work-orders" element={<Entry />} />
                                     <Route path="sla-monitor" element={<SLAMonitor />} />
                                     <Route path="daily-report" element={<DailyReport />} />
