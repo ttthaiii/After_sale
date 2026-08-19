@@ -11,7 +11,7 @@ import {
     ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis,
     CartesianGrid, Tooltip, Cell, LineChart, Line, BarChart, Bar,
 } from 'recharts';
-import { computeJobSLA, getCountedSubtasks } from '../utils/jobSla';
+import { computeJobSLA, getCountedSubtasks, confirmedProgress } from '../utils/jobSla';
 import TaskHistoryModal from '../components/TaskHistoryModal';
 
 // Shared SLA status -> Thai label + colors (single visual convention across blocks).
@@ -61,10 +61,13 @@ const KpiCard = ({ icon, value, unit, label, help, accent, onClick }: {
 );
 
 // Subtask status chip — pure mapping of EXISTING task fields (t.status /
-// t.dailyProgress) to a Thai label + colors. NOT a new SLA rule; just a display
-// of the fields the app already tracks per subtask.
+// CONFIRMED progress) to a Thai label + colors. NOT a new SLA rule; just a display
+// of the fields the app already tracks per subtask. Progress reads via
+// confirmedProgress (submitted daily reports only; draft ignored — user rule
+// 2026-08-19) so a draft-only save keeps the subtask in "มอบหมาย", consistent
+// with SLAMonitor / Dashboard.
 const subChip = (t: any): { label: string; color: string; bg: string } => {
-    const prog = t?.dailyProgress ?? t?.progress ?? 0;
+    const prog = confirmedProgress(t);
     const st = t?.status;
     if (st === 'Complete' || prog >= 100) return { label: 'เสร็จ', color: '#059669', bg: '#d1fae5' };
     if (st === 'For Checking')            return { label: 'รอตรวจ', color: '#7c3aed', bg: '#ede9fe' };

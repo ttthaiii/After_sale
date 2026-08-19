@@ -77,9 +77,15 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                 const col = revColors[revIdx % revColors.length];
                                 const revHrs = calcHrs(logs);
                                 const revDays = new Set(logs.map((l: any) => l.date?.split('T')[0]).filter(Boolean)).size;
-                                const lastProg = logs[logs.length - 1]?.progress ?? 0;
-                                // Find start progress of this revision (progress before first entry)
-                                const allBeforeThisRev = history.filter((l: any) => (l.revisionId || 'rev00') !== revId);
+                                // CONFIRMED progress only (draft ignored — user rule 2026-08-19): a draft
+                                // daily report (log.status==='draft') must NOT light the "งานเสร็จ" step,
+                                // advance resultStatus, or move the rev range. Derive rev completion from
+                                // SUBMITTED logs only. (log.status = the report doc's submit status,
+                                // spread in via assembleWorkOrders; distinct from log.revisionStatus.)
+                                const submittedLogs = logs.filter((l: any) => (l as any).status !== 'draft');
+                                const lastProg = submittedLogs.length ? (submittedLogs[submittedLogs.length - 1]?.progress ?? 0) : 0;
+                                // Start progress of this revision = max CONFIRMED progress before this rev.
+                                const allBeforeThisRev = history.filter((l: any) => (l.revisionId || 'rev00') !== revId && (l as any).status !== 'draft');
                                 const progBefore = allBeforeThisRev.length > 0
                                     ? Math.max(...allBeforeThisRev.map((l: any) => l.progress || 0))
                                     : 0;
@@ -205,7 +211,10 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             {logs.map((log: any, logIdx: number) => {
                                                 const logDate = new Date(log.date);
-                                                const prevProg = logIdx > 0 ? (logs[logIdx - 1].progress || 0) : progBefore;
+                                                // baseline = last CONFIRMED progress before this row (skip drafts)
+                                                const _prevSubmitted = logs.slice(0, logIdx).filter((l: any) => (l as any).status !== 'draft');
+                                                const prevProg = _prevSubmitted.length ? (_prevSubmitted[_prevSubmitted.length - 1].progress || 0) : progBefore;
+                                                const isDraftLog = (log as any).status === 'draft';
                                                 const totalWorkers = (log.labor || []).reduce((acc: number, l: any) => acc + (l.amount || 1), 0);
                                                 const isProblem = log.type === 'Problem';
                                                 const logHrs = calcHrs([log]);
@@ -240,9 +249,15 @@ const TaskHistoryModal = ({ isOpen, onClose, task }: any) => {
                                                             </div>
                                                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                                                 {isProblem && <span style={{ padding: '2px 8px', background: '#fef2f2', color: '#ef4444', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 900 }}>🚨 พบปัญหา</span>}
-                                                                <span style={{ padding: '2px 10px', background: '#e0e7ff', color: '#4338ca', borderRadius: '6px', fontSize: '0.73rem', fontWeight: 900 }}>
-                                                                    {prevProg}% → {log.progress}%
-                                                                </span>
+                                                                {isDraftLog ? (
+                                                                    <span style={{ padding: '2px 10px', background: '#fef3c7', color: '#b45309', borderRadius: '6px', fontSize: '0.73rem', fontWeight: 900 }}>
+                                                                        ⏳ รอยืนยันข้อมูล
+                                                                    </span>
+                                                                ) : (
+                                                                    <span style={{ padding: '2px 10px', background: '#e0e7ff', color: '#4338ca', borderRadius: '6px', fontSize: '0.73rem', fontWeight: 900 }}>
+                                                                        {prevProg}% → {log.progress}%
+                                                                    </span>
+                                                                )}
                                                                 {totalWorkers > 0 && (
                                                                     <span style={{ padding: '2px 8px', background: '#f1f5f9', color: '#475569', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 800 }}>
                                                                         👷 {totalWorkers} คน

@@ -30,7 +30,7 @@ import {
 import { useDailyReport, filterHistoryByRevision } from "../../context/DailyReportContext";
 import PhotoSourcePicker from "../forms/PhotoSourcePicker";
 import { SLACountdown } from "./SLACountdowns";
-import { computeJobSLA, SLA_HOURS_MAP } from "../../utils/jobSla";
+import { computeJobSLA, SLA_HOURS_MAP, confirmedProgress } from "../../utils/jobSla";
 import { ShiftConfig, ShiftTimes } from "../../types/dailyReport.types";
 import { formatDate } from "../../utils/date";
 import { todayTH } from "../../lib/dateUtils";
@@ -885,8 +885,10 @@ export const DailyReportDetailPane: React.FC = () => {
                             }
                           }
                         }
+                        // CONFIRMED progress only — a draft-100 must NOT flip the SLA
+                        // header to "เสร็จสมบูรณ์ 100%" (user rule 2026-08-19).
                         const isCompleted100 =
-                          (selectedTaskInfo.task.dailyProgress || 0) >= 100;
+                          confirmedProgress(selectedTaskInfo.task) >= 100;
                         const appointmentDateVal =
                           selectedTaskInfo.wo.appointmentDate ||
                           selectedTaskInfo.task.startDate;
@@ -4857,7 +4859,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         if (jobSla.deadlineMs) { globalDeadlineTime = jobSla.deadlineMs; }
                       }
                     }
-                    const isCompleted100 = (selectedTaskInfo.task.dailyProgress || 0) >= 100;
+                    const isCompleted100 = confirmedProgress(selectedTaskInfo.task) >= 100; // CONFIRMED only — draft-100 not "เสร็จสมบูรณ์" (user rule 2026-08-19)
                     const appointmentDateVal = selectedTaskInfo.wo.appointmentDate || selectedTaskInfo.task.startDate;
                     let actualStartVal: string | undefined = undefined;
                     if (selectedTaskInfo.task.history && selectedTaskInfo.task.history.length > 0) {

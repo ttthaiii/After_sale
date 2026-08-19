@@ -1,5 +1,5 @@
 import React, { Fragment, useState, useEffect, useMemo } from "react";
-import { computeJobSLA, SLA_HOURS_MAP } from "../../utils/jobSla";
+import { computeJobSLA, SLA_HOURS_MAP, confirmedProgress } from "../../utils/jobSla";
 import {
   ChevronLeft,
   Search,
@@ -416,7 +416,7 @@ export const WorkOrderGroupList: React.FC = () => {
                 strokeDasharray={2 * Math.PI * 26}
                 strokeDashoffset={
                   2 * Math.PI * 26 -
-                  ((task.dailyProgress || 0) / 100) * (2 * Math.PI * 26)
+                  ((confirmedProgress(task)) / 100) * (2 * Math.PI * 26)
                 }
                 strokeLinecap="round"
                 style={{ transition: "stroke-dashoffset 0.5s ease" }}
@@ -442,7 +442,7 @@ export const WorkOrderGroupList: React.FC = () => {
                   letterSpacing: "-0.03em",
                 }}
               >
-                {task.dailyProgress}%
+                {confirmedProgress(task)}%
               </span>
             </div>
           </div>
@@ -1152,8 +1152,9 @@ export const WorkOrderGroupList: React.FC = () => {
                             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {assignedCategories.map((cat: any) => {
                                 const isSelected = selectedPhCatInfo?.cat.id === cat.id && selectedPhCatInfo?.wo.id === wo.id;
-                                const progress = cat.dailyProgress || 0;
-                                const progressColor = progress >= 100 ? '#10b981' : progress > 0 ? '#3b82f6' : '#e2e8f0';
+                                const progress = cat.dailyProgress || 0; // raw — kept for the reassign click-gate below (behavior unchanged)
+                                const dispProg = confirmedProgress(cat); // CONFIRMED for DISPLAY only (draft ignored — user rule 2026-08-19)
+                                const progressColor = dispProg >= 100 ? '#10b981' : dispProg > 0 ? '#3b82f6' : '#e2e8f0';
                                 const catRevNum = parseInt((cat.currentRevision || 'rev00').replace('rev', '')) || 0;
                                 const isReassigned = cat.customerStatus === 'reassigned';
                                 return (
@@ -1199,12 +1200,12 @@ export const WorkOrderGroupList: React.FC = () => {
                                           </span>
                                         )}
                                       </div>
-                                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: progress === 0 ? '#94a3b8' : progressColor, marginLeft: '8px' }}>
-                                        {progress}%
+                                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: dispProg === 0 ? '#94a3b8' : progressColor, marginLeft: '8px' }}>
+                                        {dispProg}%
                                       </span>
                                     </div>
                                     <div style={{ height: '6px', borderRadius: '3px', background: '#f1f5f9', overflow: 'hidden' }}>
-                                      <div style={{ height: '100%', width: `${progress}%`, background: progressColor, borderRadius: '3px', transition: 'width 0.3s' }} />
+                                      <div style={{ height: '100%', width: `${dispProg}%`, background: progressColor, borderRadius: '3px', transition: 'width 0.3s' }} />
                                     </div>
                                   </div>
                                 );

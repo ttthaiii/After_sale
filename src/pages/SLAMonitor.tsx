@@ -5,7 +5,7 @@ import { ModalCloseButton } from '../components/ui/ModalCloseButton';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
 import { formatDate } from '../utils/date';
-import { computeJobSLA } from '../utils/jobSla';
+import { computeJobSLA, confirmedProgress } from '../utils/jobSla';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { logService } from '../services/logService';
@@ -616,8 +616,11 @@ const SLAMonitor = () => {
                     const columnTasks = flattenedTasks.filter((t) => {
                         // columns key directly off task.status — the single source of truth
                         if (column.id === 'pending-eval') return t.status === 'Evaluating' || (t.status === 'Rejected' && t.taskArchived !== true);
-                        if (column.id === 'assigned-unstarted') return t.status === 'Assigned';
-                        if (column.id === 'in-progress') return t.status === 'In Progress';
+                        // A subtask with CONFIRMED (submitted) progress moves out of "มอบหมายแล้วยังไม่ทำ"
+                        // into "กำลังทำ" even while its workflow status is still 'Assigned' — WOA status
+                        // only advances on submit-for-checking, not on daily progress (user rule 2026-08-19).
+                        if (column.id === 'assigned-unstarted') return t.status === 'Assigned' && confirmedProgress(t) === 0;
+                        if (column.id === 'in-progress') return t.status === 'In Progress' || (t.status === 'Assigned' && confirmedProgress(t) > 0);
                         if (column.id === 'for-checking') return t.status === 'For Checking';
                         if (column.id === 'pending-delivery') return t.status === 'pending_delivery';
                         if (column.id === 'completed') return t.status === 'Complete';
@@ -702,7 +705,7 @@ const SLAMonitor = () => {
                                                             {task.currentRevision.toUpperCase().replace('REV', 'REV. ')}
                                                         </div>
                                                     )}
-                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: column.color, background: `${column.color}15`, padding: '2px 8px', borderRadius: '8px' }}>{task.dailyProgress}%</div>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: column.color, background: `${column.color}15`, padding: '2px 8px', borderRadius: '8px' }}>{confirmedProgress(task)}%</div>
                                                 </div>
                                                 {(() => {
                                                     const draft = taskDrafts?.get(task.id);
@@ -946,13 +949,14 @@ const SLAMonitor = () => {
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '12px' : '24px', overflowX: isMobile ? 'visible' : 'auto', paddingBottom: '16px' }}>
                     {[
                         { id: 'unassigned',       label: 'งานรอประเมิน',           color: '#ef4444', test: (cat: any, wo: any) => wo.status !== 'Complete' && ((wo.status === 'customer_reject' && wo.pendingAdminReassign === true) || !cat.assignedForemanId) && !wo.isArchived && !((cat.tasks?.length ?? 0) > 0 && cat.tasks.every((t: any) => t.status === 'Cancelled' || (t.status === 'Rejected' && t.taskArchived === true))) },
-                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => wo.status !== 'Complete' && !!cat.assignedForemanId && (cat.dailyProgress || 0) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
-                        // A draft-only 100% (progressStatus: 'draft') still counts as "in
-                        // progress" here, not "waiting for customer" — matches the same
-                        // rule as the WOA board's done-pending-qr test below
-                        // (user-confirmed 2026-07-24).
-                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => wo.status !== 'Complete' && (cat.dailyProgress || 0) > 0 && ((cat.dailyProgress || 0) < 100 || cat.progressStatus === 'draft') && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
-                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => wo.status !== 'Complete' && (cat.dailyProgress || 0) >= 100 && cat.progressStatus !== 'draft' && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'assigned-idle',    label: 'มอบหมายแล้วยังไม่ทำ',   color: '#3b82f6', test: (cat: any, wo: any) => wo.status !== 'Complete' && !!cat.assignedForemanId && confirmedProgress(cat) === 0 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        // Bucket by CONFIRMED (submitted) progress only — a draft (incl. a draft-100)
+                        // has confirmedProgress 0 and stays here in "มอบหมายแล้วยังไม่ทำ", NOT in
+                        // "กำลังทำ"/"รอลูกค้าประเมิน" (user rule 2026-08-19; supersedes the 2026-07-24
+                        // draft-counts-as-in-progress rule). All three tests use confirmedProgress so a
+                        // draft-100 cat can never fall between columns and vanish.
+                        { id: 'in-progress',      label: 'กำลังทำ',                color: '#7c3aed', test: (cat: any, wo: any) => wo.status !== 'Complete' && confirmedProgress(cat) > 0 && confirmedProgress(cat) < 100 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
+                        { id: 'done-pending-qr',  label: 'รอลูกค้าประเมิน',        color: '#d97706', test: (cat: any, wo: any) => wo.status !== 'Complete' && confirmedProgress(cat) >= 100 && !wo.isArchived && !(wo.status === 'customer_reject' && wo.pendingAdminReassign === true) },
                         // Customer-rated WOP → wo.status === 'Complete' (set on customer approval,
                         // no isArchived flag is ever written). Match History's completion signal
                         // (isWorkOrderFullyCompleted) so a rated order lands here, not "กำลังทำ".
@@ -994,7 +998,7 @@ const SLAMonitor = () => {
                                         const foremanName = foremanEntry?.name || 'ยังไม่มอบหมาย';
                                         const foremanPhone = foremanEntry?.phone || '-';
                                         const foremanRole = foremanEntry ? 'Foreman' : '-';
-                                        const progress = item.dailyProgress || 0;
+                                        const progress = confirmedProgress(item);
                                         const project = projects.find((p: any) => p.id === item._wo.projectId);
                                         const defectCount = item.defectCount || 0;
                                         const allCatsInWO: any[] = item._wo.categories || [];

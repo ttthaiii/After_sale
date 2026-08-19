@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { formatDate } from '../utils/date';
 import { isWoaWop } from '../utils/workOrder';
-import { computeJobSLA, getCountedSubtasks } from '../utils/jobSla';
+import { computeJobSLA, getCountedSubtasks, confirmedProgress } from '../utils/jobSla';
 import {
     XAxis,
     YAxis,
@@ -901,7 +901,9 @@ const Dashboard = () => {
         // (matches SLAMonitor + History + the WO-group header) — NOT raw 100% progress. (2026-08-13)
         if (t.status === 'Complete' || t.woStatus === 'Complete') return 'เสร็จสมบูรณ์';
         if (t.status === 'For Checking' || t.status === 'pending_delivery') return 'รอลูกค้าประเมิน';
-        const p = t.dailyProgress ?? t.progress ?? 0;
+        // Started vs not-started counts CONFIRMED (submitted) progress only — a
+        // draft-only report keeps the task in "ยังไม่เริ่ม" (user rule 2026-08-19).
+        const p = confirmedProgress(t);
         if (p > 0) return 'กำลังดำเนินการ';
         return 'ยังไม่เริ่ม';
     };
@@ -1054,11 +1056,12 @@ const Dashboard = () => {
                     if (APPROVED_TASK_STATUSES.includes(t.status)) totalTasksInScope++;
                     const isWaitingCustomerEval = t.status === 'For Checking' || t.status === 'pending_delivery';
                     const isCompleted = t.status === 'Complete';
-                    // งานถึง 100% แล้ว = นับ SLA ฝั่งช่าง
-                    const isWorkDone = isCompleted || isWaitingCustomerEval || (t.dailyProgress ?? t.progress ?? 0) === 100;
-                    // "เสร็จแล้ว" (การ์ดรายการย่อย · ข้อมูลภายใน) = งานที่ทำถึง 100% แล้ว — นับที่ความคืบหน้าจริง
-                    // ไม่ผูกกับการออก QR / ลูกค้าประเมิน (รวมงานที่ 100% แต่ยังเป็น draft ด้วย เพราะเป็นมุมมองภายใน).
-                    const isTaskDone100 = (t.dailyProgress ?? t.progress ?? 0) === 100 || isCompleted;
+                    // งานถึง 100% แล้ว = นับ SLA ฝั่งช่าง — CONFIRMED progress only (draft ignored, user rule 2026-08-19)
+                    const isWorkDone = isCompleted || isWaitingCustomerEval || confirmedProgress(t) >= 100;
+                    // "เสร็จแล้ว" (การ์ดรายการย่อย · ข้อมูลภายใน) = งานที่ยืนยันถึง 100% แล้ว.
+                    // CONFIRMED only — a draft-only 100% is NOT counted done (user rule 2026-08-19
+                    // supersedes the earlier dc3f68b "count draft-100 as done" internal-view choice).
+                    const isTaskDone100 = confirmedProgress(t) >= 100 || isCompleted;
                     if (isTaskDone100) closed++;
                     else if (!isWorkDone) open++;
                 });
@@ -1780,7 +1783,8 @@ const Dashboard = () => {
                 return myCat.length > 0 ? myCat : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
             })
         );
-        const getProg = (t: any) => t.dailyProgress ?? t.progress ?? (['For Checking', 'pending_delivery', 'Complete'].includes(t.status) ? 100 : 0);
+        // CONFIRMED progress only (draft ignored, user rule 2026-08-19); terminal statuses = 100.
+        const getProg = (t: any) => ['For Checking', 'pending_delivery', 'Complete'].includes(t.status) ? 100 : confirmedProgress(t);
         const donutData = [
             { key: 'notStarted', name: 'ยังไม่เริ่ม', value: allMySubtasks.filter((t: any) => getProg(t) === 0 && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status)).length, color: '#E24B4A', range: '0%' },
             { key: 'inProgress', name: 'กำลังทำ', value: allMySubtasks.filter((t: any) => { const p = getProg(t); return p >= 1 && p <= 70; }).length, color: '#378ADD', range: '1–70%' },
@@ -2235,7 +2239,7 @@ const Dashboard = () => {
                                                         const myCatTasks = catTasks.filter(isMySubtask);
                                                         const show = myCatTasks.length > 0 ? myCatTasks : (catTasks.some((t: any) => t.subtaskOperatorId) ? [] : catTasks);
                                                         return show
-                                                            .filter((t: any) => progFilter(t.dailyProgress ?? t.progress ?? 0) && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status))
+                                                            .filter((t: any) => progFilter(confirmedProgress(t)) && !['For Checking', 'pending_delivery', 'Complete'].includes(t.status))
                                                             .map((t: any) => ({ task: t, wo, categoryName: cat.name }));
                                                     })
                                                 );

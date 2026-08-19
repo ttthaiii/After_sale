@@ -130,6 +130,33 @@ export const getCountedSubtasks = (wo: any): any[] => {
     return out;
 };
 
+// Progress from CONFIRMED (submitted) daily reports only — a DRAFT save
+// (progressStatus:'draft' / history entry status:'draft') is ignored entirely
+// (user rule 2026-08-19). Mirrors the history-scan already live at
+// CustomerHandover.tsx:18 / HistoryDetailModal.tsx:18. This is the single source
+// every tracking board / dashboard must use to decide "started / in-progress /
+// done" — never the raw flat dailyProgress (which a draft overwrites).
+// Works for a MasterTask (has history[]) AND a WOP category (flat-field fallback).
+export const confirmedProgress = (t: any): number => {
+    const history = t?.history;
+    if (Array.isArray(history) && history.length) {
+        // history entry `status` is a runtime-only field (not in TS types) — read loosely.
+        // Missing status = legacy/submitted. Take the LATEST-by-date non-draft report.
+        const submitted = history
+            .filter((h: any) => (h as any)?.status !== 'draft')
+            .sort((a: any, b: any) => new Date(b?.date).getTime() - new Date(a?.date).getTime());
+        if (submitted.length) {
+            const p = Number(submitted[0]?.progress);
+            return Number.isFinite(p) ? p : 0;
+        }
+        return 0; // history present but every entry is a draft → nothing confirmed yet
+    }
+    // No history: trust the flat field ONLY when it isn't a live draft.
+    if (t?.progressStatus === 'draft') return 0;
+    const flat = Number(t?.dailyProgress ?? t?.progress ?? 0);
+    return Number.isFinite(flat) ? flat : 0;
+};
+
 // Admin-confirmed SLA category for a subtask (WOP falls back to WO-level).
 const subtaskSlaCategory = (t: any, wo: any, isWop: boolean): string | null => {
     const cat = isWop ? (wo?.phActualSla || t?.slaCategory) : t?.slaCategory;
@@ -144,13 +171,15 @@ const subtaskAppointmentMs = (t: any, wo: any, isWop: boolean): number | null =>
     return isNaN(ms) ? null : ms;
 };
 
-// Resolve a subtask's completion: completedAt → last 100% history → last history.
-// done gate = foreman work finished (dailyProgress 100) OR status/WO Complete.
+// Resolve a subtask's completion: completedAt → first SUBMITTED 100% history → last history.
+// done gate = a CONFIRMED (non-draft) 100 OR status/WO Complete. A draft-only 100
+// does NOT count as done (user rule 2026-08-19). Ascending sort preserved so
+// firstP100 = the EARLIEST confirmed 100 (the completedMs anchor — do not reorder).
 const resolveSubtaskEnd = (t: any, wo: any): { done: boolean; endMs: number | null } => {
     const history = [...(t?.history || [])].sort(
         (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
-    const firstP100 = history.find((h: any) => Number(h.progress) === 100);
+    const firstP100 = history.find((h: any) => Number(h.progress) === 100 && (h as any).status !== 'draft');
     const lastHist = history[history.length - 1];
     const woDone = wo?.status === 'Complete';
     const endMs =
@@ -159,7 +188,9 @@ const resolveSubtaskEnd = (t: any, wo: any): { done: boolean; endMs: number | nu
         lastHist ? new Date(lastHist.date).getTime() :
         (woDone && wo?.completedAt ? new Date(wo.completedAt).getTime() : null);
     const done =
-        (t?.dailyProgress ?? t?.progress ?? 0) >= 100 || t?.status === 'Complete' || woDone;
+        !!firstP100 ||
+        (((t?.dailyProgress ?? t?.progress ?? 0) >= 100) && t?.progressStatus !== 'draft') ||
+        t?.status === 'Complete' || woDone;
     return { done: done && endMs !== null, endMs };
 };
 
