@@ -75,8 +75,9 @@ const subChip = (t: any): { label: string; color: string; bg: string } => {
     // Work has actually started (foreman logged progress) -> show %, even if the
     // workflow `status` field is still 'Assigned' (status lags behind daily reports).
     if (prog > 0)                         return { label: `${prog}%`, color: '#d97706', bg: '#fef3c7' };
-    if (st === 'In Progress')             return { label: 'กำลังทำ', color: '#d97706', bg: '#fef3c7' };
-    if (st === 'Assigned')                return { label: 'มอบหมาย', color: '#475569', bg: '#f1f5f9' };
+    // Not-yet-started (0% confirmed) — show "0%" explicitly so the progress column is
+    // never blank (user request 2026-08-19). Covers both Assigned and In Progress.
+    if (st === 'In Progress' || st === 'Assigned') return { label: '0%', color: '#475569', bg: '#f1f5f9' };
     return { label: st || '—', color: '#64748b', bg: '#f1f5f9' };
 };
 
@@ -96,7 +97,7 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    width: '100%', maxWidth: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+                    width: '100%', maxWidth: '880px', maxHeight: '82vh', display: 'flex', flexDirection: 'column',
                     background: '#fff', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
                 }}
             >
@@ -119,6 +120,19 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                         <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ไม่มีงานย่อยในกลุ่มนี้</div>
                     ) : data.subs.map((s: any, i: number) => {
                         const chip = subChip(s);
+                        // REQ-2/3: per-row SLA badge (ปกติ/ใกล้ครบ/เลยกำหนด/ตรงเวลา/เสร็จช้า)
+                        // + days-remaining, sourced from the job-level SLA attached in subRows.
+                        const sla = s._sla;
+                        const slaMeta = sla ? STATUS_META[sla.status] : null;
+                        const daysText = !sla ? null
+                            : sla.phase === 'done' ? 'เสร็จแล้ว'
+                            : sla.daysDiff < 0 ? `เหลือ ${-sla.daysDiff} วัน`
+                            : sla.daysDiff === 0 ? 'ครบกำหนดวันนี้'
+                            : `เลย ${sla.daysDiff} วัน`;
+                        const daysColor = !sla || sla.phase === 'done' ? '#94a3b8'
+                            : sla.daysDiff > 0 ? '#dc2626'
+                            : sla.daysDiff === 0 ? '#d97706'
+                            : '#0891b2';
                         return (
                             <div
                                 key={(s._woId || '') + (s.id || s.taskName || '') + i}
@@ -127,12 +141,30 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                                 onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
                             >
-                                <span style={{ flexShrink: 0, minWidth: '78px', textAlign: 'center', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 900, color: chip.color, background: chip.bg }}>
+                                {/* Fixed-width columns so every row aligns vertically (user request
+                                    2026-08-19): [ % ] [ WOA/WOP ] [ SLA badge + days-remaining ] [ detail ]. */}
+                                {/* Col 1 — progress % (incl. 0%) */}
+                                <span style={{ flexShrink: 0, width: '54px', textAlign: 'center', padding: '4px 0', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 900, color: chip.color, background: chip.bg }}>
                                     {chip.label}
                                 </span>
-                                <span style={{ flexShrink: 0, fontSize: '0.66rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', borderRadius: '6px', padding: '2px 6px' }}>
+                                {/* Col 2 — work-order type */}
+                                <span style={{ flexShrink: 0, width: '40px', textAlign: 'center', fontSize: '0.66rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', borderRadius: '6px', padding: '3px 0' }}>
                                     {s._type === 'PreHandover' ? 'WOP' : 'WOA'}
                                 </span>
+                                {/* Col 3 — SLA status + days-remaining, stacked */}
+                                <div style={{ flexShrink: 0, width: '100px', display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                                    {slaMeta && (
+                                        <span style={{ fontSize: '0.66rem', fontWeight: 900, color: slaMeta.color, background: slaMeta.bg, borderRadius: '6px', padding: '2px 6px' }}>
+                                            {slaMeta.label}
+                                        </span>
+                                    )}
+                                    {daysText && (
+                                        <span style={{ fontSize: '0.64rem', fontWeight: 800, color: daysColor, whiteSpace: 'nowrap', paddingLeft: '2px' }}>
+                                            {daysText}
+                                        </span>
+                                    )}
+                                </div>
+                                {/* Detail */}
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {s.taskName}
@@ -267,15 +299,17 @@ const DirectorDashboard = () => {
                 else aging.d7++;
             }
 
-            // Foreman primary-owner attribution (1 job -> 1 foreman).
+            // Foreman primary-owner attribution (1 job -> 1 foreman). REQ-1: count
+            // IN-HAND jobs only (phase 'in-progress') — completed jobs are excluded
+            // from this workload card (they belong on a separate completed graph).
+            // "late" here = 'overdue' (an in-hand job past its deadline); a done-late
+            // job is finished, so it is no longer in hand.
             const fid = primaryForemanId(wo);
-            if (fid && fore[fid]) {
+            if (fid && fore[fid] && sla.phase === 'in-progress') {
                 fore[fid].load++;
-                if (sla.status === 'late' || sla.status === 'overdue') fore[fid].late++;
-                if (sla.phase === 'in-progress') {
-                    const la = lastActivityMs(wo);
-                    if (la === null || (now - la) > 3 * DAY) fore[fid].stalled++;
-                }
+                if (sla.status === 'overdue') fore[fid].late++;
+                const la = lastActivityMs(wo);
+                if (la === null || (now - la) > 3 * DAY) fore[fid].stalled++;
             }
             // Helper foremen -> separate "ช่วย" tally, never the main load.
             (wo?.categories || []).forEach((c: any) => (c?.tasks || []).forEach((t: any) => {
@@ -342,13 +376,16 @@ const DirectorDashboard = () => {
     // The subtask whose rich history popup is open (ทาง ก — reuses the shared
     // TaskHistoryModal in-page; layered on top of the drill list, zIndex 1200 > 1000).
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
+    // Which foreman row has its inline job-list accordion open (null = all collapsed).
+    const [expandedForeman, setExpandedForeman] = useState<string | null>(null);
 
     // Flatten a set of WOs into their counted subtasks (the same single-source set
     // that makes a job eligible), each enriched with what the shared TaskHistoryModal
     // needs: the parent wo (for its timeline) + project/location labels.
     const subRows = (wos: any[]) =>
-        wos.flatMap((wo: any) =>
-            getCountedSubtasks(wo).map((t: any) => ({
+        wos.flatMap((wo: any) => {
+            const _sla = computeJobSLA(wo); // job-level SLA -> per-row badge + days-remaining (REQ-2/3)
+            return getCountedSubtasks(wo).map((t: any) => ({
                 ...t,
                 taskName: t.taskName || t.name || t.subtaskName || '—',
                 locationName: wo.locationName,
@@ -356,8 +393,9 @@ const DirectorDashboard = () => {
                 wo,
                 _woId: wo.id,
                 _type: wo.type,
-            }))
-        );
+                _sla,
+            }));
+        });
     const openProject = (pid: string) => setDrill({
         title: `โครงการ · ${getProjectName(pid)}`,
         subs: subRows(
@@ -403,15 +441,20 @@ const DirectorDashboard = () => {
             return s.isEligible && s.phase === 'in-progress' && s.daysDiff >= lo && s.daysDiff <= hi;
         })),
     });
+    // Single source for a foreman's IN-HAND jobs (phase in-progress) — used by BOTH
+    // the click-in modal and the inline accordion, so the two lists never diverge and
+    // both match the bar count (REQ-1).
+    const foremanInHandWOs = (fid: string) => workOrders.filter((w: any) => {
+        const sla = computeJobSLA(w);
+        if (!sla.isEligible || sla.phase !== 'in-progress') return false;
+        const owner = w?.type === 'PreHandover'
+            ? (w?.categories?.[0]?.assignedForemanId || w?.woOwnerId)
+            : w?.woOwnerId;
+        return owner === fid;
+    });
     const openForeman = (fid: string, name: string) => setDrill({
         title: `โฟร์แมน · ${name}`,
-        subs: subRows(workOrders.filter((w: any) => {
-            if (!computeJobSLA(w).isEligible) return false;
-            const owner = w?.type === 'PreHandover'
-                ? (w?.categories?.[0]?.assignedForemanId || w?.woOwnerId)
-                : w?.woOwnerId;
-            return owner === fid;
-        })),
+        subs: subRows(foremanInHandWOs(fid)),
     });
     // Alert row = one specific WO -> drill into that job's subtasks.
     const openWO = (woId: string) => {
@@ -435,6 +478,11 @@ const DirectorDashboard = () => {
         pct: w.pct, total: w.total,
     }));
     const maxLoad = Math.max(1, ...agg.perForeman.map((f: any) => f.load));
+    // Per-foreman in-hand line-items (subtasks) — the bar magnitude tracks this, not job count.
+    // Computed once here so the render map + maxItems reuse the same rows (no double subRows).
+    const foremanItems: Record<string, any[]> = {};
+    agg.perForeman.forEach((f: any) => { foremanItems[f.id] = subRows(foremanInHandWOs(f.id)); });
+    const maxItems = Math.max(1, ...agg.perForeman.map((f: any) => foremanItems[f.id].length));
 
     const TrendTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
@@ -757,7 +805,7 @@ const DirectorDashboard = () => {
                     <span style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>ภาระงานโฟร์แมน & ใครต้องช่วย</span>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '4px 0 1rem 0', lineHeight: 1.5 }}>
-                    แท่ง = จำนวนงานในมือ (🟦 ปกติ / 🟥 ช้าหรือเลยกำหนด) · ป้าย 🆘 ต้องช่วย = เข้าเกณฑ์เสี่ยง ≥2 อย่าง (งานเยอะ · ช้าเยอะ · งานนิ่งไม่ขยับ) · คลิกเพื่อดูงาน
+                    แท่ง = จำนวนรายการในมือ (🟦 ปกติ / 🟥 ช้าหรือเลยกำหนด) · ป้าย 🆘 ต้องช่วย = เข้าเกณฑ์เสี่ยง ≥2 อย่าง (งานเยอะ · ช้าเยอะ · งานนิ่งไม่ขยับ) · คลิกเพื่อดูงาน
                 </div>
                 {agg.perForeman.length === 0 ? (
                     <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ยังไม่มีงานผูกกับโฟร์แมน</div>
@@ -769,14 +817,18 @@ const DirectorDashboard = () => {
                                 f.manyLate && 'ช้าเยอะ',
                                 f.hasStalled && 'งานนิ่ง',
                             ].filter(Boolean);
+                            const isExpanded = expandedForeman === f.id;
+                            const jobRows = foremanItems[f.id] || [];
+                            const itemCount = jobRows.length; // line-items (subtasks) = true workload
+                            const lateItems = jobRows.filter((s: any) => s._sla?.status === 'overdue').length;
                             return (
-                                <div
-                                    key={f.id}
+                                <div key={f.id}>
+                                  <div
                                     onClick={() => openForeman(f.id, f.name)}
                                     style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0.5rem', borderRadius: '12px', cursor: 'pointer' }}
                                     onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                     onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                                >
+                                  >
                                     <div style={{ width: '150px', flexShrink: 0, minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
@@ -789,12 +841,62 @@ const DirectorDashboard = () => {
                                         </div>
                                     </div>
                                     <div style={{ flex: 1, height: '24px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex', minWidth: '60px' }}>
-                                        <div style={{ width: `${((f.load - f.late) / maxLoad) * 100}%`, background: '#4f46e5' }} />
-                                        <div style={{ width: `${(f.late / maxLoad) * 100}%`, background: '#dc2626' }} />
+                                        <div style={{ width: `${((itemCount - lateItems) / maxItems) * 100}%`, background: '#4f46e5' }} />
+                                        <div style={{ width: `${(lateItems / maxItems) * 100}%`, background: '#dc2626' }} />
                                     </div>
-                                    <div style={{ width: '96px', flexShrink: 0, textAlign: 'right', fontSize: '0.78rem', fontWeight: 800, color: '#334155' }}>
-                                        {f.load} งาน{f.late > 0 && <span style={{ color: '#dc2626' }}> · ช้า {f.late}</span>}
+                                    {/* Count is its own click target: toggles the inline job list
+                                        (stopPropagation so it doesn't also open the modal). */}
+                                    {/* Count = jobs / line-items (the real workload). Click toggles the
+                                        inline list; no arrow (redundant with the click-to-expand). */}
+                                    {/* Fixed sub-columns so the งาน / รายการ numbers line up across every row
+                                        (each number cell is a fixed width, right-aligned). */}
+                                    <div
+                                        onClick={(e) => { e.stopPropagation(); setExpandedForeman(isExpanded ? null : f.id); }}
+                                        style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '3px', fontSize: '0.78rem', fontWeight: 800, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                        title="กดดูรายการงาน"
+                                    >
+                                        <span style={{ width: '22px', textAlign: 'right' }}>{f.load}</span>
+                                        <span style={{ width: '30px', color: '#94a3b8', fontWeight: 600 }}>งาน</span>
+                                        <span style={{ color: '#cbd5e1' }}>/</span>
+                                        <span style={{ width: '26px', textAlign: 'right' }}>{itemCount}</span>
+                                        <span style={{ width: '42px', color: '#94a3b8', fontWeight: 600 }}>รายการ</span>
                                     </div>
+                                  </div>
+                                  {isExpanded && (
+                                    <div style={{ margin: '2px 0 10px 12px', paddingLeft: '12px', borderLeft: '2px solid #eef2ff', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        {jobRows.length === 0 ? (
+                                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, padding: '4px 0' }}>ไม่มีงานในมือ</div>
+                                        ) : jobRows.map((s: any, si: number) => {
+                                            const sMeta = s._sla ? STATUS_META[s._sla.status] : null;
+                                            const dText = !s._sla ? null
+                                                : s._sla.phase === 'done' ? 'เสร็จแล้ว'
+                                                : s._sla.daysDiff < 0 ? `เหลือ ${-s._sla.daysDiff} วัน`
+                                                : s._sla.daysDiff === 0 ? 'ครบกำหนดวันนี้'
+                                                : `เลย ${s._sla.daysDiff} วัน`;
+                                            const dColor = !s._sla || s._sla.phase === 'done' ? '#94a3b8'
+                                                : s._sla.daysDiff > 0 ? '#dc2626'
+                                                : s._sla.daysDiff === 0 ? '#d97706'
+                                                : '#0891b2';
+                                            return (
+                                                <div
+                                                    key={(s._woId || '') + (s.id || s.taskName || '') + si}
+                                                    onClick={() => setSelectedTask(s)}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                                    onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                                                >
+                                                    {sMeta && (
+                                                        <span style={{ flexShrink: 0, fontSize: '0.64rem', fontWeight: 900, color: sMeta.color, background: sMeta.bg, borderRadius: '5px', padding: '1px 6px' }}>{sMeta.label}</span>
+                                                    )}
+                                                    <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.taskName}</span>
+                                                    {dText && (
+                                                        <span style={{ flexShrink: 0, fontWeight: 800, color: dColor, whiteSpace: 'nowrap' }}>{dText}</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                  )}
                                 </div>
                             );
                         })}
