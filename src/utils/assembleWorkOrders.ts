@@ -360,6 +360,14 @@ function assembleCategoriesForWo(idx: CacheIndex, woId: string): Category[] {
       // unlocks off an unsubmitted draft (single source: savePhDraft writes it).
       const pStatus = (wopTask as any).progressStatus;
       if (pStatus != null) wopMergedFields.progressStatus = pStatus;
+      // Lift the report history too, so confirmedProgress(cat) can recover the LAST
+      // SUBMITTED value when the latest save is a draft. Without this the category has
+      // no history[] and confirmedProgress falls back to the draft-overwritten flat
+      // field -> returns 0, so a WOP "รอยืนยันข้อมูล" row wrongly shows 0% on the daily
+      // page even though a confirmed progress exists (visible on the tracking dashboard,
+      // which reads the subtask history). Single source: same history the modal shows.
+      const hist = (wopTask as any).history;
+      if (Array.isArray(hist)) wopMergedFields.history = hist;
     }
 
     categories.push({ ...catData, ...wopMergedFields, id: catDoc.id, tasks } as Category);
