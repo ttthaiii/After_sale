@@ -4454,6 +4454,25 @@ export const DailyReportDetailPane: React.FC = () => {
                                     Progress: {h.progress}%
                                   </div>
 
+                                  {/* Draft-day marker (WOA + WOP): a report saved as a draft
+                                      (status:'draft') is NOT confirmed yet — flag it clearly so the
+                                      foreman is reminded this day still needs submitting. */}
+                                  {(h as any).status === 'draft' && (
+                                    <div
+                                      style={{
+                                        fontSize: "0.75rem",
+                                        color: "#b45309",
+                                        background: "#fef3c7",
+                                        border: "1px solid #fde68a",
+                                        padding: "2px 8px",
+                                        borderRadius: "6px",
+                                        fontWeight: 800,
+                                      }}
+                                    >
+                                      📝 ฉบับร่าง · ยังไม่ยืนยัน
+                                    </div>
+                                  )}
+
                                   {selectedTaskInfo?.task?.isHelper === true && (
                                     <div
                                       style={{

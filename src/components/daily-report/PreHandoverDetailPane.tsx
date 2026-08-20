@@ -966,6 +966,13 @@ export const PreHandoverDetailPane: React.FC = () => {
                       <span style={{ fontSize: '0.72rem', color: '#6366f1', background: '#eef2ff', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
                         {h.progress}%
                       </span>
+                      {/* Draft-day marker: a report saved as a draft (status:'draft') is
+                          NOT confirmed yet — flag it so the foreman is reminded to submit. */}
+                      {h.status === 'draft' && (
+                        <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', borderRadius: '6px', padding: '2px 7px', fontWeight: 800 }}>
+                          📝 ฉบับร่าง · ยังไม่ยืนยัน
+                        </span>
+                      )}
                       {isProblem && (
                         <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '6px', padding: '2px 7px', fontWeight: 700 }}>
                           🚨 ปัญหา
