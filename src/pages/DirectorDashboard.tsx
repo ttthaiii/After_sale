@@ -483,6 +483,10 @@ const DirectorDashboard = () => {
     const foremanItems: Record<string, any[]> = {};
     agg.perForeman.forEach((f: any) => { foremanItems[f.id] = subRows(foremanInHandWOs(f.id)); });
     const maxItems = Math.max(1, ...agg.perForeman.map((f: any) => foremanItems[f.id].length));
+    // Rank the card by line-item count (รายการ) desc — the bar magnitude the user reads.
+    const foremenRanked = [...agg.perForeman].sort(
+        (a: any, b: any) => (foremanItems[b.id]?.length || 0) - (foremanItems[a.id]?.length || 0)
+    );
 
     const TrendTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
@@ -811,7 +815,7 @@ const DirectorDashboard = () => {
                     <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ยังไม่มีงานผูกกับโฟร์แมน</div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        {agg.perForeman.map((f: any) => {
+                        {foremenRanked.map((f: any) => {
                             const reasons = [
                                 f.highLoad && 'งานเยอะ',
                                 f.manyLate && 'ช้าเยอะ',
