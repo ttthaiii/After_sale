@@ -8,19 +8,30 @@ import {
     TrendingUp, Hourglass, Users
 } from 'lucide-react';
 import {
-    ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis,
+    ResponsiveContainer, XAxis, YAxis,
     CartesianGrid, Tooltip, Cell, LineChart, Line, BarChart, Bar,
 } from 'recharts';
 import { computeJobSLA, getCountedSubtasks, confirmedProgress } from '../utils/jobSla';
 import TaskHistoryModal from '../components/TaskHistoryModal';
 
+// Unified status/severity palette — the SINGLE source for every chart color on this
+// page. Calm 4-5 level scale; neutral slate scaffold + brand indigo headers stay
+// OUTSIDE this scale (they are chrome, not data). Change a level here -> whole page.
+const LV = {
+    good:   '#16a34a', // ดี — เสร็จตรงเวลา / ในกำหนด
+    watch:  '#f59e0b', // เฝ้าดู — เสร็จช้า / ใกล้ครบ / เลย 1-3 วัน
+    warn:   '#ea580c', // เตือน — เลย 4-7 วัน (ขั้นกลางของ aging)
+    normal: '#2563eb', // ปกติ — กำลังทำ ยังไม่ถึงกำหนด (น้ำเงินสุภาพ)
+    bad:    '#dc2626', // แย่ — เลยกำหนด / เลย >7 วัน
+};
+
 // Shared SLA status -> Thai label + colors (single visual convention across blocks).
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-    'on-time':      { label: 'ตรงเวลา',   color: '#059669', bg: '#d1fae5' },
-    'late':         { label: 'เสร็จช้า',   color: '#d97706', bg: '#fef3c7' },
-    'overdue':      { label: 'เลยกำหนด',  color: '#dc2626', bg: '#fee2e2' },
-    'critical':     { label: 'ใกล้ครบ',   color: '#d97706', bg: '#fef3c7' },
-    'normal':       { label: 'ปกติ',      color: '#0891b2', bg: '#cffafe' },
+    'on-time':      { label: 'ตรงเวลา',   color: LV.good,   bg: '#d1fae5' },
+    'late':         { label: 'เสร็จช้า',   color: LV.watch,  bg: '#fef3c7' },
+    'overdue':      { label: 'เลยกำหนด',  color: LV.bad,    bg: '#fee2e2' },
+    'critical':     { label: 'ใกล้ครบ',   color: LV.watch,  bg: '#fef3c7' },
+    'normal':       { label: 'ปกติ',      color: LV.normal, bg: '#dbeafe' },
     'not-eligible': { label: 'ยังไม่คิด',  color: '#64748b', bg: '#f1f5f9' },
 };
 
@@ -183,9 +194,6 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
     );
 };
 
-// SLA-band color for the bubble chart (on-time% -> green/amber/red).
-const bandColor = (pct: number | null) =>
-    pct == null ? '#94a3b8' : pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626';
 const lightOf = (pct: number | null) =>
     pct == null ? '⚪' : pct >= 80 ? '🟢' : pct >= 50 ? '🟡' : '🔴';
 
@@ -270,10 +278,11 @@ const DirectorDashboard = () => {
             const pid = wo.projectId || 'unknown';
             if (!proj[pid]) proj[pid] = {
                 projectId: pid, name: getProjectName(pid),
-                jobs: 0, active: 0, done: 0, onTime: 0, late: 0, overdue: 0,
+                jobs: 0, items: 0, active: 0, done: 0, onTime: 0, late: 0, overdue: 0,
             };
             const P = proj[pid];
             P.jobs++;
+            P.items += getCountedSubtasks(wo).length; // line-items (รายการ) per project
 
             if (sla.phase === 'done') {
                 doneJobs++; P.done++;
@@ -403,13 +412,27 @@ const DirectorDashboard = () => {
         ),
     });
 
-    // Bubble points = projects that have completed jobs (a y-value exists).
-    const bubbleData = agg.perProject
-        .filter((p: any) => p.onTimePct != null)
+    // Stacked-bar rows = projects with any current work (done + active > 0).
+    // Bar length = total work orders (absolute). Segments: onTime / late / normal / overdue.
+    // Sorted by UNFINISHED (active) desc so the project needing attention floats to top.
+    const projectBars = agg.perProject
         .map((p: any) => ({
-            x: p.jobs, y: p.onTimePct, z: Math.max(p.trouble, 1),
-            name: p.name, projectId: p.projectId, done: p.done, late: p.late, overdue: p.overdue,
-        }));
+            projectId: p.projectId,
+            name: p.name,
+            onTime: p.onTime,
+            late: p.late,
+            normal: Math.max(0, p.active - p.overdue),
+            overdue: p.overdue,
+            done: p.done,
+            total: p.done + p.active,
+            unfinished: p.active,
+            items: p.items,
+            pct: (p.done + p.active) > 0 ? Math.round((p.done / (p.done + p.active)) * 100) : 0,
+        }))
+        .filter((p: any) => p.total > 0)
+        .sort((a: any, b: any) => b.unfinished - a.unfinished || b.total - a.total);
+
+    const maxProjTotal = Math.max(1, ...projectBars.map((p: any) => p.total));
 
     // Ranking = worst-first by on-time%; ungraded (no completed job) sink to the bottom.
     const ranking = [...agg.perProject].sort((a: any, b: any) => {
@@ -420,18 +443,6 @@ const DirectorDashboard = () => {
         if (a.onTimePct !== b.onTimePct) return a.onTimePct - b.onTimePct;
         return b.trouble - a.trouble;
     });
-
-    const BubbleTooltip = ({ active, payload }: any) => {
-        if (!active || !payload || !payload.length) return null;
-        const d = payload[0].payload;
-        return (
-            <div style={{ background: '#0f172a', color: '#fff', borderRadius: '10px', padding: '0.6rem 0.8rem', fontSize: '0.78rem', fontWeight: 700 }}>
-                <div style={{ fontWeight: 900, marginBottom: 4 }}>{d.name}</div>
-                <div>งาน {d.x} · เสร็จ {d.done}</div>
-                <div>ตรงเวลา {d.y}% · ปัญหา {d.late + d.overdue}</div>
-            </div>
-        );
-    };
 
     // ── S5/S6 derived views + drill-downs ──────────────────────────────────────
     const openAging = (title: string, lo: number, hi: number) => setDrill({
@@ -467,17 +478,16 @@ const DirectorDashboard = () => {
     };
 
     const agingData = [
-        { name: 'ในกำหนด', value: agg.aging.ok, color: '#059669', lo: -99999, hi: 0 },
-        { name: 'เลย 1-3 วัน', value: agg.aging.d13, color: '#d97706', lo: 1, hi: 3 },
-        { name: 'เลย 4-7 วัน', value: agg.aging.d47, color: '#ea580c', lo: 4, hi: 7 },
-        { name: 'เลย >7 วัน', value: agg.aging.d7, color: '#dc2626', lo: 8, hi: 99999 },
+        { name: 'ในกำหนด', value: agg.aging.ok, color: LV.good, lo: -99999, hi: 0 },
+        { name: 'เลย 1-3 วัน', value: agg.aging.d13, color: LV.watch, lo: 1, hi: 3 },
+        { name: 'เลย 4-7 วัน', value: agg.aging.d47, color: LV.warn, lo: 4, hi: 7 },
+        { name: 'เลย >7 วัน', value: agg.aging.d7, color: LV.bad, lo: 8, hi: 99999 },
     ];
     const trendData = agg.weekly.map((w: any) => ({
         name: w.week === 7 ? 'สัปดาห์นี้' : `${7 - w.week} สัปดาห์ก่อน`,
         shortName: w.week === 7 ? 'นี้' : `-${7 - w.week}`,
         pct: w.pct, total: w.total,
     }));
-    const maxLoad = Math.max(1, ...agg.perForeman.map((f: any) => f.load));
     // Per-foreman in-hand line-items (subtasks) — the bar magnitude tracks this, not job count.
     // Computed once here so the render map + maxItems reuse the same rows (no double subRows).
     const foremanItems: Record<string, any[]> = {};
@@ -696,32 +706,72 @@ const DirectorDashboard = () => {
 
             {/* ── S4 · Block 3-4 — project bubble comparison + ranking ──────────── */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', marginBottom: '1.75rem' }}>
-                {/* Bubble comparison */}
+                {/* Project stacked-bar comparison */}
                 <div style={{ flex: '1.4 1 440px', minWidth: 'min(100%, 440px)', background: '#fff', borderRadius: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.04)', padding: '1.25rem 1.4rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: '#4f46e5' }}>
                         <Target size={18} />
                         <span style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>เปรียบเทียบโครงการ</span>
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '4px 0 0.75rem 0', lineHeight: 1.5 }}>
-                        แต่ละวง = 1 โครงการ · แนวนอน = จำนวนงาน · แนวตั้ง = % ตรงเวลา · วงใหญ่ = ปัญหาเยอะ · สีเขียว/เหลือง/แดง = สุขภาพ SLA · คลิกวงเพื่อดูงาน
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '4px 0 0.6rem 0', lineHeight: 1.5 }}>
+                        แต่ละแท่ง = 1 โครงการ · ความยาว = จำนวนใบงานทั้งหมด · เรียงงานที่ยังไม่เสร็จมากสุดขึ้นก่อน · คลิกเพื่อดูงาน
                     </div>
-                    {bubbleData.length === 0 ? (
-                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ยังไม่มีงานที่เสร็จพอจะเทียบ</div>
+                    {/* Legend */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', margin: '0 0 0.9rem 0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>
+                        {[
+                            { c: LV.good, t: 'เสร็จ ตรงเวลา' },
+                            { c: LV.watch, t: 'เสร็จ ล่าช้า' },
+                            { c: LV.normal, t: 'กำลังทำ' },
+                            { c: LV.bad, t: 'เกินกำหนด' },
+                        ].map((L) => (
+                            <span key={L.t} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                <span style={{ width: 11, height: 11, borderRadius: 3, background: L.c }} />{L.t}
+                            </span>
+                        ))}
+                    </div>
+                    {projectBars.length === 0 ? (
+                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ยังไม่มีงานในโครงการ</div>
                     ) : (
-                        <ResponsiveContainer width="100%" height={330}>
-                            <ScatterChart margin={{ top: 16, right: 24, bottom: 24, left: 4 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                                <XAxis type="number" dataKey="x" name="จำนวนงาน" tick={{ fontSize: 11 }} allowDecimals={false} label={{ value: 'จำนวนงาน →', position: 'insideBottomRight', offset: -8, fontSize: 11, fill: '#94a3b8' }} />
-                                <YAxis type="number" dataKey="y" name="ตรงเวลา%" domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" width={44} />
-                                <ZAxis type="number" dataKey="z" range={[90, 520]} name="ปัญหา" />
-                                <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<BubbleTooltip />} />
-                                <Scatter data={bubbleData} cursor="pointer" onClick={(d: any) => d && d.projectId && openProject(d.projectId)}>
-                                    {bubbleData.map((d: any, i: number) => (
-                                        <Cell key={i} fill={bandColor(d.y)} fillOpacity={0.72} stroke={bandColor(d.y)} />
-                                    ))}
-                                </Scatter>
-                            </ScatterChart>
-                        </ResponsiveContainer>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: '340px', paddingRight: '4px' }}>
+                            {projectBars.map((p: any) => {
+                                const segs = [
+                                    { key: 'onTime', v: p.onTime, c: LV.good },
+                                    { key: 'late', v: p.late, c: LV.watch },
+                                    { key: 'normal', v: p.normal, c: LV.normal },
+                                    { key: 'overdue', v: p.overdue, c: LV.bad },
+                                ].filter((s) => s.v > 0);
+                                const barPct = (p.total / maxProjTotal) * 100;
+                                return (
+                                    <div
+                                        key={p.projectId}
+                                        onClick={() => openProject(p.projectId)}
+                                        title={`${p.name}\nเสร็จตรงเวลา ${p.onTime} · เสร็จล่าช้า ${p.late} · กำลังทำ ${p.normal} · เกินกำหนด ${p.overdue}\nรวม ${p.total} ใบ / ${p.items} รายการ · เสร็จ ${p.pct}%`}
+                                        style={{ display: 'grid', gridTemplateColumns: '150px 1fr 120px', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '2px 4px', borderRadius: '8px' }}
+                                        onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                        onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                                    >
+                                        {/* Project name (🔴 prefix if overdue) */}
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {p.overdue > 0 ? '🔴 ' : ''}{p.name}
+                                        </div>
+                                        {/* Stacked bar track */}
+                                        <div style={{ display: 'flex', width: `${barPct}%`, minWidth: '8px', height: '22px', borderRadius: '6px', overflow: 'hidden', background: '#f1f5f9' }}>
+                                            {segs.map((s) => (
+                                                <div key={s.key} style={{ width: `${(s.v / p.total) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden' }}>
+                                                    {s.v}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {/* End label: N ใบ / M รายการ + เสร็จ X% */}
+                                        <div style={{ textAlign: 'right', lineHeight: 1.25 }}>
+                                            <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap' }}>
+                                                {p.total} ใบ <span style={{ color: '#cbd5e1' }}>/</span> {p.items} รายการ
+                                            </div>
+                                            <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#94a3b8' }}>เสร็จ {p.pct}%</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
 
@@ -845,8 +895,8 @@ const DirectorDashboard = () => {
                                         </div>
                                     </div>
                                     <div style={{ flex: 1, height: '24px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex', minWidth: '60px' }}>
-                                        <div style={{ width: `${((itemCount - lateItems) / maxItems) * 100}%`, background: '#4f46e5' }} />
-                                        <div style={{ width: `${(lateItems / maxItems) * 100}%`, background: '#dc2626' }} />
+                                        <div style={{ width: `${((itemCount - lateItems) / maxItems) * 100}%`, background: LV.normal }} />
+                                        <div style={{ width: `${(lateItems / maxItems) * 100}%`, background: LV.bad }} />
                                     </div>
                                     {/* Count is its own click target: toggles the inline job list
                                         (stopPropagation so it doesn't also open the modal). */}
