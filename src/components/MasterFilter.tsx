@@ -10,6 +10,8 @@ interface MasterFilterProps {
     setSelectedWeek: (week: number) => void;
     style?: React.CSSProperties;
     minimal?: boolean;
+    // flat: single horizontal-row toolbar mode (no card) for the /dashboard header bar.
+    flat?: boolean;
     allowAllTime?: boolean;
     isAllTime?: boolean;
     setIsAllTime?: (val: boolean) => void;
@@ -25,6 +27,7 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
     setSelectedWeek,
     style,
     minimal = false,
+    flat = false,
     allowAllTime = false,
     isAllTime = false,
     setIsAllTime,
@@ -56,19 +59,20 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
     const monthName = `${new Date(year, month - 1, 1).toLocaleDateString('th-TH', { month: 'long' })} ${year}`;
 
     return (
-        <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '12px', 
-            background: minimal ? 'transparent' : '#ffffff', 
-            padding: minimal ? '0' : (isMobile ? '16px' : '24px'),
-            borderRadius: minimal ? '0' : '32px',
-            border: minimal ? 'none' : '1px solid #e2e8f0',
-            boxShadow: minimal ? 'none' : '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
+        <div style={{
+            display: 'flex',
+            flexDirection: (flat && !isMobile) ? 'row' : 'column',
+            flexWrap: flat ? 'wrap' : undefined,
+            gap: flat ? '10px' : '12px',
+            background: (minimal || flat) ? 'transparent' : '#ffffff',
+            padding: (minimal || flat) ? '0' : (isMobile ? '16px' : '20px'),
+            borderRadius: (minimal || flat) ? '0' : '18px',
+            border: (minimal || flat) ? 'none' : '1px solid #e2e8f0',
+            boxShadow: (minimal || flat) ? 'none' : '0 2px 10px -4px rgba(0, 0, 0, 0.06)',
             flex: 1,
-            height: isMobile ? 'auto' : '124px',
+            height: isMobile ? 'auto' : (flat ? 'auto' : '124px'),
             justifyContent: 'center',
-            alignItems: 'stretch',
+            alignItems: (flat && !isMobile) ? 'center' : 'stretch',
             ...style
         }}>
             {/* Month/Year Selector */}
@@ -76,27 +80,27 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
                 display: 'flex',
                 flexDirection: isMobile ? 'column' : 'row',
                 alignItems: isMobile ? 'stretch' : 'center',
-                gap: '12px',
+                gap: flat ? '8px' : '12px',
             }}>
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '16px',
+                    gap: flat ? '10px' : '16px',
                     background: '#f8fafc',
-                    padding: '10px 20px',
-                    borderRadius: '20px',
-                    border: '1px solid #f1f5f9',
+                    padding: flat ? '7px 14px' : '10px 20px',
+                    borderRadius: flat ? '12px' : '20px',
+                    border: '1px solid #e2e8f0',
                     justifyContent: 'space-between',
-                    flex: 1,
-                    minWidth: 0
+                    flex: (flat && !isMobile) ? undefined : 1,
+                    minWidth: flat ? '158px' : 0
                 }}>
                     <button
                         onClick={() => isAllTime ? setSelectedYear && setSelectedYear(selectedYear - 1) : handleMonthChange(-1)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', flexShrink: 0 }}
                     >
-                        <ChevronLeft size={20} strokeWidth={3} />
+                        <ChevronLeft size={flat ? 16 : 20} strokeWidth={3} />
                     </button>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', letterSpacing: '-0.01em', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                    <div style={{ fontSize: flat ? '0.9rem' : '1.1rem', fontWeight: 900, color: '#1e293b', letterSpacing: '-0.01em', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                         {/* T-337: all-work mode shows a YEAR selector; month mode shows the month. */}
                         {isAllTime ? `ทั้งปี ${selectedYear}` : monthName}
                     </div>
@@ -104,13 +108,13 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
                         onClick={() => isAllTime ? setSelectedYear && setSelectedYear(Math.min(nowYear, selectedYear + 1)) : handleMonthChange(1)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: isAllTime && selectedYear >= nowYear ? '#e2e8f0' : '#94a3b8', display: 'flex', alignItems: 'center', flexShrink: 0 }}
                     >
-                        <ChevronRight size={20} strokeWidth={3} />
+                        <ChevronRight size={flat ? 16 : 20} strokeWidth={3} />
                     </button>
                 </div>
 
                 {/* T-337: month vs year mode is a 2-tab segmented control (clearer than a single toggle). */}
                 {allowAllTime && setIsAllTime && (
-                    <div style={{ display: 'flex', gap: '4px', background: '#e2e8f0', borderRadius: '18px', padding: '4px', height: isMobile ? '44px' : '100%', minHeight: '44px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: '4px', background: '#e2e8f0', borderRadius: flat ? '14px' : '18px', padding: '4px', height: isMobile ? '44px' : (flat ? '38px' : '100%'), minHeight: flat ? '38px' : '44px', flexShrink: 0 }}>
                         {([['รายเดือน', false], ['รายปี', true]] as [string, boolean][]).map(([label, val]) => {
                             const active = isAllTime === val;
                             return (
@@ -121,10 +125,10 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
                                         background: active ? 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' : 'transparent',
                                         color: active ? '#fff' : '#64748b',
                                         border: 'none',
-                                        padding: '8px 18px',
-                                        borderRadius: '14px',
+                                        padding: flat ? '6px 14px' : '8px 18px',
+                                        borderRadius: flat ? '11px' : '14px',
                                         fontWeight: 800,
-                                        fontSize: '0.9rem',
+                                        fontSize: flat ? '0.82rem' : '0.9rem',
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -144,26 +148,26 @@ const MasterFilter: React.FC<MasterFilterProps> = ({
             </div>
 
             {/* Week Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', opacity: isAllTime ? 0.5 : 1, pointerEvents: isAllTime ? 'none' : 'auto', transition: 'all 0.3s ease' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#94a3b8' }}>สัปดาห์</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: flat ? '8px' : '14px', opacity: isAllTime ? 0.5 : 1, pointerEvents: isAllTime ? 'none' : 'auto', transition: 'all 0.3s ease' }}>
+                <span style={{ fontSize: flat ? '0.8rem' : '0.85rem', fontWeight: 800, color: '#94a3b8' }}>สัปดาห์</span>
                 <div style={{ position: 'relative', flex: isMobile ? 1 : undefined, minWidth: 0 }}>
-                    <div style={isMobile ? { ...chipScrollRow, minWidth: 0 } : { display: 'flex', gap: '8px', flexWrap: 'wrap', rowGap: '8px' }}>
+                    <div style={isMobile ? { ...chipScrollRow, minWidth: 0 } : { display: 'flex', gap: flat ? '6px' : '8px', flexWrap: 'wrap', rowGap: flat ? '6px' : '8px' }}>
                         {weeks.map((w) => (
                             <button
                                 key={w}
                                 onClick={() => setSelectedWeek(w)}
                                 style={{
-                                    height: '38px',
-                                    minWidth: w === 0 ? '76px' : '38px',
+                                    height: flat ? '34px' : '38px',
+                                    minWidth: w === 0 ? (flat ? '62px' : '76px') : (flat ? '34px' : '38px'),
                                     flex: isMobile ? '0 0 auto' : undefined,
-                                    borderRadius: '14px',
+                                    borderRadius: flat ? '10px' : '14px',
                                     background: selectedWeek === w ? '#4f46e5' : '#f8fafc',
                                     color: selectedWeek === w ? '#fff' : '#64748b',
-                                    fontSize: '0.85rem',
+                                    fontSize: flat ? '0.82rem' : '0.85rem',
                                     fontWeight: 900,
                                     cursor: 'pointer',
                                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    border: selectedWeek === w ? '2px solid #4f46e5' : '1px solid #f1f5f9',
+                                    border: selectedWeek === w ? '2px solid #4f46e5' : '1px solid #e2e8f0',
                                     boxShadow: selectedWeek === w ? '0 4px 12px rgba(79, 70, 229, 0.2)' : 'none',
                                     display: 'flex',
                                     alignItems: 'center',

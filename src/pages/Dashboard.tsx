@@ -1956,79 +1956,95 @@ const Dashboard = () => {
             `}</style>
             {/* Sticky Header */}
             <div style={{ position: isMobile ? 'static' : 'sticky', top: isMobile ? undefined : '-2rem', zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 1)', backdropFilter: 'blur(12px)', paddingTop: '1rem', paddingBottom: '1rem', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '1rem' : '0', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', borderBottom: '1px solid #e2e8f0', margin: '-2rem -2rem 2.5rem -2rem', paddingLeft: '2rem', paddingRight: '2rem', transition: 'all 0.3s ease' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
-                    <div style={{ minWidth: isMobile ? 0 : '400px' }}>
-                        <h1 style={{ margin: 0, fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#0f172a', letterSpacing: '-0.04em', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', padding: '12px', borderRadius: '20px', color: '#fff', boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.4)', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {viewMode === 'operations' ? <Activity size={32} /> : <BarChart3 size={32} />}
-                            </div>
-                            <span style={{ minWidth: '150px' }}>{isForeman
-                                ? viewMode === 'operations' ? 'ปฏิบัติการ' : 'ผลงาน'
-                                : 'ศูนย์สรุปข้อมูลโครงการ'}</span>
-                        </h1>
-                        <p style={{ margin: '12px 0 0 0', fontSize: '1.1rem', color: '#64748b', fontWeight: 600, minHeight: '3em', display: 'flex', alignItems: 'center' }}>
-                            {isForeman
-                                ? viewMode === 'operations'
-                                    ? `สวัสดีคุณ ${user?.name}, จัดการงานเร่งด่วนและวางแผนงานในมือวันนี้`
-                                    : `ตรวจสอบประสิทธิภาพและสรุปผลงานของคุณ ${user?.name}`
-                                : 'วิเคราะห์ภาพรวมโครงการ ประสิทธิภาพ SLA และการบริหารจัดการต้นทุน'}
-                        </p>
-                    </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : undefined, alignItems: 'flex-start', gap: '12px' }}>
-                    {isAdminOrManager && (
-                        <button
-                            onClick={() => navigate('/director')}
-                            title="ไปยังแดชบอร์ด ผอ. (มุมมองเพื่อการตัดสินใจ)"
-                            style={{ display: 'flex', alignItems: 'center', gap: '8px', height: isMobile ? '44px' : '128px', width: isMobile ? '100%' : undefined, padding: isMobile ? '0 16px' : '0 20px', borderRadius: isMobile ? '18px' : '24px', border: '1px solid #c7d2fe', background: 'linear-gradient(135deg, #eef2ff 0%, #faf5ff 100%)', color: '#4f46e5', fontWeight: 900, fontSize: '0.9rem', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.12)', whiteSpace: 'nowrap' }}
-                        >
-                            <BarChart3 size={20} />
-                            แดชบอร์ด ผอ.
-                        </button>
-                    )}
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : undefined, alignItems: isMobile ? 'stretch' : 'center', flexWrap: 'wrap', gap: '12px' }}>
                     {!isAdminOrManager && (
                     <div style={{
                         display: 'flex',
-                        flexDirection: isMobile ? 'row' : 'column',
+                        flexDirection: 'row',
                         background: '#ffffff',
-                        padding: isMobile ? '6px' : '12px 16px',
-                        borderRadius: isMobile ? '18px' : '32px',
+                        padding: '5px',
+                        borderRadius: '14px',
                         border: '1px solid #e2e8f0',
-                        gap: '8px',
-                        width: isMobile ? '100%' : '200px',
-                        height: isMobile ? 'auto' : '128px',
+                        gap: '6px',
+                        width: isMobile ? '100%' : undefined,
+                        height: '48px',
                         justifyContent: 'center',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                        boxShadow: '0 2px 6px -1px rgba(0, 0, 0, 0.05)',
                     }}>
                             {[{ id: 'operations', label: 'ปฏิบัติการ' }, { id: 'insights', label: 'ผลงาน' }].map((mode) => (
                                 <button
                                     key={mode.id}
                                     onClick={() => setViewMode(mode.id)}
-                                    style={{ width: isMobile ? 'auto' : '100%', flex: isMobile ? 1 : undefined, height: '42px', borderRadius: '16px', border: 'none', background: viewMode === mode.id ? '#4f46e5' : 'transparent', color: viewMode === mode.id ? '#fff' : '#64748b', fontWeight: 900, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: viewMode === mode.id ? '0 10px 15px -3px rgba(79, 70, 229, 0.3)' : 'none' }}
+                                    style={{ flex: isMobile ? 1 : undefined, width: isMobile ? 'auto' : undefined, padding: '0 20px', height: '100%', borderRadius: '10px', border: 'none', background: viewMode === mode.id ? '#4f46e5' : 'transparent', color: viewMode === mode.id ? '#fff' : '#64748b', fontWeight: 900, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: viewMode === mode.id ? '0 6px 12px -3px rgba(79, 70, 229, 0.3)' : 'none' }}
                                 >
                                     {mode.label}
                                 </button>
                             ))}
                         </div>
                     )}
-                    <MasterFilter selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} allowAllTime={isAdminOrManager} isAllTime={isAllTime} setIsAllTime={setIsAllTime} selectedYear={selectedYear} setSelectedYear={setSelectedYear} style={{ height: isMobile ? 'auto' : '128px', padding: isMobile ? '16px' : '24px', width: isMobile ? '100%' : undefined }} />
+                    {/* Unified flat filter toolbar (รูปที่ 2 style) — one horizontal bar */}
                     <div style={{
                         display: 'flex',
-                        flexDirection: 'column',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        alignItems: isMobile ? 'stretch' : 'center',
+                        flexWrap: 'wrap',
+                        gap: '10px',
                         background: '#ffffff',
-                        padding: '14px 18px',
-                        borderRadius: '32px',
+                        padding: isMobile ? '12px' : '8px 12px',
+                        borderRadius: '16px',
                         border: '1px solid #e2e8f0',
-                        boxShadow: '0 4px 20px -4px rgba(0, 0, 0, 0.05)',
-                        gap: '4px',
-                        justifyContent: 'center',
-                        width: isMobile ? '100%' : (isAdminOrManager ? '280px' : '260px'),
-                        height: 'auto',
+                        boxShadow: '0 2px 10px -4px rgba(0, 0, 0, 0.06)',
+                        width: isMobile ? '100%' : undefined,
                         transition: 'all 0.3s ease',
                         opacity: (isAdminOrManager && adminActiveTab === 'comparison') ? 0.4 : 1,
                         pointerEvents: (isAdminOrManager && adminActiveTab === 'comparison') ? 'none' : 'auto',
                     }}>
-                        {/* Clear Data Button (Top) */}
+                        <MasterFilter flat selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedWeek={selectedWeek} setSelectedWeek={setSelectedWeek} allowAllTime={isAdminOrManager} isAllTime={isAllTime} setIsAllTime={setIsAllTime} selectedYear={selectedYear} setSelectedYear={setSelectedYear} style={{ flex: 'initial', width: isMobile ? '100%' : undefined }} />
+
+                        {!isMobile && <div style={{ width: '1px', alignSelf: 'stretch', minHeight: '28px', background: '#e2e8f0' }} />}
+
+                        {isAdminOrManager && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: selectedForemanId ? '#f5f3ff' : '#f8fafc', border: `1px solid ${selectedForemanId ? '#ddd6fe' : '#e2e8f0'}`, borderRadius: '10px', padding: '0 8px 0 12px', height: '38px', width: isMobile ? '100%' : undefined }}>
+                                <Users size={14} color="#4f46e5" />
+                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#94a3b8', whiteSpace: 'nowrap' }}>โฟร์แมน</span>
+                                <select
+                                    value={selectedForemanId || ''}
+                                    onChange={(e) => setSelectedForemanId(e.target.value || null)}
+                                    style={{ padding: '0 2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: selectedForemanId ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1, maxWidth: isMobile ? undefined : '140px' }}
+                                >
+                                    <option value="">ทั้งหมด</option>
+                                    {activeForemen.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: selectedSCurveProject ? '#f5f3ff' : '#f8fafc', border: `1px solid ${selectedSCurveProject ? '#ddd6fe' : '#e2e8f0'}`, borderRadius: '10px', padding: '0 8px 0 12px', height: '38px', width: isMobile ? '100%' : undefined }}>
+                            <Activity size={14} color="#4f46e5" />
+                            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#94a3b8', whiteSpace: 'nowrap' }}>โครงการ</span>
+                            <select
+                                value={selectedSCurveProject || ''}
+                                onChange={(e) => setSelectedSCurveProject(e.target.value)}
+                                style={{ padding: '0 2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: selectedSCurveProject ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1, maxWidth: isMobile ? undefined : '150px', textOverflow: 'ellipsis' }}
+                            >
+                                <option value="">ทั้งหมด</option>
+                                {availableProjectsThisMonth.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: taskWoTypeFilter ? '#fffbeb' : '#f8fafc', border: `1px solid ${taskWoTypeFilter ? '#fde68a' : '#e2e8f0'}`, borderRadius: '10px', padding: '0 8px 0 12px', height: '38px', width: isMobile ? '100%' : undefined }}>
+                            <FileText size={14} color="#b45309" />
+                            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#94a3b8', whiteSpace: 'nowrap' }}>ประเภท</span>
+                            <select
+                                value={taskWoTypeFilter}
+                                onChange={(e) => setTaskWoTypeFilter(e.target.value)}
+                                style={{ padding: '0 2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: taskWoTypeFilter ? '#b45309' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1 }}
+                            >
+                                <option value="">ทั้งหมด</option>
+                                <option value="woa">หลังขาย (WOA)</option>
+                                <option value="wop">ก่อนโอน (WOP)</option>
+                            </select>
+                        </div>
+
                         <button
                             disabled={!selectedForemanId && !selectedSCurveProject && !highlightedWOId && selectedWeek === 0 && !taskWoTypeFilter}
                             onClick={() => {
@@ -2045,74 +2061,27 @@ const Dashboard = () => {
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '8px',
-                                background: (selectedForemanId || selectedSCurveProject !== '' || highlightedWOId || selectedWeek !== 0) ? '#fef2f2' : '#f8fafc',
-                                color: (selectedForemanId || selectedSCurveProject !== '' || highlightedWOId || selectedWeek !== 0) ? '#ef4444' : '#cbd5e1',
-                                border: (selectedForemanId || selectedSCurveProject !== '' || highlightedWOId || selectedWeek !== 0) ? '1px solid #fee2e2' : '1px solid #f1f5f9',
-                                padding: '6px 12px',
-                                fontSize: '0.85rem',
+                                gap: '6px',
+                                background: (selectedForemanId || selectedSCurveProject !== '' || highlightedWOId || selectedWeek !== 0 || taskWoTypeFilter) ? '#fef2f2' : '#f8fafc',
+                                color: (selectedForemanId || selectedSCurveProject !== '' || highlightedWOId || selectedWeek !== 0 || taskWoTypeFilter) ? '#ef4444' : '#cbd5e1',
+                                border: (selectedForemanId || selectedSCurveProject !== '' || highlightedWOId || selectedWeek !== 0 || taskWoTypeFilter) ? '1px solid #fee2e2' : '1px solid #f1f5f9',
+                                padding: '0 14px',
+                                height: '38px',
+                                fontSize: '0.82rem',
                                 fontWeight: 900,
-                                borderRadius: '14px',
+                                borderRadius: '10px',
                                 cursor: 'pointer',
                                 transition: 'all 0.2s',
-                                width: '100%'
+                                whiteSpace: 'nowrap',
+                                width: isMobile ? '100%' : undefined
                             }}
                         >
-                            <X size={16} /> ล้างข้อมูล
+                            <X size={15} /> ล้างข้อมูล
                         </button>
-
-                        {isAdminOrManager && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '80px' }}>
-                                    <Users size={14} color="#4f46e5" />
-                                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>โฟร์แมน:</span>
-                                </div>
-                                <select
-                                    value={selectedForemanId || ''}
-                                    onChange={(e) => setSelectedForemanId(e.target.value || null)}
-                                    style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: selectedForemanId ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1, width: '100%' }}
-                                >
-                                    <option value="">เลือกพนักงาน</option>
-                                    {activeForemen.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
-                            </div>
-                        )}
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '80px' }}>
-                                <Activity size={14} color="#4f46e5" />
-                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>โครงการ:</span>
-                            </div>
-                            <div style={{ flex: 1, overflow: 'hidden' }}>
-                                <select
-                                    value={selectedSCurveProject || ''}
-                                    onChange={(e) => setSelectedSCurveProject(e.target.value)}
-                                    style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: selectedSCurveProject ? '#4f46e5' : '#1e293b', outline: 'none', cursor: 'pointer', width: '100%', textOverflow: 'ellipsis' }}
-                                >
-                                    <option value="">ทั้งหมด</option>
-                                    {availableProjectsThisMonth.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRight: '1px solid #e2e8f0', paddingRight: '10px', height: '1.2rem', minWidth: '80px' }}>
-                                <FileText size={14} color="#b45309" />
-                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>ประเภท:</span>
-                            </div>
-                            <select
-                                value={taskWoTypeFilter}
-                                onChange={(e) => setTaskWoTypeFilter(e.target.value)}
-                                style={{ padding: '2px', border: 'none', background: 'transparent', fontSize: '0.82rem', fontWeight: 800, color: taskWoTypeFilter ? '#b45309' : '#1e293b', outline: 'none', cursor: 'pointer', flex: 1 }}
-                            >
-                                <option value="">ทั้งหมด</option>
-                                <option value="woa">หลังขาย (WOA)</option>
-                                <option value="wop">ก่อนโอน (WOP)</option>
-                            </select>
-                        </div>
                     </div>
 
                     {highlightedWOId && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#eef2ff', padding: '8px 16px', borderRadius: '28px', border: '2px solid #4f46e5', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)', height: '50px', alignSelf: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#eef2ff', padding: '8px 16px', borderRadius: '12px', border: '2px solid #4f46e5', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)', height: '48px', alignSelf: 'center' }}>
                             <Zap size={16} color="#4f46e5" />
                             <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#4f46e5' }}>#{highlightedWOId}</span>
                             <button
@@ -2494,7 +2463,7 @@ const Dashboard = () => {
                                             return (
                                         <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4,1fr)', 'repeat(2, minmax(0, 1fr))'), gap: '12px' }}>
                                             {/* ใบงาน card — title band + symmetric clickable grid (every number → Task Performance) */}
-                                            <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden' }}>
+                                            <div style={{ gridColumn: isMobile ? '1 / -1' : undefined, background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><FileText size={120} /></div>
                                                 {/* header band */}
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', paddingBottom: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.25)', position: 'relative', zIndex: 1 }}>
@@ -2526,7 +2495,7 @@ const Dashboard = () => {
                                                 </div>
                                             </div>
                                             {/* รายการย่อย card — same skeleton as ใบงาน; subtask-level so it maps 1:1 to the table */}
-                                            <div style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden' }}>
+                                            <div style={{ gridColumn: isMobile ? '1 / -1' : undefined, background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><CheckCircle2 size={120} /></div>
                                                 {/* header band */}
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', paddingBottom: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.25)', position: 'relative', zIndex: 1 }}>
