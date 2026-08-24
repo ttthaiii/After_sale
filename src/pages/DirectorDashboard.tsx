@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import {
-    LayoutDashboard, ShieldAlert, ArrowLeft, ClipboardList, CheckCircle2,
+    LayoutDashboard, ShieldAlert, ClipboardList, CheckCircle2,
     AlertTriangle, Timer, LifeBuoy, Bell, ChevronRight, X, Target, Users
 } from 'lucide-react';
 import { computeJobSLA, getCountedSubtasks, confirmedProgress } from '../utils/jobSla';
@@ -516,7 +516,7 @@ const DirectorDashboard = () => {
     }
 
     return (
-        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+        <div style={{ width: '100%', margin: 0, paddingBottom: '3rem' }}>
             {/* Header + page-switch back to the classic dashboard */}
             <div style={{
                 display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '1rem',
@@ -543,19 +543,6 @@ const DirectorDashboard = () => {
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={() => navigate('/dashboard')}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '0.7rem 1.15rem', borderRadius: '14px',
-                        border: '1px solid #e2e8f0', background: '#ffffff',
-                        color: '#4f46e5', fontWeight: 700, fontSize: '0.9rem',
-                        cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
-                    }}
-                >
-                    <ArrowLeft size={18} />
-                    ภาพรวมระบบ (เดิม)
-                </button>
             </div>
 
             {/* ── S3 · Block 1 — KPI cards: one per ผอ. question, click → drill ──── */}
