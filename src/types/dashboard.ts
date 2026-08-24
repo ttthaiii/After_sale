@@ -48,11 +48,17 @@ export interface DashboardStats {
     closed: number;
     open: number;
     totalTasksInScope: number;
+    subtaskDone: number;        // การ์ดรายการย่อย: งานย่อยที่ทำครบ 100% (isWorkDone)
+    subtaskInProgress: number;  // กำลังทำ (confirmed progress > 0, < 100)
+    subtaskNotStarted: number;  // ยังไม่เริ่ม (confirmed progress = 0)
     evaluating: number;
     slaScore: number | null;
     highRisk: number;
     pendingAdminEval: number;
     closedWOsInScope: number;
+    doneAwaitingQR: number;   // เสร็จ 100% แต่ยังไม่ออก QR
+    donePendingEval: number;  // ส่ง QR แล้ว รอลูกค้าประเมิน (pending_delivery)
+    doneReceived: number;     // ลูกค้ารับมอบแล้ว (Complete)
     totalHours: number;
     totalBudget: number;
     totalActualCost: number;

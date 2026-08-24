@@ -811,6 +811,14 @@ const Dashboard = () => {
         return base;
     }, [baseAccessibleWOs, selectedSCurveProject]);
 
+    // Single source for the ประเภท (WOA/WOP) filter — shared by the KPI stats AND the SLA cards
+    // so every top-bar card reacts to it together (no card left frozen).
+    const matchesWoType = useCallback((wo: any) => {
+        if (taskWoTypeFilter === 'wop') return wo.workOrderCode === 'WOP' || (wo as any).type === 'PreHandover';
+        if (taskWoTypeFilter === 'woa') return wo.workOrderCode !== 'WOP' && (wo as any).type !== 'PreHandover';
+        return true;
+    }, [taskWoTypeFilter]);
+
     const filteredData = useMemo(() => {
         let base = [...allAccessibleWOs];
         // T-337: all-work mode windows by the selected YEAR; month mode windows by selectedMonth.
@@ -845,10 +853,9 @@ const Dashboard = () => {
                 return show;
             });
         }
-        if (taskWoTypeFilter === 'wop') base = base.filter((wo: any) => wo.workOrderCode === 'WOP' || (wo as any).type === 'PreHandover');
-        if (taskWoTypeFilter === 'woa') base = base.filter((wo: any) => wo.workOrderCode !== 'WOP' && (wo as any).type !== 'PreHandover');
+        base = base.filter(matchesWoType); // ประเภท (WOA/WOP) — single source (matchesWoType)
         return base;
-    }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters, taskWoTypeFilter, isAllTime, selectedYear]);
+    }, [allAccessibleWOs, selectedMonth, selectedWeek, statusFilters, matchesWoType, isAllTime, selectedYear]);
 
     // ✅ Phase 1: Flat-map tasks for Task-Centric Dashboard
     const flatTasks = useMemo(() => {
@@ -895,15 +902,24 @@ const Dashboard = () => {
     }, [filteredData, user, projects, selectedForemanId]);
 
     const getTaskDisplayStatus = (t: any): string => {
-        // "เสร็จสมบูรณ์" = customer inspected + rated. WOA carries Complete on the task;
+        // "รับมอบเรียบร้อย" = customer inspected + rated. WOA carries Complete on the task;
         // WOP carries it on the parent WO (wo.status='Complete'; the category/task status
         // stays 'pending_delivery'). System-wide single source = status==='Complete'
         // (matches SLAMonitor + History + the WO-group header) — NOT raw 100% progress. (2026-08-13)
-        if (t.status === 'Complete' || t.woStatus === 'Complete') return 'เสร็จสมบูรณ์';
-        if (t.status === 'For Checking' || t.status === 'pending_delivery') return 'รอลูกค้าประเมิน';
+        if (t.status === 'Complete' || t.woStatus === 'Complete') return 'รับมอบเรียบร้อย';
+        if (t.status === 'pending_delivery') return 'รอลูกค้าประเมิน'; // QR ส่งแล้ว รอลูกค้า (post-QR)
+        // "รอออก QR" is a WHOLE-ใบงาน concept — QR is issued once only when EVERY subtask is done.
+        // So a lone finished subtask (status 'For Checking', or progress 100%) may show it ONLY when
+        // the parent WO is fully complete; otherwise this subtask is "เสร็จแล้ว" (its own work done)
+        // while the ใบงาน stays "กำลังทำ" — avoids the level-mixing lie. (Option 1, user 2026-08-24)
+        // Single source: this fn drives the dropdown option (taskStatusOptions), the filter
+        // (filteredFlatTasks) AND the row badge — one change flows to all three.
+        const woDone = isWorkOrderCompleted(t.parentWO);
+        if (t.status === 'For Checking') return woDone ? 'รอออก QR' : 'งานเสร็จ';
         // Started vs not-started counts CONFIRMED (submitted) progress only — a
         // draft-only report keeps the task in "ยังไม่เริ่ม" (user rule 2026-08-19).
         const p = confirmedProgress(t);
+        if (p >= 100) return woDone ? 'รอออก QR' : 'งานเสร็จ';
         if (p > 0) return 'กำลังดำเนินการ';
         return 'ยังไม่เริ่ม';
     };
@@ -913,12 +929,21 @@ const Dashboard = () => {
     }, [flatTasks, taskStatusFilter]);
     const taskStatusOptions = useMemo(() => {
         const base = taskCatFilter ? flatTasks.filter((t: any) => t.categoryName === taskCatFilter) : flatTasks;
-        return Array.from(new Set(base.map((t: any) => getTaskDisplayStatus(t)))).sort() as string[];
+        // Order by the REAL work sequence, not Thai alphabetical (single source for the dropdown order).
+        const TASK_STATUS_ORDER = ['ยังไม่เริ่ม', 'กำลังดำเนินการ', 'งานเสร็จ', 'รอออก QR', 'รอลูกค้าประเมิน', 'รับมอบเรียบร้อย'];
+        const present = new Set(base.map((t: any) => getTaskDisplayStatus(t)));
+        return TASK_STATUS_ORDER.filter((s) => present.has(s)) as string[];
     }, [flatTasks, taskCatFilter]);
     const filteredFlatTasks = useMemo(() => flatTasks.filter((t: any) => {
         if (highlightedWOId && t.woId !== highlightedWOId) return false;
         if (taskCatFilter && t.categoryName !== taskCatFilter) return false;
-        if (taskStatusFilter && getTaskDisplayStatus(t) !== taskStatusFilter) return false;
+        if (taskStatusFilter) {
+            // '__done__' = grouped "เสร็จแล้ว" click (any status where the work is done); else exact match.
+            const _ds = getTaskDisplayStatus(t);
+            if (taskStatusFilter === '__done__') {
+                if (!['งานเสร็จ', 'รอออก QR', 'รอลูกค้าประเมิน', 'รับมอบเรียบร้อย'].includes(_ds)) return false;
+            } else if (_ds !== taskStatusFilter) return false;
+        }
         if (taskSlaOutcomeFilter === 'urgent') {
             // Same criteria as the "งานค้างเกินกำหนด" count on the Insights gauge —
             // still-open jobs whose SLA status is critical.
@@ -1006,6 +1031,15 @@ const Dashboard = () => {
         const carriedOver = carriedOverData.length;
         const totalInMonth = newThisMonth + carriedOver;
         const closedWOsInScope = [...newThisMonthData, ...carriedOverData].filter((wo: any) => wo.status === 'Complete').length;
+        // "เสร็จแล้ว" (ใบงาน card) = every WO at 100% (all subtasks done, via isWorkOrderCompleted),
+        // split by close-stage so the 3 always sum to the done total (single-source done-set):
+        //   doneReceived  = ลูกค้ารับมอบแล้ว (Complete)
+        //   donePendingEval = ส่ง QR แล้ว รอลูกค้าประเมิน (pending_delivery)
+        //   doneAwaitingQR  = เสร็จ 100% แต่ยังไม่ออก QR (remainder — not Complete, not pending_delivery)
+        const _doneScope = [...newThisMonthData, ...carriedOverData].filter((wo: any) => isWorkOrderCompleted(wo));
+        const doneReceived = _doneScope.filter((wo: any) => wo.status === 'Complete').length;
+        const donePendingEval = _doneScope.filter((wo: any) => wo.status === 'pending_delivery').length;
+        const doneAwaitingQR = _doneScope.length - doneReceived - donePendingEval;
         const total = allAccessibleWOs.length;
         const totalAssignments = filteredWOs.length;
 
@@ -1017,6 +1051,7 @@ const Dashboard = () => {
         let closed = 0;
         let open = 0;
         let totalTasksInScope = 0; // T-338: grand total of in-scope tasks (excl Draft/Cancelled) for the "ทำทั้งหมด" card number
+        let subtaskDone = 0, subtaskInProgress = 0, subtaskNotStarted = 0; // การ์ดรายการย่อย 3-bucket (MECE over totalTasksInScope)
         let evaluating = 0;
         let highRisk = 0, slaMetCount = 0, totalTaskCount = 0;
 
@@ -1058,6 +1093,14 @@ const Dashboard = () => {
                     const isCompleted = t.status === 'Complete';
                     // งานถึง 100% แล้ว = นับ SLA ฝั่งช่าง — CONFIRMED progress only (draft ignored, user rule 2026-08-19)
                     const isWorkDone = isCompleted || isWaitingCustomerEval || confirmedProgress(t) >= 100;
+                    // การ์ดรายการย่อย: 3 ถัง MECE over the same APPROVED scope as totalTasksInScope
+                    // (single source = isWorkDone / confirmedProgress — matches getTaskDisplayStatus's
+                    // done-vs-pipeline split; sums exactly to totalTasksInScope so numbers never contradict).
+                    if (APPROVED_TASK_STATUSES.includes(t.status)) {
+                        if (isWorkDone) subtaskDone++;
+                        else if (confirmedProgress(t) > 0) subtaskInProgress++;
+                        else subtaskNotStarted++;
+                    }
                     // "เสร็จแล้ว" (การ์ดรายการย่อย · ข้อมูลภายใน) = งานที่ยืนยันถึง 100% แล้ว.
                     // CONFIRMED only — a draft-only 100% is NOT counted done (user rule 2026-08-19
                     // supersedes the earlier dc3f68b "count draft-100 as done" internal-view choice).
@@ -1443,11 +1486,11 @@ const Dashboard = () => {
         }, {})).sort((a: any, b: any) => b.count - a.count).slice(0, 5).map((item: any) => ({ ...item, action: 'ตรวจสอบแผนปฏิบัติงานรายวัน' }));
 
         return {
-            total, closed, open, totalTasksInScope, evaluating, highRisk, totalHours, totalBudget, totalActualCost,
+            total, closed, open, totalTasksInScope, subtaskDone, subtaskInProgress, subtaskNotStarted, evaluating, highRisk, totalHours, totalBudget, totalActualCost,
             internalCount, outsourceCount, slaScore, slaMetCount, totalTaskCount,
             projectStats: Object.values(projectsMap).sort((a: any, b: any) => b.total - a.total),
             stalledCases, chronicIssues, budgetPerformance: [], laborByProject: laborByProjectArray, totalAssignments,
-            totalInMonth, newThisMonth, carriedOver, closedWOsInScope, dueTodayCount, pendingAdminEval,
+            totalInMonth, newThisMonth, carriedOver, closedWOsInScope, doneAwaitingQR, donePendingEval, doneReceived, dueTodayCount, pendingAdminEval,
             urgentTasks: urgentTasks.sort((a: any, b: any) => (a.statusInfo?.hoursLeft || 0) - (b.statusInfo?.hoursLeft || 0)),
             upcomingTasks: upcomingTasks.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
             laborStats: [{ name: 'DC ใน (Internal)', value: internalHours, color: '#4f46e5' }, { name: 'DC นอก (Outsource)', value: outsourceHours, color: '#10b981' }],
@@ -1472,6 +1515,7 @@ const Dashboard = () => {
         const projectAgg: Record<string, { id: string; name: string; cases: any[] }> = {};
 
         baseAccessibleWOs
+            .filter(matchesWoType) // ประเภท (WOA/WOP) — same single source as the KPI stats
             .forEach((wo: any) => {
                 const pId = wo.projectId;
                 if (!pId) return;
@@ -1500,7 +1544,7 @@ const Dashboard = () => {
             });
 
         return Object.values(projectAgg).filter((p: any) => p.cases.length > 0);
-    }, [baseAccessibleWOs, selectedMonth, getProjectName, isAdminOrManager, user, isAllTime, selectedYear]);
+    }, [baseAccessibleWOs, matchesWoType, selectedMonth, getProjectName, isAdminOrManager, user, isAllTime, selectedYear]);
 
     const projectTrend = useMemo(() => {
         const [selYear, selMonth] = selectedMonth.split('-').map(Number);
@@ -2421,8 +2465,21 @@ const Dashboard = () => {
 
                                     {/* MIDDLE: stats + progress */}
                                     {(() => {
-                                        const closedWOs = stats.closedWOsInScope ?? 0;
+                                        // "เสร็จแล้ว" = every 100%-done WO, split into 3 close-stages (single-source from stats).
+                                        const doneAwaitingQR = stats.doneAwaitingQR ?? 0;   // รอออก QR
+                                        const donePendingEval = stats.donePendingEval ?? 0; // รอลูกค้าประเมิน
+                                        const doneReceived = stats.doneReceived ?? 0;        // รับมอบเรียบร้อย
+                                        const doneTotal = doneAwaitingQR + donePendingEval + doneReceived;
                                         const totalTasks = stats.totalTasksInScope ?? 0; // T-338: grand total in-scope (was closed+open, which dropped 100%-awaiting-customer tasks)
+                                        // Every KPI number is a shortcut into the Task Performance Details table below.
+                                        // status=null → clear all filters (ทำทั้งหมด); '__done__' → grouped done; else exact status.
+                                        const goToTasks = (status: string | null) => {
+                                            setTaskCatFilter(''); setTaskWoTypeFilter(''); setHighlightedWOId(null); setTaskSlaOutcomeFilter('');
+                                            setTaskStatusFilter(status ?? '');
+                                            document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' });
+                                        };
+                                        // shared clickable-cell style + hover (inline-only, no className)
+                                        const cellHover = (on: boolean) => (e: any) => { e.currentTarget.style.background = on ? 'rgba(255,255,255,0.14)' : 'transparent'; };
                                         return (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         {(() => {
@@ -2436,68 +2493,90 @@ const Dashboard = () => {
                                             const slaLate = _hcTot - _hcMet;
                                             return (
                                         <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, 'repeat(4,1fr)', 'repeat(2, minmax(0, 1fr))'), gap: '12px' }}>
-                                            {/* WO dual-number card */}
-                                            <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
+                                            {/* ใบงาน card — title band + symmetric clickable grid (every number → Task Performance) */}
+                                            <div style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><FileText size={120} /></div>
-                                                <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '12px' }}>
-                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><FileText size={16} /></div>
-                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>ใบงาน</div>
+                                                {/* header band */}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', paddingBottom: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.25)', position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ background: 'rgba(255,255,255,0.2)', padding: '5px', borderRadius: '9px', color: '#fff', display: 'inline-flex' }}><FileText size={15} /></div>
+                                                    <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 700, letterSpacing: '0.01em' }}>ใบงาน</div>
+                                                </div>
+                                                {/* body: 3-col symmetric grid, dividers, all cells clickable */}
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', alignItems: 'center', position: 'relative', zIndex: 1 }}>
+                                                    <div onClick={() => goToTasks(null)} onMouseOver={cellHover(true)} onMouseOut={cellHover(false)} title="ดูทั้งหมดในตาราง" style={{ cursor: 'pointer', borderRadius: '12px', padding: '8px 4px', transition: 'background 0.2s', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.22)' }}>
+                                                        <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.totalInMonth}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.75)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                                                        <div>
-                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.totalInMonth}</div>
-                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
-                                                        </div>
-                                                        <div style={{ width: '1px', height: '44px', background: 'rgba(255,255,255,0.3)' }} />
-                                                        <div>
-                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{closedWOs}</div>
-                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
-                                                        </div>
+                                                    <div onClick={() => goToTasks('__done__')} onMouseOver={cellHover(true)} onMouseOut={cellHover(false)} title="ดูงานที่เสร็จทั้งหมด" style={{ cursor: 'pointer', borderRadius: '12px', padding: '8px 4px', transition: 'background 0.2s', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.22)' }}>
+                                                        <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{doneTotal}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.75)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '10px' }}>
+                                                        {[
+                                                            { n: doneAwaitingQR, t: 'รอออก QR' },
+                                                            { n: donePendingEval, t: 'รอลูกค้าประเมิน' },
+                                                            { n: doneReceived, t: 'รับมอบเรียบร้อย' },
+                                                        ].map((r) => (
+                                                            <div key={r.t} onClick={() => goToTasks(r.t)} onMouseOver={cellHover(true)} onMouseOut={cellHover(false)} title={`กรอง: ${r.t}`} style={{ cursor: 'pointer', borderRadius: '9px', padding: '3px 6px', transition: 'background 0.2s', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                                                                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#fff', lineHeight: 1 }}>{r.n}</span>
+                                                                <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{r.t}</span>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             </div>
-                                            {/* Task dual-number card */}
-                                            <div style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
+                                            {/* รายการย่อย card — same skeleton as ใบงาน; subtask-level so it maps 1:1 to the table */}
+                                            <div style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden' }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><CheckCircle2 size={120} /></div>
-                                                <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '12px' }}>
-                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><CheckCircle2 size={16} /></div>
-                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>รายการย่อย</div>
+                                                {/* header band */}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', paddingBottom: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.25)', position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ background: 'rgba(255,255,255,0.2)', padding: '5px', borderRadius: '9px', color: '#fff', display: 'inline-flex' }}><CheckCircle2 size={15} /></div>
+                                                    <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 700, letterSpacing: '0.01em' }}>รายการย่อย</div>
+                                                </div>
+                                                {/* body: 3-col symmetric grid, dividers, all cells clickable */}
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', alignItems: 'center', position: 'relative', zIndex: 1 }}>
+                                                    <div onClick={() => goToTasks(null)} onMouseOver={cellHover(true)} onMouseOut={cellHover(false)} title="ดูทั้งหมดในตาราง" style={{ cursor: 'pointer', borderRadius: '12px', padding: '8px 4px', transition: 'background 0.2s', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.22)' }}>
+                                                        <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{totalTasks}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.75)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                                                        <div>
-                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{totalTasks}</div>
-                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>ทำทั้งหมด</div>
-                                                        </div>
-                                                        <div style={{ width: '1px', height: '44px', background: 'rgba(255,255,255,0.3)' }} />
-                                                        <div>
-                                                            <div style={{ fontSize: scaleFont(isMobile, '2.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.closed}</div>
-                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
-                                                        </div>
+                                                    <div onClick={() => goToTasks('__done__')} onMouseOver={cellHover(true)} onMouseOut={cellHover(false)} title="ดูงานย่อยที่เสร็จทั้งหมด" style={{ cursor: 'pointer', borderRadius: '12px', padding: '8px 4px', transition: 'background 0.2s', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.22)' }}>
+                                                        <div style={{ fontSize: scaleFont(isMobile, '2rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{stats.subtaskDone}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.75)', marginTop: '5px', fontWeight: 500 }}>เสร็จแล้ว</div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '10px' }}>
+                                                        {[{ n: stats.subtaskNotStarted, t: 'ยังไม่เริ่ม', s: 'ยังไม่เริ่ม' }, { n: stats.subtaskInProgress, t: 'กำลังทำ', s: 'กำลังดำเนินการ' }].map((r) => (
+                                                            <div key={r.s} onClick={() => goToTasks(r.s)} onMouseOver={cellHover(true)} onMouseOut={cellHover(false)} title={`กรอง: ${r.t}`} style={{ cursor: 'pointer', borderRadius: '9px', padding: '3px 6px', transition: 'background 0.2s', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                                                                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#fff', lineHeight: 1 }}>{r.n}</span>
+                                                                <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{r.t}</span>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             </div>
                                             {/* On-time SLA card — click filters Task Performance Details to completed+on-time jobs */}
-                                            <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'onTime' ? '' : 'onTime'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'onTime' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'late' ? 0.55 : 1 }}>
+                                            <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'onTime' ? '' : 'onTime'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'onTime' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'late' ? 0.55 : 1 }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><Zap size={120} /></div>
-                                                <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}>
-                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><Zap size={16} /></div>
-                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>เสร็จทัน SLA</div>
-                                                    </div>
+                                                {/* header band */}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', paddingBottom: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.25)', position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ background: 'rgba(255,255,255,0.2)', padding: '5px', borderRadius: '9px', color: '#fff', display: 'inline-flex' }}><Zap size={15} /></div>
+                                                    <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 700, letterSpacing: '0.01em' }}>เสร็จทัน SLA</div>
+                                                </div>
+                                                {/* body */}
+                                                <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
                                                     <div style={{ fontSize: scaleFont(isMobile, '3.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaOnTime}</div>
                                                     <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'onTime' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : `จาก ${slaOnTime + slaLate} รายการที่เสร็จ →`}</div>
                                                 </div>
                                             </div>
                                             {/* Late SLA card — click filters Task Performance Details to completed+late jobs */}
-                                            <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'late' ? '' : 'late'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: slaLate > 0 ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)', padding: '1.5rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'late' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', textAlign: 'center', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'onTime' ? 0.55 : 1 }}>
+                                            <div onClick={() => { setTaskSlaOutcomeFilter(prev => prev === 'late' ? '' : 'late'); document.getElementById('job-details-section')?.scrollIntoView({ behavior: 'smooth' }); }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.cursor = 'pointer'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }} style={{ background: slaLate > 0 ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)', padding: '1.25rem 1.25rem 1rem', borderRadius: '24px', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: taskSlaOutcomeFilter === 'late' ? '0 0 0 4px rgba(255,255,255,0.75), 0 10px 15px -3px rgba(0,0,0,0.1)' : '0 10px 15px -3px rgba(0,0,0,0.1)', position: 'relative', overflow: 'hidden', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', opacity: taskSlaOutcomeFilter === 'onTime' ? 0.55 : 1 }}>
                                                 <div style={{ position: 'absolute', right: '-10%', top: '-10%', opacity: 0.1, color: '#fff' }}><AlertTriangle size={120} /></div>
-                                                <div style={{ position: 'relative', zIndex: 1 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}>
-                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '6px', borderRadius: '10px', color: '#fff', display: 'inline-flex', flexShrink: 0 }}><AlertTriangle size={16} /></div>
-                                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>เลย SLA</div>
-                                                    </div>
+                                                {/* header band */}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', paddingBottom: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.25)', position: 'relative', zIndex: 1 }}>
+                                                    <div style={{ background: 'rgba(255,255,255,0.2)', padding: '5px', borderRadius: '9px', color: '#fff', display: 'inline-flex' }}><AlertTriangle size={15} /></div>
+                                                    <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 700, letterSpacing: '0.01em' }}>เลย SLA</div>
+                                                </div>
+                                                {/* body */}
+                                                <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
                                                     <div style={{ fontSize: scaleFont(isMobile, '3.5rem'), fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{slaLate}</div>
                                                     <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', marginTop: '8px', fontWeight: 500 }}>{taskSlaOutcomeFilter === 'late' ? 'กำลังกรองอยู่ → คลิกอีกครั้งเพื่อล้าง' : slaLate > 0 ? 'รายการเกินกำหนด → ดูรายละเอียด' : 'ทุกงานทันกำหนด 🎉'}</div>
                                                 </div>
@@ -2870,6 +2949,7 @@ const Dashboard = () => {
                                             </select>
                                             <select value={taskStatusFilter} onChange={e => setTaskStatusFilter(e.target.value)} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '6px 10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: taskStatusFilter ? '#f0fdf4' : '#f8fafc', color: taskStatusFilter ? '#059669' : '#64748b', cursor: 'pointer', outline: 'none' }}>
                                                 <option value="">สถานะ: ทั้งหมด</option>
+                                                {taskStatusFilter === '__done__' && <option value="__done__">งานเสร็จ (รวมทุกขั้น)</option>}
                                                 {taskStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
                                             {(taskCatFilter || taskStatusFilter || taskWoTypeFilter || highlightedWOId || taskSlaOutcomeFilter) && (
@@ -3218,10 +3298,14 @@ const Dashboard = () => {
                                                                             // Single source: same label fn as the status filter, keyed on
                                                                             // status==='Complete' (customer rated), never raw 100% progress.
                                                                             const s = getTaskDisplayStatus(task);
-                                                                            const cfg = s === 'เสร็จสมบูรณ์'
+                                                                            const cfg = s === 'รับมอบเรียบร้อย'
                                                                                 ? { bg: '#ecfdf5', color: '#10b981', border: '#d1fae5', Icon: CheckCircle2 }
                                                                                 : s === 'รอลูกค้าประเมิน'
                                                                                 ? { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa', Icon: UserCheck }
+                                                                                : s === 'รอออก QR'
+                                                                                ? { bg: '#fffbeb', color: '#d97706', border: '#fde68a', Icon: Clock }
+                                                                                : s === 'งานเสร็จ'
+                                                                                ? { bg: '#f0fdfa', color: '#0d9488', border: '#99f6e4', Icon: CheckCircle2 }
                                                                                 : s === 'กำลังดำเนินการ'
                                                                                 ? { bg: '#eff6ff', color: '#3b82f6', border: '#dbeafe', Icon: Clock }
                                                                                 : { bg: '#f8fafc', color: '#64748b', border: '#f1f5f9', Icon: AlertCircle };
