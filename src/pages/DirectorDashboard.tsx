@@ -9,6 +9,7 @@ import {
 import { computeJobSLA, getCountedSubtasks, confirmedProgress } from '../utils/jobSla';
 import { getSatisfactionAverage } from '../utils/satisfaction';
 import TaskHistoryModal from '../components/TaskHistoryModal';
+import type { WorkOrderType } from '../types';
 
 // Unified status/severity palette — the SINGLE source for every chart color on this
 // page. Calm 4-5 level scale; neutral slate scaffold + brand indigo headers stay
@@ -232,6 +233,17 @@ const DirectorDashboard = () => {
         [staff]
     );
 
+    // Work-type filter (ทั้งหมด/หลังขาย/ก่อนโอน). SINGLE-SOURCE: one scoped WO list
+    // feeds the agg memo + every drill-down, so switching type re-scopes the WHOLE
+    // page (summary cards + project chart + foreman block) from ONE input point.
+    const [woTypeFilter, setWoTypeFilter] = useState<'all' | WorkOrderType>('all');
+    const scopedWOs = useMemo(
+        () => woTypeFilter === 'all'
+            ? workOrders
+            : workOrders.filter((w: any) => w.type === woTypeFilter),
+        [workOrders, woTypeFilter]
+    );
+
     // ── S2 · Aggregation layer (the brain) ────────────────────────────────────
     // ONE memo that turns raw WorkOrders into everything the blocks below read.
     // Every schedule metric comes from computeJobSLA (single source) so numbers
@@ -273,7 +285,7 @@ const DirectorDashboard = () => {
         let totalJobs = 0, doneJobs = 0, onTimeJobs = 0, lateJobs = 0, overdueJobs = 0;
         let dueSoonJobs = 0; // Q6 — open jobs overdue OR due within 3 days
 
-        workOrders.forEach((wo: any) => {
+        scopedWOs.forEach((wo: any) => {
             const sla = computeJobSLA(wo);
             if (!sla.isEligible) return; // not gradeable -> excluded everywhere
             totalJobs++;
@@ -386,7 +398,7 @@ const DirectorDashboard = () => {
             },
             perProject, perForeman,
         };
-    }, [workOrders, projects, staff, activeForemen]);
+    }, [scopedWOs, projects, staff, activeForemen]);
 
     // ── Drill-down state + derived views (reused by S4/S5/S6) ──────────────────
     const [drill, setDrill] = useState<{ title: string; subs: any[] } | null>(null);
@@ -395,6 +407,7 @@ const DirectorDashboard = () => {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     // Which foreman row has its inline job-list accordion open (null = all collapsed).
     const [expandedForeman, setExpandedForeman] = useState<string | null>(null);
+    const [foremanMetric, setForemanMetric] = useState<'jobs' | 'items'>('items');
     // Project chart mode — 'done' (เสร็จแล้ว, close-axis) ↔ 'open' (ยังไม่จบ). One chart, two views.
     const [projMode, setProjMode] = useState<'done' | 'open'>('open');
 
@@ -418,7 +431,7 @@ const DirectorDashboard = () => {
     const openProject = (pid: string) => setDrill({
         title: `โครงการ · ${getProjectName(pid)}`,
         subs: subRows(
-            workOrders.filter((w: any) => (w.projectId || 'unknown') === pid && computeJobSLA(w).isEligible)
+            scopedWOs.filter((w: any) => (w.projectId || 'unknown') === pid && computeJobSLA(w).isEligible)
         ),
     });
 
@@ -456,17 +469,13 @@ const DirectorDashboard = () => {
     // Single source for a foreman's IN-HAND jobs (phase in-progress) — used by BOTH
     // the click-in modal and the inline accordion, so the two lists never diverge and
     // both match the bar count (REQ-1).
-    const foremanInHandWOs = (fid: string) => workOrders.filter((w: any) => {
+    const foremanInHandWOs = (fid: string) => scopedWOs.filter((w: any) => {
         const sla = computeJobSLA(w);
         if (!sla.isEligible || sla.phase !== 'in-progress') return false;
         const owner = w?.type === 'PreHandover'
             ? (w?.categories?.[0]?.assignedForemanId || w?.woOwnerId)
             : w?.woOwnerId;
         return owner === fid;
-    });
-    const openForeman = (fid: string, name: string) => setDrill({
-        title: `โฟร์แมน · ${name}`,
-        subs: subRows(foremanInHandWOs(fid)),
     });
     // KPI card → jump to the project chart in the right mode (card-led drill-down).
     const goChart = (mode: 'done' | 'open') => {
@@ -478,6 +487,7 @@ const DirectorDashboard = () => {
     const foremanItems: Record<string, any[]> = {};
     agg.perForeman.forEach((f: any) => { foremanItems[f.id] = subRows(foremanInHandWOs(f.id)); });
     const maxItems = Math.max(1, ...agg.perForeman.map((f: any) => foremanItems[f.id].length));
+    const maxLoad = Math.max(1, ...agg.perForeman.map((f: any) => f.load));
     // Rank the card by line-item count (รายการ) desc — the bar magnitude the user reads.
     const foremenRanked = [...agg.perForeman].sort(
         (a: any, b: any) => (foremanItems[b.id]?.length || 0) - (foremanItems[a.id]?.length || 0)
@@ -602,7 +612,31 @@ const DirectorDashboard = () => {
                 {/* Header + mode toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                     <SectionTitle icon={<Target size={18} />} title="ภาพรวมงานต่อโครงการ" accent="#4f46e5" />
-                    <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {/* Work-type filter — sits here but controls the WHOLE page (one scopedWOs input) */}
+                        <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
+                            {([
+                                { v: 'all', t: 'ทั้งหมด' },
+                                { v: 'AfterSale', t: 'หลังขาย' },
+                                { v: 'PreHandover', t: 'ก่อนโอน' },
+                            ] as const).map((b) => (
+                                <button
+                                    key={b.v}
+                                    onClick={() => setWoTypeFilter(b.v)}
+                                    style={{
+                                        border: 'none', cursor: 'pointer', borderRadius: '8px', padding: '6px 14px',
+                                        fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit',
+                                        background: woTypeFilter === b.v ? '#4f46e5' : 'transparent',
+                                        color: woTypeFilter === b.v ? '#fff' : '#64748b',
+                                        boxShadow: woTypeFilter === b.v ? '0 2px 6px rgba(79,70,229,0.25)' : 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    {b.t}
+                                </button>
+                            ))}
+                        </div>
+                        <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
                         {([
                             { m: 'open', t: '🔧 งานที่ยังไม่จบ' },
                             { m: 'done', t: '✅ งานที่เสร็จแล้ว' },
@@ -622,6 +656,7 @@ const DirectorDashboard = () => {
                                 {b.t}
                             </button>
                         ))}
+                    </div>
                     </div>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '6px 0 0.6rem 0', lineHeight: 1.5 }}>
@@ -702,9 +737,32 @@ const DirectorDashboard = () => {
 
             {/* ── S6 · Block 7 — foreman workload + who needs help ──────────────── */}
             <div style={{ background: '#fff', borderRadius: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.04)', padding: '1.25rem 1.4rem', marginBottom: '1.75rem' }}>
-                <SectionTitle icon={<Users size={18} />} title="ภาระงานโฟร์แมน & ใครต้องช่วย" accent="#0891b2" />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                    <SectionTitle icon={<Users size={18} />} title="ภาระงานโฟร์แมน & ใครต้องช่วย" accent="#0891b2" />
+                    <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
+                        {([
+                            { v: 'jobs', t: 'ใบงาน' },
+                            { v: 'items', t: 'รายการ' },
+                        ] as const).map((b) => (
+                            <button
+                                key={b.v}
+                                onClick={() => setForemanMetric(b.v)}
+                                style={{
+                                    border: 'none', cursor: 'pointer', borderRadius: '8px', padding: '6px 14px',
+                                    fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit',
+                                    background: foremanMetric === b.v ? '#4f46e5' : 'transparent',
+                                    color: foremanMetric === b.v ? '#fff' : '#64748b',
+                                    boxShadow: foremanMetric === b.v ? '0 2px 6px rgba(79,70,229,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {b.t}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '4px 0 1rem 0', lineHeight: 1.5 }}>
-                    แท่ง = จำนวนรายการในมือ (🟦 ปกติ / 🟥 ช้าหรือเลยกำหนด) · ป้าย 🆘 ต้องช่วย = เข้าเกณฑ์เสี่ยง ≥2 อย่าง (งานเยอะ · ช้าเยอะ · งานนิ่งไม่ขยับ) · คลิกเพื่อดูงาน
+                    แท่ง = จำนวน{foremanMetric === 'jobs' ? 'ใบงาน' : 'รายการ'}ในมือ (🟦 ปกติ / 🟥 ช้าหรือเลยกำหนด) · ป้าย 🆘 ต้องช่วย = เข้าเกณฑ์เสี่ยง ≥2 อย่าง (งานเยอะ · ช้าเยอะ · งานนิ่งไม่ขยับ) · คลิกเพื่อดูงาน
                 </div>
                 {agg.perForeman.length === 0 ? (
                     <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>ยังไม่มีงานผูกกับโฟร์แมน</div>
@@ -720,10 +778,21 @@ const DirectorDashboard = () => {
                             const jobRows = foremanItems[f.id] || [];
                             const itemCount = jobRows.length; // line-items (subtasks) = true workload
                             const lateItems = jobRows.filter((s: any) => s._sla?.status === 'overdue').length;
+                            // Metric-driven bar (header toggle): jobs=ใบงาน (f.load) / items=รายการ (itemCount).
+                            // Counts show INSIDE the segments, same visual as the project-overview chart.
+                            const total = foremanMetric === 'jobs' ? f.load : itemCount;
+                            const lateN = foremanMetric === 'jobs' ? f.late : lateItems;
+                            const maxN = foremanMetric === 'jobs' ? maxLoad : maxItems;
+                            const barPct = (total / maxN) * 100;
+                            const segs = [
+                                { key: 'normal', v: Math.max(0, total - lateN), c: LV.normal },
+                                { key: 'late', v: lateN, c: LV.bad },
+                            ].filter((s) => s.v > 0);
                             return (
                                 <div key={f.id}>
                                   <div
-                                    onClick={() => openForeman(f.id, f.name)}
+                                    onClick={() => setExpandedForeman(isExpanded ? null : f.id)}
+                                    title="กดดูรายการงาน"
                                     style={{ display: 'flex', alignItems: 'center', gap: '12px', minHeight: '44px', padding: '0 8px', borderRadius: '12px', cursor: 'pointer' }}
                                     onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                     onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
@@ -739,26 +808,16 @@ const DirectorDashboard = () => {
                                             </span>
                                         </div>
                                     </div>
+                                    {/* Bar — project-chart style: grey rail → filled inner (width = total/max)
+                                        → segments (ปกติ / ช้า) each showing its count centered white. */}
                                     <div style={{ flex: 1, height: '22px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex', minWidth: '60px' }}>
-                                        <div style={{ width: `${((itemCount - lateItems) / maxItems) * 100}%`, background: LV.normal }} />
-                                        <div style={{ width: `${(lateItems / maxItems) * 100}%`, background: LV.bad }} />
-                                    </div>
-                                    {/* Count is its own click target: toggles the inline job list
-                                        (stopPropagation so it doesn't also open the modal). */}
-                                    {/* Count = jobs / line-items (the real workload). Click toggles the
-                                        inline list; no arrow (redundant with the click-to-expand). */}
-                                    {/* Fixed sub-columns so the งาน / รายการ numbers line up across every row
-                                        (each number cell is a fixed width, right-aligned). */}
-                                    <div
-                                        onClick={(e) => { e.stopPropagation(); setExpandedForeman(isExpanded ? null : f.id); }}
-                                        style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '3px', fontSize: '0.78rem', fontWeight: 800, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                                        title="กดดูรายการงาน"
-                                    >
-                                        <span style={{ width: '22px', textAlign: 'right' }}>{f.load}</span>
-                                        <span style={{ width: '30px', color: '#94a3b8', fontWeight: 600 }}>งาน</span>
-                                        <span style={{ color: '#cbd5e1' }}>/</span>
-                                        <span style={{ width: '26px', textAlign: 'right' }}>{itemCount}</span>
-                                        <span style={{ width: '42px', color: '#94a3b8', fontWeight: 600 }}>รายการ</span>
+                                        <div style={{ display: 'flex', width: `${barPct}%`, minWidth: '8px', height: '100%' }}>
+                                            {segs.map((s) => (
+                                                <div key={s.key} style={{ width: `${(s.v / total) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden' }}>
+                                                    {s.v}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                   </div>
                                   {isExpanded && (
