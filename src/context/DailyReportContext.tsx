@@ -2005,37 +2005,10 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
         await showAlert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
         return;
       }
-      const isRegularActive = labor.some((l) => l.shifts?.normal);
-      if (isRegularActive) {
-        const requiredCount = getRequiredRegularPhotoCount(labor);
-        const uploadedCount = laborRegularPhotos.filter(Boolean).length;
-        if (uploadedCount < requiredCount) {
-          if (requiredCount === 2) {
-            await showAlert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
-            return;
-          } else {
-            await showAlert(
-              "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
-            );
-            return;
-          }
-        }
-      }
-      const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
-      if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
-        await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
-        return;
-      }
-      const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
-      if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
-        await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
-        return;
-      }
-      const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
-      if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
-        await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
-        return;
-      }
+      // Labor-shift photos (regular + OT) are OPTIONAL at submit — the report can
+      // be sent with incomplete/zero labor photos (user-confirmed 2026-09-03).
+      // Only the site photos above remain mandatory. WOP (submitPhDailyReport)
+      // mirrors this same relaxation.
     }
     const history = selectedTaskInfo.task.history || [];
     const filteredHistory = filterHistoryByRevision(history, selectedTaskInfo.task.revisionCreatedAt, selectedTaskInfo.task.currentRevision);
@@ -3138,37 +3111,9 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       await showAlert("กรุณาแนบรูปถ่ายหน้างานอย่างน้อย 2 รูป");
       return;
     }
-    const isRegularActive = labor.some((l) => l.shifts?.normal);
-    if (isRegularActive) {
-      const requiredCount = getRequiredRegularPhotoCount(labor);
-      const uploadedCount = laborRegularPhotos.filter(Boolean).length;
-      if (uploadedCount < requiredCount) {
-        if (requiredCount === 2) {
-          await showAlert("กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 2 รูป (เข้า / ออก)");
-          return;
-        } else {
-          await showAlert(
-            "กรุณาแนบรูปถ่ายแรงงานกะปกติให้ครบ 4 รูป (เข้า / พักเที่ยง / เข้าบ่าย / ออก)",
-          );
-          return;
-        }
-      }
-    }
-    const isOtMorningActive = labor.some((l) => l.shifts?.otMorning);
-    if (isOtMorningActive && laborOtMorningPhotos.filter(Boolean).length < 2) {
-      await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เช้าให้ครบ 2 รูป (เข้า / ออก)");
-      return;
-    }
-    const isOtNoonActive = labor.some((l) => l.shifts?.otNoon);
-    if (isOtNoonActive && laborOtNoonPhotos.filter(Boolean).length < 2) {
-      await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เที่ยงให้ครบ 2 รูป (เข้า / ออก)");
-      return;
-    }
-    const isOtEveningActive = labor.some((l) => l.shifts?.otEvening);
-    if (isOtEveningActive && laborOtEveningPhotos.filter(Boolean).length < 2) {
-      await showAlert("กรุณาแนบรูปถ่ายแรงงาน OT เย็นให้ครบ 2 รูป (เข้า / ออก)");
-      return;
-    }
+    // Labor-shift photos (regular + OT) are OPTIONAL at submit — mirrors WOA
+    // handleSubmit (user-confirmed 2026-09-03). Only site photos above stay
+    // mandatory. Kept identical to WOA per the WOA/WOP-parity invariant.
     const existingHistReport = phDailyHistory.find((h: any) => h.id === reportDate || h.date === reportDate);
     if (existingHistReport && !isPhEditingExisting) {
       await showAlert(`คุณเคยส่งรายงานของวันที่ ${reportDate} ในหมวดงานนี้แล้ว หากต้องการแก้ไขกรุณากดปุ่ม "แก้ไขข้อมูล"`);
