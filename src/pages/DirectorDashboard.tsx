@@ -107,8 +107,14 @@ const subChip = (t: any): { label: string; color: string; bg: string } => {
 // Reusable read-only drill-down modal (R-C): lists the SUBTASKS behind a clicked
 // project / foreman / aging bucket / alert. Each row opens the shared rich
 // TaskHistoryModal (ประวัติการปฏิบัติงาน) IN-PAGE via onPick — no page jump.
+// Left-stripe palette so each ใบงาน (work order) gets its own color band in the
+// drill list — consecutive rows of one WO share a stripe, the color flips per WO.
+const WO_STRIPE = ['#6366f1', '#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6'];
+
 const JobListModal = ({ data, onClose, onPick }: any) => {
     if (!data) return null;
+    // Order of distinct WO ids as they appear -> gives each group its stripe color index.
+    const woOrder: string[] = [...new Set<string>(data.subs.map((s: any) => s._woId))];
     return (
         <div
             onClick={onClose}
@@ -156,11 +162,18 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                             : sla.daysDiff > 0 ? '#dc2626'
                             : sla.daysDiff === 0 ? '#d97706'
                             : '#0891b2';
-                        return (
+                        // Group cue: rows of one ใบงาน are contiguous -> flip stripe color per WO,
+                        // and drop in a header line at the first row of each group.
+                        const isNewGroup = i === 0 || s._woId !== data.subs[i - 1]._woId;
+                        const groupIdx = woOrder.indexOf(s._woId);
+                        const stripe = WO_STRIPE[groupIdx % WO_STRIPE.length];
+                        const groupCount = data.subs.filter((x: any) => x._woId === s._woId).length;
+                        const rowKey = (s._woId || '') + (s.id || s.taskName || '') + i;
+                        const row = (
                             <div
-                                key={(s._woId || '') + (s.id || s.taskName || '') + i}
+                                key={rowKey}
                                 onClick={() => onPick(s)}
-                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.7rem 1.4rem', cursor: 'pointer', borderTop: i === 0 ? 'none' : '1px solid #f8fafc' }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.7rem 1.4rem', cursor: 'pointer', borderLeft: `3px solid ${stripe}`, borderTop: isNewGroup ? 'none' : '1px solid #f8fafc' }}
                                 onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
                             >
@@ -192,13 +205,19 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                                     <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {s.taskName}
                                     </div>
-                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
-                                        {s._woId} {s.locationName && <span>· {s.locationName}</span>} · {s.projectName}
-                                    </div>
                                 </div>
                                 <ChevronRight size={16} style={{ color: '#cbd5e1', flexShrink: 0 }} />
                             </div>
                         );
+                        if (!isNewGroup) return row;
+                        const header = (
+                            <div key={'h_' + rowKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.5rem 1.4rem 0.35rem', marginTop: i === 0 ? 0 : '0.4rem', borderLeft: `3px solid ${stripe}`, background: '#f8fafc' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#334155' }}>{s._woId}</span>
+                                <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', background: '#eef2f7', borderRadius: '6px', padding: '2px 6px' }}>{groupCount} รายการ</span>
+                                {s.locationName && <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>· {s.locationName}</span>}
+                            </div>
+                        );
+                        return [header, row];
                     })}
                 </div>
             </div>
@@ -215,6 +234,22 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
 // Roles allowed to see the director view. 'Director' = ผอ. (already exists in the
 // role model); admins/managers/approvers share the same decision-level view.
 const DIRECTOR_ROLES = ['Admin', 'Manager', 'Director', 'Approver'];
+
+// SINGLE SOURCE for which bar segment a WO belongs to — used by BOTH the agg tally
+// and the segment click-through, so a segment's number always matches its drill list.
+const woSegment = (wo: any): string | null => {
+    const sla = computeJobSLA(wo);
+    if (!sla.isEligible) return null;
+    if (sla.phase === 'in-progress') return sla.status === 'overdue' ? 'overdue' : 'normal';
+    if (wo.status === 'Complete') return 'closed';
+    if (wo.status === 'pending_delivery') return 'pending';
+    if (wo.status === 'customer_reject') return 'reject';
+    return 'awaitingQR';
+};
+const SEG_LABEL: Record<string, string> = {
+    normal: 'ปกติ', overdue: 'ล่าช้า', awaitingQR: 'รอออก QR',
+    pending: 'รอลูกค้าประเมิน', closed: 'ลูกค้ารับมอบ', reject: 'ตีกลับ',
+};
 
 const DirectorDashboard = () => {
     const navigate = useNavigate();
@@ -237,12 +272,30 @@ const DirectorDashboard = () => {
     // feeds the agg memo + every drill-down, so switching type re-scopes the WHOLE
     // page (summary cards + project chart + foreman block) from ONE input point.
     const [woTypeFilter, setWoTypeFilter] = useState<'all' | WorkOrderType>('all');
-    const scopedWOs = useMemo(
+    const [projectFilter, setProjectFilter] = useState<string>('all');
+    const typeScopedWOs = useMemo(
         () => woTypeFilter === 'all'
             ? workOrders
             : workOrders.filter((w: any) => w.type === woTypeFilter),
         [workOrders, woTypeFilter]
     );
+    const scopedWOs = useMemo(
+        () => projectFilter === 'all'
+            ? typeScopedWOs
+            : typeScopedWOs.filter((w: any) => (w.projectId || 'unknown') === projectFilter),
+        [typeScopedWOs, projectFilter]
+    );
+    const projectOptions = useMemo(() => {
+        const m = new Map<string, string>();
+        typeScopedWOs.forEach((w: any) => {
+            if (!computeJobSLA(w).isEligible) return; // same rule as agg (line ~342) — a project with only ineligible WOs has no data, so keep it out of the filter
+            const id = w.projectId || 'unknown';
+            if (!m.has(id)) m.set(id, getProjectName(id));
+        });
+        return [...m.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+    }, [typeScopedWOs]);
 
     // ── S2 · Aggregation layer (the brain) ────────────────────────────────────
     // ONE memo that turns raw WorkOrders into everything the blocks below read.
@@ -311,9 +364,10 @@ const DirectorDashboard = () => {
                 //   pendingCustomer = ออก QR/ส่งมอบแล้ว รอลูกค้าประเมิน (pending_delivery)
                 //   customerClosed = ลูกค้าปิดงานแล้ว (Complete)
                 //   customerReject = ลูกค้าตีกลับ (customer_reject) — bucket shows only if >0
-                if (wo.status === 'Complete') P.customerClosed++;
-                else if (wo.status === 'pending_delivery') P.pendingCustomer++;
-                else if (wo.status === 'customer_reject') P.customerReject++;
+                const seg = woSegment(wo); // single classifier — the same one the drill filter uses
+                if (seg === 'closed') P.customerClosed++;
+                else if (seg === 'pending') P.pendingCustomer++;
+                else if (seg === 'reject') P.customerReject++;
                 else P.awaitingQR++;
                 // CSAT average per done WO that actually has a customer survey.
                 const satAvg = getSatisfactionAverage(wo.satisfactionSurvey);
@@ -400,13 +454,15 @@ const DirectorDashboard = () => {
         };
     }, [scopedWOs, projects, staff, activeForemen]);
 
+    // Single-project mode: perProject collapses to 1 → biggest/lowestClose/mostLate all point to it.
+    const soloProj = projectFilter !== 'all' ? (agg.perProject[0] ?? null) : null;
+
     // ── Drill-down state + derived views (reused by S4/S5/S6) ──────────────────
     const [drill, setDrill] = useState<{ title: string; subs: any[] } | null>(null);
     // The subtask whose rich history popup is open (ทาง ก — reuses the shared
     // TaskHistoryModal in-page; layered on top of the drill list, zIndex 1200 > 1000).
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     // Which foreman row has its inline job-list accordion open (null = all collapsed).
-    const [expandedForeman, setExpandedForeman] = useState<string | null>(null);
     const [foremanMetric, setForemanMetric] = useState<'jobs' | 'items'>('items');
     // Project chart mode — 'done' (เสร็จแล้ว, close-axis) ↔ 'open' (ยังไม่จบ). One chart, two views.
     const [projMode, setProjMode] = useState<'done' | 'open'>('open');
@@ -428,10 +484,11 @@ const DirectorDashboard = () => {
                 _sla,
             }));
         });
-    const openProject = (pid: string) => setDrill({
-        title: `โครงการ · ${getProjectName(pid)}`,
+    const openProject = (pid: string, seg?: string) => setDrill({
+        title: `โครงการ · ${getProjectName(pid)}${seg ? ` · ${SEG_LABEL[seg] ?? ''}` : ''}`,
         subs: subRows(
-            scopedWOs.filter((w: any) => (w.projectId || 'unknown') === pid && computeJobSLA(w).isEligible)
+            scopedWOs.filter((w: any) => (w.projectId || 'unknown') === pid
+                && (seg ? woSegment(w) === seg : computeJobSLA(w).isEligible))
         ),
     });
 
@@ -492,6 +549,17 @@ const DirectorDashboard = () => {
     const foremenRanked = [...agg.perForeman].sort(
         (a: any, b: any) => (foremanItems[b.id]?.length || 0) - (foremanItems[a.id]?.length || 0)
     );
+    // Foreman segment drill — mirrors openProject: click a segment → that foreman's items
+    // filtered to ปกติ/ล่าช้า. Single source: the SAME foremanItems rows the bar counts, so
+    // a segment's number always matches its drill list (item's _sla = its WO's SLA).
+    const openForeman = (fid: string, seg?: 'normal' | 'late') => {
+        const rows = foremanItems[fid] || [];
+        const subs = seg === 'late' ? rows.filter((r: any) => r._sla?.status === 'overdue')
+            : seg === 'normal' ? rows.filter((r: any) => r._sla?.status !== 'overdue')
+            : rows;
+        const fname = agg.perForeman.find((f: any) => f.id === fid)?.name || fid;
+        setDrill({ title: `โฟร์แมน · ${fname}${seg ? ` · ${seg === 'late' ? 'ล่าช้า' : 'ปกติ'}` : ''}`, subs });
+    };
 
     if (!allowed) {
         return (
@@ -555,22 +623,122 @@ const DirectorDashboard = () => {
                 </div>
             </div>
 
-            {/* ── S3 · Block 1 — KPI cards: one per ผอ. question, click → drill ──── */}
+            {/* ── Page-level filter — scopes the WHOLE dashboard (one scopedWOs input) ── */}
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '1.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>ประเภทงาน:</span>
+                <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
+                    {([
+                        { v: 'all', t: 'ทั้งหมด' },
+                        { v: 'AfterSale', t: 'หลังขาย' },
+                        { v: 'PreHandover', t: 'ก่อนโอน' },
+                    ] as const).map((b) => (
+                        <button
+                            key={b.v}
+                            onClick={() => setWoTypeFilter(b.v)}
+                            style={{
+                                border: 'none', cursor: 'pointer', borderRadius: '8px', padding: '6px 16px',
+                                fontSize: '0.8rem', fontWeight: 800, fontFamily: 'inherit',
+                                background: woTypeFilter === b.v ? '#4f46e5' : 'transparent',
+                                color: woTypeFilter === b.v ? '#fff' : '#64748b',
+                                boxShadow: woTypeFilter === b.v ? '0 2px 6px rgba(79,70,229,0.25)' : 'none',
+                                transition: 'all 0.15s',
+                            }}
+                        >
+                            {b.t}
+                        </button>
+                    ))}
+                </div>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginLeft: '6px' }}>โครงการ:</span>
+                <select
+                    value={projectFilter}
+                    onChange={(e) => setProjectFilter(e.target.value)}
+                    style={{
+                        border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px',
+                        fontSize: '0.8rem', fontWeight: 700, color: '#334155', background: '#fff',
+                        cursor: 'pointer', fontFamily: 'inherit', maxWidth: '260px',
+                    }}
+                >
+                    <option value="all">ทุกโครงการ</option>
+                    {projectOptions.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* ── S3 · Block 1 — KPI cards (overview) OR solo lifecycle ladder ──── */}
+            {soloProj ? (() => {
+                const sp: any = soloProj;
+                const normal = Math.max(0, sp.active - sp.overdue);
+                const doneAll = sp.awaitingQR + sp.pendingCustomer + sp.customerClosed + sp.customerReject;
+                const groups = [
+                    { title: 'กำลังทำ', total: sp.active, dot: LV.normal, empty: 'ไม่มีงานที่กำลังทำ', segs: [{ key: 'normal', v: normal, c: LV.normal }, { key: 'overdue', v: sp.overdue, c: LV.bad }].filter((s) => s.v > 0) },
+                    { title: 'เสร็จแล้ว', total: doneAll, dot: LV.good, empty: 'ยังไม่มีงานที่เสร็จ', segs: [{ key: 'awaitingQR', v: sp.awaitingQR, c: LV.watch }, { key: 'pending', v: sp.pendingCustomer, c: '#0891b2' }, { key: 'closed', v: sp.customerClosed, c: LV.good }, { key: 'reject', v: sp.customerReject, c: LV.bad }].filter((s) => s.v > 0) },
+                ];
+                return (
+                    <div style={{ background: '#fff', borderRadius: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.04)', padding: '1.25rem 1.4rem', marginBottom: '1.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '2px' }}>
+                            <SectionTitle icon={<Target size={18} />} title={`โครงการ · ${sp.name}`} accent="#4f46e5" />
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#64748b' }}>ใบงานทั้งหมด <span style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0f172a' }}>{sp.jobs}</span> ใบ</span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '2px 0 1.1rem 0', lineHeight: 1.5 }}>
+                            แยกเป็น 2 ก้อน (กำลังทำ / เสร็จแล้ว) · แต่ละขั้นคลิกดูรายใบได้
+                        </div>
+                        <div style={{ display: 'flex', gap: '18px', alignItems: 'stretch' }}>
+                            {groups.map((g) => (
+                                <div key={g.title} style={{ flex: '1 1 0', minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                                        <span style={{ width: 11, height: 11, borderRadius: '50%', background: g.dot }} />
+                                        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#334155' }}>{g.title}</span>
+                                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#94a3b8' }}>{g.total} ใบ</span>
+                                    </div>
+                                    {g.segs.length === 0 ? (
+                                        <div style={{ height: '46px', borderRadius: '10px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.74rem', fontWeight: 700, color: '#cbd5e1' }}>{g.empty}</div>
+                                    ) : (
+                                        <div style={{ display: 'flex', height: '46px', borderRadius: '10px', overflow: 'hidden' }}>
+                                            {g.segs.map((s) => (
+                                                <div
+                                                    key={s.key}
+                                                    onClick={() => openProject(sp.projectId, s.key)}
+                                                    title={`${SEG_LABEL[s.key] ?? ''} ${s.v} — คลิกดูเฉพาะกลุ่มนี้`}
+                                                    style={{ flex: `${s.v} 1 0`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.9rem', fontWeight: 800, cursor: 'pointer', minWidth: '26px' }}
+                                                >
+                                                    {s.v}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', marginTop: '7px', gap: '4px' }}>
+                                        {g.segs.map((s) => (
+                                            <div key={s.key} style={{ flex: `${s.v} 1 0`, fontSize: '0.7rem', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '26px' }}>
+                                                {SEG_LABEL[s.key] ?? ''}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600, marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
+                            กำลังทำ {sp.active} + เสร็จแล้ว {doneAll} = {sp.jobs} ใบ
+                        </div>
+                    </div>
+                );
+            })() : (<>
+            {/* KPI cards: one per ผอ. question, click → drill */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.75rem' }}>
                 {/* Q1 — โครงการไหนใบงานมากที่สุด */}
                 <KpiCard
                     icon={<ClipboardList size={18} />} accent="#4f46e5"
                     value={agg.headlines.biggest?.jobs ?? 0} unit="ใบ"
-                    sub={agg.headlines.biggest?.name ?? '—'}
-                    label="โครงการใบงานมากสุด" help={`${agg.headlines.biggest?.items ?? 0} รายการ · คลิกดูทุกโครงการ`}
+                    sub={soloProj ? `${soloProj.items} รายการ` : (agg.headlines.biggest?.name ?? '—')}
+                    label={soloProj ? 'ใบงานโครงการนี้' : 'โครงการใบงานมากสุด'} help={`${agg.headlines.biggest?.items ?? 0} รายการ · คลิกดูทุกโครงการ`}
                     onClick={() => goChart('open')}
                 />
                 {/* Q2 — เสร็จแล้ว: เราปิดเอง vs ลูกค้าปิด */}
                 <KpiCard
                     icon={<CheckCircle2 size={18} />} accent="#16a34a"
-                    value={agg.headlines.customerClosedTotal} unit="ปิด"
+                    value={agg.headlines.customerClosedTotal} unit="รับมอบ"
                     sub={`รอลูกค้าประเมิน ${agg.headlines.pendingCustomerTotal}`}
-                    label="การปิดงาน" help="ลูกค้าปิดจริง vs รอลูกค้า · คลิกดูรายโครงการ"
+                    label="การรับมอบงาน" help="ลูกค้ารับมอบจริง vs รอลูกค้า · คลิกดูรายโครงการ"
                     onClick={() => goChart('done')}
                 />
                 {/* Q3 — แต่ละใบสถานะไหน */}
@@ -584,17 +752,17 @@ const DirectorDashboard = () => {
                 {/* Q4 — โครงการไหนปิดงานได้น้อยที่สุด */}
                 <KpiCard
                     icon={<Timer size={18} />} accent="#d97706"
-                    value={agg.headlines.lowestClose?.closePct ?? 0} unit="%"
-                    sub={agg.headlines.lowestClose?.name ?? '—'}
-                    label="ปิดงานน้อยสุด" help="ลูกค้าปิดจริง / ทั้งหมด ต่ำสุด · คลิกดูงานเสร็จ"
+                    value={soloProj ? (soloProj.jobs - soloProj.customerClosed) : (agg.headlines.lowestClose?.closePct ?? 0)} unit={soloProj ? 'ใบ' : '%'}
+                    sub={soloProj ? `กำลังทำ ${soloProj.active} · เสร็จรอรับมอบ ${soloProj.done - soloProj.customerClosed}` : (agg.headlines.lowestClose?.name ?? '—')}
+                    label={soloProj ? 'ลูกค้ายังไม่รับมอบ' : 'รับมอบน้อยสุด'} help="ลูกค้ายังไม่รับมอบงาน (รวมงานที่ทำเสร็จแล้วแต่รอรับมอบ) · คลิกดูงานเสร็จ"
                     onClick={() => goChart('done')}
                 />
                 {/* Q5 — โครงการไหนล่าช้า/ช้าที่สุด */}
                 <KpiCard
                     icon={<AlertTriangle size={18} />} accent="#dc2626"
                     value={agg.headlines.mostLate?.trouble ?? 0} unit="ใบ"
-                    sub={agg.headlines.mostLate?.name ?? '—'}
-                    label="ล่าช้ามากสุด" help="ล่าช้า + เกินกำหนดรวม · คลิกดูงานค้าง"
+                    sub={soloProj ? `ล่าช้า ${soloProj.late} · เกินกำหนด ${soloProj.overdue}` : (agg.headlines.mostLate?.name ?? '—')}
+                    label={soloProj ? 'ล่าช้าในโครงการ' : 'ล่าช้ามากสุด'} help="ล่าช้า + เกินกำหนดรวม · คลิกดูงานค้าง"
                     onClick={() => goChart('open')}
                 />
                 {/* Q6 — Due-down แต่ละใบ */}
@@ -606,6 +774,7 @@ const DirectorDashboard = () => {
                     onClick={() => navigate('/sla-monitor?slaFilter=overdue')}
                 />
             </div>
+            </>)}
 
             {/* ── S2 · Project chart — ONE chart, two modes (done ↔ open) ────────── */}
             <div id="project-chart" style={{ background: '#fff', borderRadius: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.04)', padding: '1.25rem 1.4rem', marginBottom: '1.75rem' }}>
@@ -613,29 +782,6 @@ const DirectorDashboard = () => {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                     <SectionTitle icon={<Target size={18} />} title="ภาพรวมงานต่อโครงการ" accent="#4f46e5" />
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {/* Work-type filter — sits here but controls the WHOLE page (one scopedWOs input) */}
-                        <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
-                            {([
-                                { v: 'all', t: 'ทั้งหมด' },
-                                { v: 'AfterSale', t: 'หลังขาย' },
-                                { v: 'PreHandover', t: 'ก่อนโอน' },
-                            ] as const).map((b) => (
-                                <button
-                                    key={b.v}
-                                    onClick={() => setWoTypeFilter(b.v)}
-                                    style={{
-                                        border: 'none', cursor: 'pointer', borderRadius: '8px', padding: '6px 14px',
-                                        fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit',
-                                        background: woTypeFilter === b.v ? '#4f46e5' : 'transparent',
-                                        color: woTypeFilter === b.v ? '#fff' : '#64748b',
-                                        boxShadow: woTypeFilter === b.v ? '0 2px 6px rgba(79,70,229,0.25)' : 'none',
-                                        transition: 'all 0.15s',
-                                    }}
-                                >
-                                    {b.t}
-                                </button>
-                            ))}
-                        </div>
                         <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
                         {([
                             { m: 'open', t: '🔧 งานที่ยังไม่จบ' },
@@ -661,13 +807,13 @@ const DirectorDashboard = () => {
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '6px 0 0.6rem 0', lineHeight: 1.5 }}>
                     {projMode === 'done'
-                        ? 'แต่ละแท่ง = ใบงานที่เสร็จ 100% ทั้งหมด · จำแนกตามขั้นการปิดงาน (รอออก QR → รอลูกค้าประเมิน → ลูกค้าปิด → ตีกลับ) · ป้ายท้าย = ⭐ ความพึงพอใจเฉลี่ย · % ตรงเวลา · คลิกเพื่อดูรายใบ'
+                        ? 'แต่ละแท่ง = ใบงานที่เสร็จ 100% ทั้งหมด · จำแนกตามขั้นการรับมอบงาน (รอออก QR → รอลูกค้าประเมิน → ลูกค้ารับมอบ → ตีกลับ) · ป้ายท้าย = ⭐ ความพึงพอใจเฉลี่ย · % ตรงเวลา · คลิกเพื่อดูรายใบ'
                         : 'แต่ละแท่ง = งานที่ยังทำอยู่ของโครงการ · แยกปกติ vs ล่าช้า · เรียงงานล่าช้ามากสุดขึ้นก่อน · คลิกเพื่อดูงาน'}
                 </div>
                 {/* Legend (per mode) */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', margin: '0 0 0.9rem 0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>
                     {(projMode === 'done'
-                        ? [{ c: LV.watch, t: 'รอออก QR' }, { c: '#0891b2', t: 'รอลูกค้าประเมิน' }, { c: LV.good, t: 'ลูกค้าปิดแล้ว' }, { c: LV.bad, t: 'ลูกค้าตีกลับ' }]
+                        ? [{ c: LV.watch, t: 'รอออก QR' }, { c: '#0891b2', t: 'รอลูกค้าประเมิน' }, { c: LV.good, t: 'ลูกค้ารับมอบ' }, { c: LV.bad, t: 'ลูกค้าตีกลับ' }]
                         : [{ c: LV.normal, t: 'ปกติ (ยังไม่ถึงกำหนด)' }, { c: LV.bad, t: 'ล่าช้า / เกินกำหนด' }]
                     ).map((L) => (
                         <span key={L.t} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
@@ -677,7 +823,7 @@ const DirectorDashboard = () => {
                 </div>
                 {projModeRows.length === 0 ? (
                     <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>
-                        {projMode === 'done' ? 'ยังไม่มีงานที่ปิดแล้ว' : 'ไม่มีงานค้างในตอนนี้ 🎉'}
+                        {projMode === 'done' ? 'ยังไม่มีงานที่รับมอบแล้ว' : 'ไม่มีงานค้างในตอนนี้ 🎉'}
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', height: '308px', paddingRight: '4px' }}>
@@ -690,7 +836,7 @@ const DirectorDashboard = () => {
                             ).filter((s) => s.v > 0);
                             const barPct = (mag / maxProjBar) * 100;
                             const title = isDone
-                                ? `${p.name}\nรอออก QR ${p.awaitingQR} · รอลูกค้าประเมิน ${p.pendingCustomer} · ลูกค้าปิดแล้ว ${p.customerClosed} · ตีกลับ ${p.customerReject}\n⭐ เฉลี่ย ${p.satAvg != null ? p.satAvg.toFixed(1) : '—'} · ตรงเวลา ${p.onTimePct ?? '—'}%`
+                                ? `${p.name}\nรอออก QR ${p.awaitingQR} · รอลูกค้าประเมิน ${p.pendingCustomer} · ลูกค้ารับมอบ ${p.customerClosed} · ตีกลับ ${p.customerReject}\n⭐ เฉลี่ย ${p.satAvg != null ? p.satAvg.toFixed(1) : '—'} · ตรงเวลา ${p.onTimePct ?? '—'}%`
                                 : `${p.name}\nปกติ ${p.normal} · ล่าช้า ${p.overdue}\nงานค้างรวม ${p.active} ใบ`;
                             return (
                                 <div
@@ -709,7 +855,28 @@ const DirectorDashboard = () => {
                                     <div style={{ width: '100%', height: '22px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex' }}>
                                         <div style={{ display: 'flex', width: `${barPct}%`, minWidth: '8px', height: '100%' }}>
                                             {segs.map((s) => (
-                                                <div key={s.key} style={{ width: `${(s.v / mag) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden' }}>
+                                                <div
+                                                    key={s.key}
+                                                    onClick={(e) => { e.stopPropagation(); openProject(p.projectId, s.key); }}
+                                                    title={`${SEG_LABEL[s.key] ?? ''} ${s.v} — คลิกดูเฉพาะกลุ่มนี้`}
+                                                    onMouseOver={(e) => {
+                                                        const seg = e.currentTarget;
+                                                        seg.style.zIndex = '2';
+                                                        seg.style.boxShadow = '0 2px 12px rgba(0,0,0,0.35)';
+                                                        // Lift the clip on the ancestors so the shadow shows (bar track clips by default).
+                                                        const inner = seg.parentElement; const track = inner?.parentElement;
+                                                        if (inner) inner.style.overflow = 'visible';
+                                                        if (track) track.style.overflow = 'visible';
+                                                    }}
+                                                    onMouseOut={(e) => {
+                                                        const seg = e.currentTarget;
+                                                        seg.style.zIndex = ''; seg.style.boxShadow = '';
+                                                        const inner = seg.parentElement; const track = inner?.parentElement;
+                                                        if (inner) inner.style.overflow = 'hidden';
+                                                        if (track) track.style.overflow = 'hidden';
+                                                    }}
+                                                    style={{ width: `${(s.v / mag) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden', cursor: 'pointer', position: 'relative', transition: 'box-shadow 0.3s ease' }}
+                                                >
                                                     {s.v}
                                                 </div>
                                             ))}
@@ -774,30 +941,32 @@ const DirectorDashboard = () => {
                                 f.manyLate && 'ช้าเยอะ',
                                 f.hasStalled && 'งานนิ่ง',
                             ].filter(Boolean);
-                            const isExpanded = expandedForeman === f.id;
                             const jobRows = foremanItems[f.id] || [];
                             const itemCount = jobRows.length; // line-items (subtasks) = true workload
                             const lateItems = jobRows.filter((s: any) => s._sla?.status === 'overdue').length;
-                            // Metric-driven bar (header toggle): jobs=ใบงาน (f.load) / items=รายการ (itemCount).
-                            // Counts show INSIDE the segments, same visual as the project-overview chart.
+                            // Same concept as the project-overview chart: grid (name | bar | end count),
+                            // counts INSIDE the segments, each segment clickable → drill, hover shadow.
+                            // Metric toggle: jobs=ใบงาน (f.load) / items=รายการ (itemCount).
                             const total = foremanMetric === 'jobs' ? f.load : itemCount;
                             const lateN = foremanMetric === 'jobs' ? f.late : lateItems;
                             const maxN = foremanMetric === 'jobs' ? maxLoad : maxItems;
                             const barPct = (total / maxN) * 100;
+                            const unit = foremanMetric === 'jobs' ? 'ใบงาน' : 'รายการ';
                             const segs = [
                                 { key: 'normal', v: Math.max(0, total - lateN), c: LV.normal },
                                 { key: 'late', v: lateN, c: LV.bad },
                             ].filter((s) => s.v > 0);
                             return (
-                                <div key={f.id}>
-                                  <div
-                                    onClick={() => setExpandedForeman(isExpanded ? null : f.id)}
-                                    title="กดดูรายการงาน"
-                                    style={{ display: 'flex', alignItems: 'center', gap: '12px', minHeight: '44px', padding: '0 8px', borderRadius: '12px', cursor: 'pointer' }}
+                                <div
+                                    key={f.id}
+                                    onClick={() => openForeman(f.id)}
+                                    title="คลิกเพื่อดูงานทั้งหมดของโฟร์แมนคนนี้"
+                                    style={{ display: 'grid', gridTemplateColumns: '150px 1fr 120px', alignItems: 'center', gap: '10px', cursor: 'pointer', minHeight: '44px', padding: '0 4px', borderRadius: '8px' }}
                                     onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                     onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                                  >
-                                    <div style={{ width: '150px', flexShrink: 0, minWidth: 0 }}>
+                                >
+                                    {/* Name (+ 🆘 / reason sub-label) */}
+                                    <div style={{ minWidth: 0 }}>
                                         <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600, marginTop: '2px' }}>
                                             {f.atRisk && (
@@ -808,53 +977,40 @@ const DirectorDashboard = () => {
                                             </span>
                                         </div>
                                     </div>
-                                    {/* Bar — project-chart style: grey rail → filled inner (width = total/max)
-                                        → segments (ปกติ / ช้า) each showing its count centered white. */}
-                                    <div style={{ flex: 1, height: '22px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex', minWidth: '60px' }}>
+                                    {/* Bar track — same as project chart: grey rail → filled inner → clickable segments */}
+                                    <div style={{ width: '100%', height: '22px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex' }}>
                                         <div style={{ display: 'flex', width: `${barPct}%`, minWidth: '8px', height: '100%' }}>
                                             {segs.map((s) => (
-                                                <div key={s.key} style={{ width: `${(s.v / total) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden' }}>
+                                                <div
+                                                    key={s.key}
+                                                    onClick={(e) => { e.stopPropagation(); openForeman(f.id, s.key as 'normal' | 'late'); }}
+                                                    title={`${s.key === 'late' ? 'ล่าช้า' : 'ปกติ'} ${s.v} — คลิกดูเฉพาะกลุ่มนี้`}
+                                                    onMouseOver={(e) => {
+                                                        const seg = e.currentTarget;
+                                                        seg.style.zIndex = '2';
+                                                        seg.style.boxShadow = '0 2px 12px rgba(0,0,0,0.35)';
+                                                        const inner = seg.parentElement; const track = inner?.parentElement;
+                                                        if (inner) inner.style.overflow = 'visible';
+                                                        if (track) track.style.overflow = 'visible';
+                                                    }}
+                                                    onMouseOut={(e) => {
+                                                        const seg = e.currentTarget;
+                                                        seg.style.zIndex = ''; seg.style.boxShadow = '';
+                                                        const inner = seg.parentElement; const track = inner?.parentElement;
+                                                        if (inner) inner.style.overflow = 'hidden';
+                                                        if (track) track.style.overflow = 'hidden';
+                                                    }}
+                                                    style={{ width: `${(s.v / total) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden', cursor: 'pointer', position: 'relative', transition: 'box-shadow 0.3s ease' }}
+                                                >
                                                     {s.v}
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
-                                  </div>
-                                  {isExpanded && (
-                                    <div style={{ margin: '2px 0 10px 12px', paddingLeft: '12px', borderLeft: '2px solid #eef2ff', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                        {jobRows.length === 0 ? (
-                                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, padding: '4px 0' }}>ไม่มีงานในมือ</div>
-                                        ) : jobRows.map((s: any, si: number) => {
-                                            const sMeta = s._sla ? STATUS_META[s._sla.status] : null;
-                                            const dText = !s._sla ? null
-                                                : s._sla.phase === 'done' ? 'เสร็จแล้ว'
-                                                : s._sla.daysDiff < 0 ? `เหลือ ${-s._sla.daysDiff} วัน`
-                                                : s._sla.daysDiff === 0 ? 'ครบกำหนดวันนี้'
-                                                : `เลย ${s._sla.daysDiff} วัน`;
-                                            const dColor = !s._sla || s._sla.phase === 'done' ? '#94a3b8'
-                                                : s._sla.daysDiff > 0 ? '#dc2626'
-                                                : s._sla.daysDiff === 0 ? '#d97706'
-                                                : '#0891b2';
-                                            return (
-                                                <div
-                                                    key={(s._woId || '') + (s.id || s.taskName || '') + si}
-                                                    onClick={() => setSelectedTask(s)}
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.75rem' }}
-                                                    onMouseOver={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                                                    onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                                                >
-                                                    {sMeta && (
-                                                        <span style={{ flexShrink: 0, fontSize: '0.64rem', fontWeight: 900, color: sMeta.color, background: sMeta.bg, borderRadius: '5px', padding: '1px 6px' }}>{sMeta.label}</span>
-                                                    )}
-                                                    <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.taskName}</span>
-                                                    {dText && (
-                                                        <span style={{ flexShrink: 0, fontWeight: 800, color: dColor, whiteSpace: 'nowrap' }}>{dText}</span>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                                    {/* End label — total count in the active unit (right-aligned, like project) */}
+                                    <div style={{ textAlign: 'right', lineHeight: 1.25 }}>
+                                        <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap' }}>{total} {unit}</div>
                                     </div>
-                                  )}
                                 </div>
                             );
                         })}
