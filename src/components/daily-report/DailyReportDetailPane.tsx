@@ -851,6 +851,25 @@ export const DailyReportDetailPane: React.FC = () => {
                             </span>
                           </div>
 
+                          {/* Cost responsibility (costType) — billing class set at evaluation; shown
+                              to the foreman above the note (user request). Blank when unset. */}
+                          {(() => {
+                            const m: Record<string, { label: string; color: string; bg: string }> = {
+                              Billable: { label: 'เรียกเก็บลูกค้า', color: '#b91c1c', bg: '#fef2f2' },
+                              Warranty: { label: 'อยู่ในประกัน', color: '#15803d', bg: '#f0fdf4' },
+                              Project: { label: 'งบโครงการ', color: '#1d4ed8', bg: '#eff6ff' },
+                            };
+                            const c = m[(selectedTaskInfo.task as any).costType];
+                            return c ? (
+                              <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                                <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>ค่าใช้จ่าย:</span>
+                                <span style={{ fontWeight: 800, color: c.color, background: c.bg, borderRadius: "6px", padding: "2px 10px", fontSize: "0.72rem" }}>
+                                  {c.label}
+                                </span>
+                              </div>
+                            ) : null;
+                          })()}
+
                           {/* Admin approval note (rootCause) — set at task evaluation, shown to the
                               foreman for job context/reference. Rendered only when a note exists.
                               WorkTask type omits rootCause, so read it off the live object (repo idiom). */}
