@@ -139,6 +139,28 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                         <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>
                             {data.subs.length} รายการงานย่อย · คลิกเพื่อดูประวัติการปฏิบัติงาน
                         </div>
+                        {/* Billing responsibility (costType) tally over the current list — surfaces a
+                            field stored at evaluation but never shown. Chips appear only for types present. */}
+                        {(() => {
+                            const tally: Record<string, number> = { Billable: 0, Warranty: 0, Project: 0 };
+                            data.subs.forEach((s: any) => { if (s.costType && tally[s.costType] !== undefined) tally[s.costType]++; });
+                            const meta: Record<string, { label: string; color: string; bg: string }> = {
+                                Billable: { label: 'เรียกเก็บลูกค้า', color: '#b91c1c', bg: '#fef2f2' },
+                                Warranty: { label: 'ในประกัน', color: '#15803d', bg: '#f0fdf4' },
+                                Project: { label: 'งบโครงการ', color: '#1d4ed8', bg: '#eff6ff' },
+                            };
+                            const chips = Object.keys(tally).filter((k) => tally[k] > 0);
+                            if (chips.length === 0) return null;
+                            return (
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                    {chips.map((k) => (
+                                        <span key={k} style={{ fontSize: '0.66rem', fontWeight: 800, color: meta[k].color, background: meta[k].bg, borderRadius: '6px', padding: '2px 8px' }}>
+                                            {meta[k].label} {tally[k]}
+                                        </span>
+                                    ))}
+                                </div>
+                            );
+                        })()}
                     </div>
                     <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: '10px', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
                         <X size={18} />
@@ -186,6 +208,21 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                                 {/* Col 2 — work-order type */}
                                 <span style={{ flexShrink: 0, width: '40px', textAlign: 'center', fontSize: '0.66rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', borderRadius: '6px', padding: '3px 0' }}>
                                     {s._type === 'PreHandover' ? 'WOP' : 'WOA'}
+                                </span>
+                                {/* Col 2b — billing responsibility (costType); fixed width to keep rows
+                                    aligned, blank when the task has no billing type set. */}
+                                <span style={{ flexShrink: 0, width: '78px', textAlign: 'center' }}>
+                                    {(() => {
+                                        const m: Record<string, { label: string; color: string; bg: string }> = {
+                                            Billable: { label: 'เรียกเก็บ', color: '#b91c1c', bg: '#fef2f2' },
+                                            Warranty: { label: 'ประกัน', color: '#15803d', bg: '#f0fdf4' },
+                                            Project: { label: 'งบโครงการ', color: '#1d4ed8', bg: '#eff6ff' },
+                                        };
+                                        const c = m[s.costType];
+                                        return c ? (
+                                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: c.color, background: c.bg, borderRadius: '6px', padding: '2px 6px' }}>{c.label}</span>
+                                        ) : null;
+                                    })()}
                                 </span>
                                 {/* Col 3 — SLA status + days-remaining, stacked */}
                                 <div style={{ flexShrink: 0, width: '100px', display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>

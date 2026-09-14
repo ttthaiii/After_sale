@@ -850,6 +850,18 @@ export const DailyReportDetailPane: React.FC = () => {
                               })()}
                             </span>
                           </div>
+
+                          {/* Admin approval note (rootCause) — set at task evaluation, shown to the
+                              foreman for job context/reference. Rendered only when a note exists.
+                              WorkTask type omits rootCause, so read it off the live object (repo idiom). */}
+                          {(selectedTaskInfo.task as any).rootCause?.trim() ? (
+                            <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
+                              <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>หมายเหตุ:</span>
+                              <span style={{ fontWeight: 800, color: "#b45309", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
+                                📝 {(selectedTaskInfo.task as any).rootCause}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>}
                       </div>
                     </div> {" "}
