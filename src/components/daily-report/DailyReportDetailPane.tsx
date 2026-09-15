@@ -124,6 +124,7 @@ export const DailyReportDetailPane: React.FC = () => {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [showSLAPopup, setShowSLAPopup] = useState(false);
   const [isCardCollapsed, setIsCardCollapsed] = useState(false);
+  const [isSlaCollapsed, setIsSlaCollapsed] = useState(false);
   const [expandedLaborCards, setExpandedLaborCards] = useState<Set<string>>(new Set());
   const toggleLaborCard = (id: string) => setExpandedLaborCards(prev => {
     const next = new Set(prev);
@@ -806,14 +807,14 @@ export const DailyReportDetailPane: React.FC = () => {
                         >
                           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
                             <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสใบงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace", minWidth: 0, overflowWrap: "anywhere" }}>
+                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace", minWidth: 0 }}>
                               {selectedTaskInfo.wo.id || "-"}
                             </span>
                           </div>
 
                           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
                             <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace", minWidth: 0, overflowWrap: "anywhere" }}>
+                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace", minWidth: 0 }}>
                               {formatSubtaskId(selectedTaskInfo.task.subtaskId || selectedTaskInfo.task.id) || "-"}
                             </span>
                           </div>
@@ -896,7 +897,29 @@ export const DailyReportDetailPane: React.FC = () => {
                         marginTop: 0,
                       }}
                     >
-                      {(() => {
+                      <button
+                        onClick={() => setIsSlaCollapsed((c) => !c)}
+                        aria-label={isSlaCollapsed ? "ขยาย SLA" : "ย่อ SLA"}
+                        style={{
+                          alignSelf: "flex-end",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          background: "#eff6ff",
+                          border: "1px solid #bfdbfe",
+                          borderRadius: "8px",
+                          padding: "3px 8px",
+                          cursor: "pointer",
+                          fontSize: "0.7rem",
+                          fontWeight: 800,
+                          color: "#2563eb",
+                        }}
+                      >
+                        <Clock size={12} />
+                        {isSlaCollapsed ? "ดู SLA" : "ย่อ SLA"}
+                        {isSlaCollapsed ? <ChevronDown size={13} strokeWidth={2.5} /> : <ChevronUp size={13} strokeWidth={2.5} />}
+                      </button>
+                      {!isSlaCollapsed && (() => {
                         const isHelperTask = selectedTaskInfo.task.isHelper === true;
                         const slaDuration = (selectedTaskInfo.task.slaCategory && SLA_HOURS_MAP[selectedTaskInfo.task.slaCategory]) || 24;
                         let globalDeadlineTime: number | undefined = undefined;
