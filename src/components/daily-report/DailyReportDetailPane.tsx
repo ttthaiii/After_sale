@@ -605,8 +605,6 @@ export const DailyReportDetailPane: React.FC = () => {
                     style={{
                       display: "flex",
                       flexDirection: isMobile ? "column" : "row",
-                      flexWrap: isMobile ? undefined : "wrap",
-                      gap: "12px 20px",
                       justifyContent: "space-between",
                       alignItems: "stretch",
                       height: isMobile ? "auto" : "100%",
@@ -617,7 +615,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     <div
                       style={{
                         flex: 1,
-                        minWidth: isMobile ? 0 : "260px",
+                        minWidth: 0,
                         display: "flex",
                         flexDirection: "column",
                         height: "100%",
@@ -808,14 +806,14 @@ export const DailyReportDetailPane: React.FC = () => {
                         >
                           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
                             <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสใบงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
+                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace", minWidth: 0, overflowWrap: "anywhere" }}>
                               {selectedTaskInfo.wo.id || "-"}
                             </span>
                           </div>
 
                           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "0.78rem" }}>
                             <span style={{ fontWeight: 700, color: "#64748b", width: "80px", flexShrink: 0 }}>รหัสงาน:</span>
-                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace" }}>
+                            <span style={{ fontWeight: 800, color: "#1e293b", fontFamily: "monospace", minWidth: 0, overflowWrap: "anywhere" }}>
                               {formatSubtaskId(selectedTaskInfo.task.subtaskId || selectedTaskInfo.task.id) || "-"}
                             </span>
                           </div>
@@ -894,7 +892,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         gap: "6px",
                         alignItems: "flex-end",
                         minWidth: "200px",
-                        marginLeft: 0,
+                        marginLeft: "20px",
                         marginTop: 0,
                       }}
                     >
