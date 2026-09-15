@@ -604,8 +604,9 @@ export const DailyReportDetailPane: React.FC = () => {
                   <div
                     style={{
                       display: "flex",
-                      flexDirection: "column",
-                      gap: "12px",
+                      flexDirection: isMobile ? "column" : "row",
+                      flexWrap: isMobile ? undefined : "wrap",
+                      gap: "12px 20px",
                       alignItems: "stretch",
                       height: isMobile ? "auto" : "100%",
                     }}
@@ -614,7 +615,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     
                     <div
                       style={{
-                        minWidth: 0,
+                        flex: 1,
+                        minWidth: isMobile ? 0 : "220px",
                         display: "flex",
                         flexDirection: "column",
                       }}
