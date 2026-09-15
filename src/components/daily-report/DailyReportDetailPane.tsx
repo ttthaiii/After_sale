@@ -520,7 +520,7 @@ export const DailyReportDetailPane: React.FC = () => {
                   overflow: "visible",
                   display: "flex",
                   flexDirection: isMobile ? "column" : "row",
-                  height: isMobile ? "auto" : "220px",
+                  minHeight: isMobile ? "auto" : "220px",
                 }}
               >
                 {" "}
@@ -605,6 +605,8 @@ export const DailyReportDetailPane: React.FC = () => {
                     style={{
                       display: "flex",
                       flexDirection: isMobile ? "column" : "row",
+                      flexWrap: isMobile ? undefined : "wrap",
+                      gap: "12px 20px",
                       justifyContent: "space-between",
                       alignItems: "stretch",
                       height: isMobile ? "auto" : "100%",
@@ -615,7 +617,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     <div
                       style={{
                         flex: 1,
-                        minWidth: 0,
+                        minWidth: isMobile ? 0 : "260px",
                         display: "flex",
                         flexDirection: "column",
                         height: "100%",
@@ -892,7 +894,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         gap: "6px",
                         alignItems: "flex-end",
                         minWidth: "200px",
-                        marginLeft: "20px",
+                        marginLeft: 0,
                         marginTop: 0,
                       }}
                     >
