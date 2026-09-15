@@ -124,7 +124,6 @@ export const DailyReportDetailPane: React.FC = () => {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [showSLAPopup, setShowSLAPopup] = useState(false);
   const [isCardCollapsed, setIsCardCollapsed] = useState(false);
-  const [isSlaCollapsed, setIsSlaCollapsed] = useState(false);
   const [expandedLaborCards, setExpandedLaborCards] = useState<Set<string>>(new Set());
   const toggleLaborCard = (id: string) => setExpandedLaborCards(prev => {
     const next = new Set(prev);
@@ -521,12 +520,12 @@ export const DailyReportDetailPane: React.FC = () => {
                   overflow: "visible",
                   display: "flex",
                   flexDirection: isMobile ? "column" : "row",
-                  minHeight: isMobile ? "auto" : "220px",
+                  minHeight: (isMobile || isCardCollapsed) ? "auto" : "220px",
                 }}
               >
                 {" "}
                 
-                {(!isMobile || !isCardCollapsed) && <div
+                {!isCardCollapsed && <div
                   style={{
                     width: isMobile ? "100%" : "190px",
                     height: isMobile ? "170px" : undefined,
@@ -795,9 +794,32 @@ export const DailyReportDetailPane: React.FC = () => {
                                 )}
                             </>
                           )}
+                          {!isMobile && (
+                            <button
+                              onClick={() => setIsCardCollapsed((c) => !c)}
+                              aria-label={isCardCollapsed ? "ขยายข้อมูลงาน" : "ย่อข้อมูลงาน"}
+                              style={{
+                                marginLeft: "auto",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                background: "#f1f5f9",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: "8px",
+                                padding: "3px 8px",
+                                cursor: "pointer",
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                                color: "#64748b",
+                              }}
+                            >
+                              {isCardCollapsed ? <ChevronDown size={14} strokeWidth={2.5} /> : <ChevronUp size={14} strokeWidth={2.5} />}
+                              {isCardCollapsed ? "ดูข้อมูลงาน" : "ย่อ"}
+                            </button>
+                          )}
                         </h2>
 
-                        {(!isMobile || !isCardCollapsed) && <div
+                        {!isCardCollapsed && <div
                           style={{
                             display: "flex",
                             flexDirection: "column",
@@ -888,7 +910,7 @@ export const DailyReportDetailPane: React.FC = () => {
                     
                     <div
                       style={{
-                        display: isMobile ? "none" : "flex",
+                        display: (isMobile || isCardCollapsed) ? "none" : "flex",
                         flexDirection: "column",
                         gap: "6px",
                         alignItems: "flex-end",
@@ -897,29 +919,7 @@ export const DailyReportDetailPane: React.FC = () => {
                         marginTop: 0,
                       }}
                     >
-                      <button
-                        onClick={() => setIsSlaCollapsed((c) => !c)}
-                        aria-label={isSlaCollapsed ? "ขยาย SLA" : "ย่อ SLA"}
-                        style={{
-                          alignSelf: "flex-end",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          background: "#eff6ff",
-                          border: "1px solid #bfdbfe",
-                          borderRadius: "8px",
-                          padding: "3px 8px",
-                          cursor: "pointer",
-                          fontSize: "0.7rem",
-                          fontWeight: 800,
-                          color: "#2563eb",
-                        }}
-                      >
-                        <Clock size={12} />
-                        {isSlaCollapsed ? "ดู SLA" : "ย่อ SLA"}
-                        {isSlaCollapsed ? <ChevronDown size={13} strokeWidth={2.5} /> : <ChevronUp size={13} strokeWidth={2.5} />}
-                      </button>
-                      {!isSlaCollapsed && (() => {
+                      {(() => {
                         const isHelperTask = selectedTaskInfo.task.isHelper === true;
                         const slaDuration = (selectedTaskInfo.task.slaCategory && SLA_HOURS_MAP[selectedTaskInfo.task.slaCategory]) || 24;
                         let globalDeadlineTime: number | undefined = undefined;
