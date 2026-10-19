@@ -529,6 +529,36 @@ const Entry = () => {
                 {/* Actions Column - Vertical Arrangement (full-width row on mobile, below icon+content) */}
                 {showDetails && (
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', flexWrap: 'wrap', gap: '6px', justifyContent: isMobile ? 'flex-start' : 'center', alignSelf: 'stretch', flexBasis: isMobile ? '100%' : undefined }}>
+                    {/* "ส่งงาน" (submit) FIRST — top of the column on desktop: shows ONLY when the draft
+                        is complete (a "green light" that it's ready). Same rule as the in-form Submit
+                        (utils/workOrderComplete.isWorkOrderComplete) — single source. */}
+                    {isDraft && isWorkOrderComplete(wo) && wo.evalLocked !== true && !hasDecidedTask && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); handleSubmitWork(wo); }}
+                        title="ส่งงานให้แอดมินประเมิน"
+                        style={{
+                            padding: '6px 12px',
+                            color: '#fff',
+                            background: '#16a34a',
+                            border: '1px solid #15803d',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            transition: 'all 0.15s',
+                            minWidth: isMobile ? 'auto' : '94px'
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.background = '#15803d'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = '#16a34a'; }}
+                    >
+                        <Send size={14} />
+                        ส่งงาน
+                    </button>
+                    )}
                     {wo.evalLocked === true && (
                         <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '6px 8px', textAlign: 'center', minWidth: '94px', lineHeight: 1.3 }}>
                             🔒 แอดมินกำลังตรวจสอบ
@@ -559,37 +589,6 @@ const Entry = () => {
                     >
                         <Edit size={14} />
                         {wo.status === 'Rejected' ? 'แก้ไขใหม่' : 'แก้ไข'}
-                    </button>
-                    )}
-
-                    {/* "ส่งงาน" (submit): shows ONLY when the draft is complete — its presence is a
-                        "green light" that the draft is ready. Completeness uses the SAME rule as the
-                        in-form Submit (utils/workOrderComplete.isWorkOrderComplete) — single source. */}
-                    {isDraft && isWorkOrderComplete(wo) && wo.evalLocked !== true && !hasDecidedTask && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); handleSubmitWork(wo); }}
-                        title="ส่งงานให้แอดมินประเมิน"
-                        style={{
-                            padding: '6px 12px',
-                            color: '#fff',
-                            background: '#16a34a',
-                            border: '1px solid #15803d',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            transition: 'all 0.15s',
-                            minWidth: isMobile ? 'auto' : '94px'
-                        }}
-                        onMouseOver={(e) => { e.currentTarget.style.background = '#15803d'; }}
-                        onMouseOut={(e) => { e.currentTarget.style.background = '#16a34a'; }}
-                    >
-                        <Send size={14} />
-                        ส่งงาน
                     </button>
                     )}
 
