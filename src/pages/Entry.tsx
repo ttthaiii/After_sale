@@ -446,6 +446,20 @@ const Entry = () => {
                         </button>
                     )}
 
+                    {/* Mobile collapsed state: surface the "ส่งงาน" button when the draft is complete,
+                        so the primary "ready to send" action isn't buried behind the toggle (desktop
+                        shows it in the action column; a collapsed mobile card would otherwise hide it).
+                        Gated !expanded so it never duplicates the one in the expanded action block. */}
+                    {isMobile && !expanded && isDraft && isWorkOrderComplete(wo) && wo.evalLocked !== true && !hasDecidedTask && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleSubmitWork(wo); }}
+                            title="ส่งงานให้แอดมินประเมิน"
+                            style={{ alignSelf: 'flex-start', marginTop: '6px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px', background: '#16a34a', color: '#fff', border: '1px solid #15803d', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                            <Send size={14} /> ส่งงาน
+                        </button>
+                    )}
+
                     {/* ✅ Status Progress Timeline */}
                     {!isDraft && showDetails && (
                         <div style={{
