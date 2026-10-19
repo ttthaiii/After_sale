@@ -435,29 +435,30 @@ const Entry = () => {
                         )}
                     </div>
 
-                    {/* Mobile-only toggle: reveal the full timeline + action buttons */}
+                    {/* Mobile: toggle + (when the draft is complete) the "ส่งงาน" button, side by side.
+                        The toggle reveals the full timeline + action buttons; "ส่งงาน" is surfaced here
+                        even while collapsed so the primary "ready to send" action isn't buried (desktop
+                        shows it in the action column). "ส่งงาน" is gated !expanded so it never duplicates
+                        the one in the expanded action block below. */}
                     {isMobile && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
-                            style={{ alignSelf: 'flex-start', marginTop: '6px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            {expanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
-                        </button>
-                    )}
-
-                    {/* Mobile collapsed state: surface the "ส่งงาน" button when the draft is complete,
-                        so the primary "ready to send" action isn't buried behind the toggle (desktop
-                        shows it in the action column; a collapsed mobile card would otherwise hide it).
-                        Gated !expanded so it never duplicates the one in the expanded action block. */}
-                    {isMobile && !expanded && isDraft && isWorkOrderComplete(wo) && wo.evalLocked !== true && !hasDecidedTask && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); handleSubmitWork(wo); }}
-                            title="ส่งงานให้แอดมินประเมิน"
-                            style={{ alignSelf: 'flex-start', marginTop: '6px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px', background: '#16a34a', color: '#fff', border: '1px solid #15803d', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                            <Send size={14} /> ส่งงาน
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+                                style={{ padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+                            >
+                                {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                {expanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                            </button>
+                            {!expanded && isDraft && isWorkOrderComplete(wo) && wo.evalLocked !== true && !hasDecidedTask && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleSubmitWork(wo); }}
+                                    title="ส่งงานให้แอดมินประเมิน"
+                                    style={{ padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '6px', background: '#16a34a', color: '#fff', border: '1px solid #15803d', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                    <Send size={14} /> ส่งงาน
+                                </button>
+                            )}
+                        </div>
                     )}
 
                     {/* ✅ Status Progress Timeline */}
