@@ -69,6 +69,10 @@ const CATEGORY_OPTIONS = [
 // Sentinel select value for "type your own category" — never a real category
 // name, so it can't collide with anything a user types (feedback 2026-08-04).
 const OTHER_CATEGORY_VALUE = '__OTHER__';
+
+// Local calendar date as YYYY-MM-DD (LOCAL time, not UTC) — the planned date is picked
+// and compared in the user's own timezone, so a past-date guard must use local "today".
+const todayISO = () => new Date().toLocaleDateString('en-CA');
 const isCustomCategory = (category: string) => !CATEGORIES_LIST.includes(category);
 
 // Options to render for a given select: the curated list, plus the group's own
@@ -143,6 +147,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         reporterName: user?.name || '', // ✅ Pre-fill with user's name
         reporterPhone: '',
         reportDate: new Date().toISOString().split('T')[0], // Default Today
+        appointmentDate: '', // Optional: planned/expected action date (future-work-plan)
         location: locationName,
         building: '',
         floor: '',
@@ -241,6 +246,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                 reporterName: editWorkOrder.reporterName,
                 reporterPhone: editWorkOrder.reporterPhone,
                 reportDate: editWorkOrder.reportDate || new Date().toISOString().split('T')[0],
+                appointmentDate: editWorkOrder.appointmentDate || '',
                 location: editWorkOrder.locationName,
                 building: editWorkOrder.building || '',
                 floor: editWorkOrder.floor || '',
@@ -534,11 +540,37 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
         }));
     };
 
+    // Future-work-plan rule (2026-10-19, user-confirmed): the planned date is OPTIONAL,
+    // but once it is set the draft becomes a real "plan", so every work-category group
+    // must name a concrete category — the unspecified default "General" (CATEGORY_OPTIONS[0])
+    // is not allowed. Single source for all three call sites (Save Draft, Submit, Confirm).
+    // Returns the Thai error to show, or null when satisfied / no planned date.
+    const plannedDateError = (): string | null => {
+        if (!formState.appointmentDate) return null; // optional — no planned date, no rule
+        // A plan is future work: the planned date must not be in the past.
+        if (formState.appointmentDate < todayISO())
+            return 'วันที่คาดว่าจะดำเนินการต้องไม่เป็นวันย้อนหลัง (เลือกวันนี้หรือหลังจากนี้)';
+        // A dated plan must name a concrete category — the "General" default is not enough.
+        if (groups.some(g => g.category === CATEGORY_OPTIONS[0]))
+            return 'เมื่อระบุ "วันที่คาดว่าจะดำเนินการ" แล้ว กรุณาเลือกหมวดงานจริง (ไม่ใช่ "หมวดงานทั่วไป (General)") เพื่อให้แผนงานชัดเจน';
+        return null;
+    };
+
     const handleSave = async (isDraft: boolean = false) => {
         if (isSubmitting) return; // ✅ Prevent multiple clicks
         setIsSubmitting(true);
 
         setShowProjectError(false);
+
+        // Future-work-plan rule: backstop for the Confirm button. The Save Draft / Submit
+        // buttons check the same rule up front (single source: plannedDateError) so it
+        // blocks before the preview ever opens.
+        const planCatErr = plannedDateError();
+        if (planCatErr) {
+            await showAlert(planCatErr);
+            setIsSubmitting(false);
+            return;
+        }
 
         // Determine dynamic WO ID
         let finalId = formState.id;
@@ -669,6 +701,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             woOwnerId: editWorkOrder?.woOwnerId || user?.employeeId || user?.id || 'unknown',
             reporterPhone: formState.reporterPhone,
             reportDate: formState.reportDate,
+            appointmentDate: formState.appointmentDate, // '' when blank — Firestore rejects undefined; '' is a valid optional string
             locationName: `${formState.building} ${formState.floor} ${formState.room}`.trim() || formState.location,
             type: formState.type,
             status: isDraft ? 'Draft' : 'Evaluating',
@@ -1046,7 +1079,7 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
 
                                 <div style={{ background: '#f9fafb', padding: '32px', borderRadius: '16px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '28px' }}>
                                     {/* Project & Date Row */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '2fr 1fr'), gap: '24px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: gridCols(isMobile, '2fr 1fr 1fr'), gap: '24px' }}>
                                         <div>
                                             <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>โครงการ (Project) *</label>
                                             <div style={{ position: 'relative' }}>
@@ -1084,6 +1117,15 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                             <CustomDateInput
                                                 value={formState.reportDate}
                                                 onChange={(e) => setFormState({ ...formState, reportDate: e.target.value })}
+                                                style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '1rem', outline: 'none' }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 600 }}>วันที่คาดว่าจะดำเนินการ</label>
+                                            <CustomDateInput
+                                                value={formState.appointmentDate}
+                                                onChange={(e) => setFormState({ ...formState, appointmentDate: e.target.value })}
+                                                min={todayISO()}
                                                 style={{ width: '100%', padding: '12px 16px', background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '10px', color: '#111827', fontSize: '1rem', outline: 'none' }}
                                             />
                                         </div>
@@ -1695,6 +1737,8 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                 await showAlert('กรุณาเลือกโครงการ (Please select a project)');
                                                 return;
                                             }
+                                            const planErr = plannedDateError();
+                                            if (planErr) { await showAlert(planErr); return; }
                                             setIsPreviewDraft(true);
                                             setStep('preview');
                                         }}
@@ -1711,6 +1755,8 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
                                                 await showAlert('กรุณาเลือกโครงการ (Please select a project)');
                                                 return;
                                             }
+                                            const planErr = plannedDateError();
+                                            if (planErr) { await showAlert(planErr); return; }
                                             setIsPreviewDraft(false);
                                             setStep('preview');
                                         }}
