@@ -11,6 +11,7 @@ import { compressImage } from '../utils/imageCompression';
 import { logService } from '../services/logService';
 import { Project, WorkOrder, Category, WorkOrderType, MasterTask } from '../types';
 import { deriveWoStatus } from '../utils/deriveWoStatus';
+import { getSubmitBlockers, DECIDED_STATUSES } from '../utils/workOrderComplete';
 import LoadingOverlay from './LoadingOverlay';
 import CustomDateInput from './CustomDateInput';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -84,8 +85,8 @@ const optionsForCategory = (current: string): string[] =>
         ? CATEGORY_OPTIONS
         : [current, ...CATEGORY_OPTIONS];
 
-// A task is "decided" (locked from foreman edits) once it has moved past evaluation
-const DECIDED_STATUSES = ['Assigned', 'In Progress', 'For Checking', 'pending_delivery', 'Complete'];
+// DECIDED_STATUSES ("a task locked from foreman edits once past evaluation") lives in
+// utils/workOrderComplete now (single source) and is imported above.
 const isItemDecided = (item: any) => DECIDED_STATUSES.includes(item.status);
 
 const checkGroupHasReadOnlyItems = (group: { items: any[] }) => {
@@ -117,9 +118,10 @@ interface ForemanReportModalProps {
     locationName?: string; // Pre-filled if coming from a unit
     initialWorkType?: WorkOrderType;
     editWorkOrder?: WorkOrder; // ✅ Add this to support editing drafts
+    startInSubmitPreview?: boolean; // open straight on the submit preview (from the draft card's "ส่งงาน")
 }
 
-const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkType = 'AfterSale', editWorkOrder }: ForemanReportModalProps) => {
+const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkType = 'AfterSale', editWorkOrder, startInSubmitPreview = false }: ForemanReportModalProps) => {
     const { addWorkOrder, cancelRejectedTask } = useWorkOrders();
     const { user } = useAuth();
     const { sendNotification } = useNotifications();
@@ -340,6 +342,15 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             }
         }
     }, [isOpen, initialWorkType, user?.name, editWorkOrder]);
+
+    // "ส่งงาน" from the draft card: open straight on the submit preview (skip the edit form).
+    // Declared AFTER the load effect above (which resets step to 'form') so it runs last and wins.
+    useEffect(() => {
+        if (isOpen && startInSubmitPreview && editWorkOrder) {
+            setIsPreviewDraft(false);
+            setStep('preview');
+        }
+    }, [isOpen, startInSubmitPreview, editWorkOrder?.id]);
 
     // Handlers
     const addGroup = () => {
@@ -620,63 +631,35 @@ const ForemanReportModal = ({ isOpen, onClose, locationName = '', initialWorkTyp
             }
         }
 
-        // General Information section (shared by AfterSale + PreHandover) — previously
-        // only project selection was enforced; building/floor/room/reporter
-        // name/phone could all be left blank on a real submit (user-confirmed
-        // 2026-07-23: require every field here).
+        // Completeness check before a real (non-draft) submit. The RULE lives once in
+        // utils/workOrderComplete.getSubmitBlockers — the foreman draft card uses the
+        // SAME rule to decide whether to show the "ส่งงาน" button (single source, no drift).
+        // General info is required for both types; PreHandover adds docs + category-name
+        // checks; AfterSale adds per-item position/detail/amount>0/photo checks.
         if (!isDraft) {
-            const missingGeneral: string[] = [];
-            if (!formState.building?.trim()) missingGeneral.push('อาคาร (Bldg)');
-            if (!formState.floor?.trim()) missingGeneral.push('ชั้น (Floor)');
-            if (!formState.room?.trim()) missingGeneral.push('ห้อง (Room)');
-            if (!formState.reporterName?.trim()) missingGeneral.push('ชื่อผู้แจ้ง (Reporter)');
-            if (!formState.reporterPhone?.trim()) missingGeneral.push('เบอร์โทร (Phone)');
-            if (!formState.description?.trim()) missingGeneral.push('รายละเอียดเพิ่มเติม');
-            if (missingGeneral.length > 0) {
-                await showAlert(`กรุณากรอกข้อมูลทั่วไปให้ครบก่อนส่ง:\n- ${missingGeneral.join('\n- ')}`);
-                setIsSubmitting(false);
-                return;
-            }
-        }
-
-        // PreHandover (WOP): require at least 1 attached document before a real submit.
-        if (!isDraft && formState.type === 'PreHandover' && phDocuments.length === 0) {
-            await showAlert('กรุณาแนบไฟล์เอกสารอย่างน้อย 1 ไฟล์');
-            setIsSubmitting(false);
-            return;
-        }
-
-        // PreHandover: a group left on "หมวดอื่นๆ" with no typed name has no real
-        // category — block a real submit the same way a blank required field would.
-        if (!isDraft && formState.type === 'PreHandover' && groups.some(g => !g.category?.trim())) {
-            await showAlert('กรุณาพิมพ์ชื่อหมวดงานให้ครบก่อนส่ง (มีหมวดที่เลือก "อื่นๆ" แต่ยังไม่ได้พิมพ์ชื่อ)');
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Require complete, sane data before a real (non-draft) submit — previously
-        // any item could be submitted blank (no position/detail, no photo, amount
-        // left at/below 0). PreHandover items have no per-item position/detail/amount
-        // (defectCount-based instead), so this only applies to AfterSale.
-        if (!isDraft && formState.type !== 'PreHandover') {
-            const invalidItems: string[] = [];
-            groups.forEach(group => {
-                group.items.forEach(item => {
-                    if (isItemDecided(item)) return; // already-decided items are locked/read-only, not re-validated
-                    const label = `${group.category} - ${item.position || item.detail || 'รายการที่ไม่มีชื่อ'}`;
-                    if (!item.position?.trim() || !item.detail?.trim()) {
-                        invalidItems.push(`${label}: กรุณากรอกจุดที่พบและรายละเอียด`);
-                    }
-                    if (!item.amount || item.amount <= 0) {
-                        invalidItems.push(`${label}: จำนวนต้องมากกว่า 0`);
-                    }
-                    if (!item.images || item.images.length === 0) {
-                        invalidItems.push(`${label}: กรุณาแนบรูปอย่างน้อย 1 รูป`);
-                    }
-                });
+            const blockers = getSubmitBlockers({
+                type: formState.type,
+                building: formState.building,
+                floor: formState.floor,
+                room: formState.room,
+                reporterName: formState.reporterName,
+                reporterPhone: formState.reporterPhone,
+                description: formState.description,
+                documentsCount: phDocuments.length,
+                categories: groups.map(group => ({
+                    name: group.category,
+                    // Modal form items already merged their photo chain into item.images on load.
+                    items: (group.items || []).map((item: any) => ({
+                        position: item.position,
+                        detail: item.detail,
+                        amount: item.amount,
+                        hasImage: !!(item.images && item.images.length > 0),
+                        decided: isItemDecided(item),
+                    })),
+                })),
             });
-            if (invalidItems.length > 0) {
-                await showAlert(`กรุณากรอกข้อมูลให้ครบก่อนส่ง:\n- ${invalidItems.join('\n- ')}`);
+            if (blockers.length > 0) {
+                await showAlert(`กรุณากรอกข้อมูลให้ครบก่อนส่ง:\n- ${blockers.join('\n- ')}`);
                 setIsSubmitting(false);
                 return;
             }

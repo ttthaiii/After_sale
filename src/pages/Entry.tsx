@@ -14,7 +14,8 @@ import {
     ClipboardCheck,
     Info,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Send
 } from 'lucide-react';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,7 @@ import ForemanReportModal from '../components/ForemanReportModal';
 import { WorkOrder, WorkOrderType } from '../types';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatDateTime } from '../utils/date';
+import { isWorkOrderComplete } from '../utils/workOrderComplete';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from '../components/ui/responsiveGrid';
 import { ts } from '../components/ui/responsiveText';
@@ -39,6 +41,7 @@ const Entry = () => {
     const [selectedType, setSelectedType] = useState<WorkOrderType>('AfterSale');
     const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [submitPreviewMode, setSubmitPreviewMode] = useState(false); // "ส่งงาน" opens the edit modal straight on its submit preview
     const [searchQuery, setSearchQuery] = useState('');
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [modalAlert, setModalAlert] = useState<{
@@ -135,6 +138,20 @@ const Entry = () => {
         }
         setSelectedOrder(order);
         setSelectedType(order.type);
+        setIsEditModalOpen(true);
+    };
+
+    // "ส่งงาน" on a complete draft: open the same ForemanReportModal but land straight on its
+    // submit preview, so the foreman eyeballs the whole work order before it goes to admin.
+    // Confirm there runs the real submit (status + submittedAt + nested task statuses).
+    const handleSubmitWork = async (order: WorkOrder) => {
+        if (order.evalLocked === true) {
+            await showAlert('แอดมินกำลังตรวจสอบใบสั่งงานนี้อยู่ — ส่งงานไม่ได้');
+            return;
+        }
+        setSelectedOrder(order);
+        setSelectedType(order.type);
+        setSubmitPreviewMode(true);
         setIsEditModalOpen(true);
     };
 
@@ -530,8 +547,39 @@ const Entry = () => {
                     </button>
                     )}
 
+                    {/* "ส่งงาน" (submit): shows ONLY when the draft is complete — its presence is a
+                        "green light" that the draft is ready. Completeness uses the SAME rule as the
+                        in-form Submit (utils/workOrderComplete.isWorkOrderComplete) — single source. */}
+                    {isDraft && isWorkOrderComplete(wo) && wo.evalLocked !== true && !hasDecidedTask && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); handleSubmitWork(wo); }}
+                        title="ส่งงานให้แอดมินประเมิน"
+                        style={{
+                            padding: '6px 12px',
+                            color: '#fff',
+                            background: '#16a34a',
+                            border: '1px solid #15803d',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            transition: 'all 0.15s',
+                            minWidth: isMobile ? 'auto' : '94px'
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.background = '#15803d'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = '#16a34a'; }}
+                    >
+                        <Send size={14} />
+                        ส่งงาน
+                    </button>
+                    )}
+
                     {isDraft && (
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); if(window.confirm('ต้องการลบแบบร่างนี้?')) deleteWorkOrder(wo.id); }}
                             style={{ 
                                 padding: '6px 12px', 
@@ -761,10 +809,11 @@ const Entry = () => {
                 initialWorkType={selectedType}
             />
 
-            <ForemanReportModal 
-                isOpen={isEditModalOpen} 
-                onClose={() => setIsEditModalOpen(false)} 
+            <ForemanReportModal
+                isOpen={isEditModalOpen}
+                onClose={() => { setIsEditModalOpen(false); setSubmitPreviewMode(false); }}
                 editWorkOrder={liveSelectedOrder || undefined}
+                startInSubmitPreview={submitPreviewMode}
             />
 
             {modalAlert && modalAlert.isOpen && (
