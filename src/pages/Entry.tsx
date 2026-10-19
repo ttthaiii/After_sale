@@ -25,6 +25,8 @@ import { WorkOrder, WorkOrderType } from '../types';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatDateTime } from '../utils/date';
 import { isWorkOrderComplete } from '../utils/workOrderComplete';
+import DraftFilterBar from '../components/DraftFilterBar';
+import { draftTimeBucket, daysUntil, type DraftBucket } from '../utils/draftSchedule';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { gridCols } from '../components/ui/responsiveGrid';
 import { ts } from '../components/ui/responsiveText';
@@ -43,6 +45,9 @@ const Entry = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [submitPreviewMode, setSubmitPreviewMode] = useState(false); // "ส่งงาน" opens the edit modal straight on its submit preview
     const [searchQuery, setSearchQuery] = useState('');
+    // Draft plan filters — independent per zone (After-Sale / Pre-Handover).
+    const [asDraftFilter, setAsDraftFilter] = useState<DraftBucket | 'all'>('all');
+    const [phDraftFilter, setPhDraftFilter] = useState<DraftBucket | 'all'>('all');
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [modalAlert, setModalAlert] = useState<{
         isOpen: boolean;
@@ -203,6 +208,12 @@ const Entry = () => {
     const afterSaleTracking = filteredTracking.filter(wo => wo.type === 'AfterSale');
     const preHandoverTracking = filteredTracking.filter(wo => wo.type === 'PreHandover');
 
+    // Apply the per-zone time filter (single source: draftTimeBucket).
+    const visibleAfterSaleDrafts = afterSaleDrafts.filter(wo =>
+        asDraftFilter === 'all' || draftTimeBucket(wo.appointmentDate) === asDraftFilter);
+    const visiblePreHandoverDrafts = preHandoverDrafts.filter(wo =>
+        phDraftFilter === 'all' || draftTimeBucket(wo.appointmentDate) === phDraftFilter);
+
     const StatusBadge = ({ status }: { status: string }) => {
         const styles: Record<string, { bg: string, text: string, label: string, icon: any }> = {
             'Evaluating': { bg: '#eff6ff', text: '#3b82f6', label: 'รอประเมิน', icon: <Search size={12} /> },
@@ -324,13 +335,11 @@ const Entry = () => {
         const [expanded, setExpanded] = useState(false);
         const showDetails = !isMobile || expanded;
 
-        // Future-work-plan (Phase 2): a draft whose expected date is already past = a slipped plan.
-        // todayStr is LOCAL YYYY-MM-DD (Thailand +7), matching the planned-date guard in the form.
-        const todayStr = new Date().toLocaleDateString('en-CA');
-        const isOverdue = isDraft && !!wo.appointmentDate && wo.appointmentDate < todayStr;
-        const daysOverdue = isOverdue
-            ? Math.floor((Date.parse(todayStr) - Date.parse(wo.appointmentDate!)) / 86400000)
-            : 0;
+        // Future-work-plan: a draft whose expected date is already past = a slipped plan.
+        // Overdue classification is single-sourced in utils/draftSchedule (same rule the
+        // filter bar uses), so the card badge and the summary counts can never disagree.
+        const isOverdue = isDraft && draftTimeBucket(wo.appointmentDate) === 'overdue';
+        const daysOverdue = isOverdue ? -daysUntil(wo.appointmentDate!) : 0;
 
         return (
             <div
@@ -756,8 +765,17 @@ const Entry = () => {
                         </div>
                         <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1rem'), fontWeight: 800, color: '#111827' }}>แบบร่างแจ้งซ่อมทั่วไป</h2>
                     </div>
+                    {afterSaleDrafts.length > 0 && (
+                        <DraftFilterBar
+                            drafts={afterSaleDrafts}
+                            value={asDraftFilter}
+                            onChange={setAsDraftFilter}
+                            accentColor="#6366f1"
+                            isMobile={isMobile}
+                        />
+                    )}
                     <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
-                        {afterSaleDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
+                        {visibleAfterSaleDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
                     </ScrollableZone>
                 </div>
 
@@ -773,8 +791,17 @@ const Entry = () => {
                         </div>
                         <h2 style={{ margin: 0, fontSize: ts(isMobile, 'h2', '1rem'), fontWeight: 800, color: '#111827' }}>แบบร่างตรวจรับห้อง</h2>
                     </div>
+                    {preHandoverDrafts.length > 0 && (
+                        <DraftFilterBar
+                            drafts={preHandoverDrafts}
+                            value={phDraftFilter}
+                            onChange={setPhDraftFilter}
+                            accentColor="#10b981"
+                            isMobile={isMobile}
+                        />
+                    )}
                     <ScrollableZone emptyIcon={FileText} emptyText="ไม่มีแบบร่างในหมวดนี้">
-                        {preHandoverDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
+                        {visiblePreHandoverDrafts.map(wo => <WorkOrderCard key={wo.id} wo={wo} isDraft={true} />)}
                     </ScrollableZone>
                 </div>
 
