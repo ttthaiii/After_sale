@@ -41,10 +41,17 @@ export const BUCKET_META: Record<Exclude<DraftBucket, 'none'>, { label: string; 
 // own 4-bucket scale — but it stays in THIS file and reuses daysUntil/todayLocalStr,
 // so every date rule still lives in one place. "overdue" is identical to
 // draftTimeBucket's (appt < today): the single source never forks.
-export type ForecastHorizon = 'overdue' | 'thisWeek' | 'nextWeek' | 'later';
+// 'unplanned' = a saved draft the foreman has NOT given a planned date yet. It is
+// its own horizon (not folded into any week) so the forecast card shows real work
+// day-one, before foremen have adopted the planned-date field — the grey "ยังไม่ระบุ
+// วันนัด" segment. A dated draft never lands here; an undated one always does.
+export type ForecastHorizon = 'overdue' | 'thisWeek' | 'nextWeek' | 'later' | 'unplanned';
 
 // Rolling windows anchored on today: thisWeek = within 7 days, nextWeek = day 8–14.
-export function forecastHorizon(appointmentDate: string, todayStr: string = todayLocalStr()): ForecastHorizon {
+// No appointmentDate → 'unplanned' (the single source decides this too, so the card
+// never re-implements the "has a date?" test).
+export function forecastHorizon(appointmentDate?: string, todayStr: string = todayLocalStr()): ForecastHorizon {
+    if (!appointmentDate) return 'unplanned';
     if (appointmentDate < todayStr) return 'overdue';
     const d = daysUntil(appointmentDate, todayStr);
     if (d <= 6) return 'thisWeek';
@@ -52,10 +59,12 @@ export function forecastHorizon(appointmentDate: string, todayStr: string = toda
     return 'later';
 }
 
-// Labels + colors for the forecast segments (overdue reuses the shared red).
+// Labels + colors for the forecast segments (overdue reuses the shared red;
+// unplanned is a neutral grey so it reads as "no date yet", not a severity).
 export const FORECAST_META: Record<ForecastHorizon, { label: string; color: string; bg: string }> = {
     overdue: { label: 'เกินกำหนด', color: BUCKET_META.overdue.color, bg: BUCKET_META.overdue.bg },
     thisWeek: { label: 'สัปดาห์นี้', color: '#d97706', bg: '#fffbeb' },
     nextWeek: { label: 'สัปดาห์หน้า', color: '#2563eb', bg: '#eff6ff' },
     later: { label: 'หลังจากนั้น', color: '#64748b', bg: '#f8fafc' },
+    unplanned: { label: 'ยังไม่ระบุวันนัด', color: '#94a3b8', bg: '#f1f5f9' },
 };

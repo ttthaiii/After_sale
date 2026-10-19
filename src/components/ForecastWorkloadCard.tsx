@@ -43,7 +43,7 @@ const whatOf = (d: PlanDraftLike): string => {
     return names.length ? names.join(' · ') : 'ไม่ระบุงาน';
 };
 
-const HORIZONS: ForecastHorizon[] = ['overdue', 'thisWeek', 'nextWeek', 'later'];
+const HORIZONS: ForecastHorizon[] = ['overdue', 'thisWeek', 'nextWeek', 'later', 'unplanned'];
 const ACCENT = '#7c3aed';
 
 interface GroupRow {
@@ -62,7 +62,6 @@ export default function ForecastWorkloadCard({ drafts, getProjectName, getForema
     const rows = useMemo<GroupRow[]>(() => {
         const map = new Map<string, GroupRow>();
         for (const d of drafts) {
-            if (!d.appointmentDate) continue;
             let key: string;
             let name: string;
             if (mode === 'project') {
@@ -75,7 +74,7 @@ export default function ForecastWorkloadCard({ drafts, getProjectName, getForema
             }
             let g = map.get(key);
             if (!g) {
-                g = { key, name, total: 0, counts: { overdue: 0, thisWeek: 0, nextWeek: 0, later: 0 }, drafts: [] };
+                g = { key, name, total: 0, counts: { overdue: 0, thisWeek: 0, nextWeek: 0, later: 0, unplanned: 0 }, drafts: [] };
                 map.set(key, g);
             }
             g.counts[forecastHorizon(d.appointmentDate)]++;
@@ -121,7 +120,7 @@ export default function ForecastWorkloadCard({ drafts, getProjectName, getForema
                 </div>
             </div>
             <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, margin: '6px 0 0.6rem 0', lineHeight: 1.5 }}>
-                แต่ละแท่ง = งานที่ช่างวางแผนไว้ (แบบร่างที่ตั้งวันนัด) ของ{mode === 'project' ? 'โครงการ' : 'ช่าง'}นั้น · แยกตามช่วงเวลา (เกินกำหนด → สัปดาห์นี้ ภายใน 7 วัน → สัปดาห์หน้า วันที่ 8–14 → หลังจากนั้น) · เรียงงานเยอะสุดขึ้นก่อน · คลิกเพื่อดูรายการ
+                แต่ละแท่ง = งานที่ช่างร่างไว้ของ{mode === 'project' ? 'โครงการ' : 'ช่าง'}นั้น · แยกตามช่วงเวลา (เกินกำหนด → สัปดาห์นี้ ภายใน 7 วัน → สัปดาห์หน้า วันที่ 8–14 → หลังจากนั้น → ยังไม่ระบุวันนัด) · เรียงงานเยอะสุดขึ้นก่อน · คลิกเพื่อดูรายการ
             </div>
             {/* Legend */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', margin: '0 0 0.9rem 0', fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>
@@ -199,7 +198,7 @@ export default function ForecastWorkloadCard({ drafts, getProjectName, getForema
                             {[...openGroup.drafts]
                                 .sort((a, b) => (a.appointmentDate || '').localeCompare(b.appointmentDate || ''))
                                 .map((d) => {
-                                    const h = d.appointmentDate ? forecastHorizon(d.appointmentDate) : 'later';
+                                    const h = forecastHorizon(d.appointmentDate);
                                     const meta = FORECAST_META[h];
                                     const otherName = mode === 'project'
                                         ? (() => { const fid = foremanIdOf(d); return fid ? getForemanName(fid) : 'ยังไม่ระบุช่าง'; })()

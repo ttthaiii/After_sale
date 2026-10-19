@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import ForecastWorkloadCard from '../components/ForecastWorkloadCard';
+import ForecastMatrixCard from '../components/ForecastMatrixCard';
 import { useNavigate } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -603,8 +604,11 @@ const DirectorDashboard = () => {
     // appointmentDate (the first consumer of that field on this page). Buckets them by
     // horizon via the single-source forecastHorizon. Respects the page's type/project
     // scope (scopedWOs), so the top filters re-scope the forecast too.
+    // ALL saved drafts in scope — dated or not. Undated ones land in the forecast's
+    // grey "ยังไม่ระบุวันนัด" segment, so the card shows real work before foremen have
+    // adopted the planned-date field (not just the few that already have a date).
     const planDrafts = useMemo(
-        () => scopedWOs.filter((w: any) => w.status === 'Draft' && w.appointmentDate),
+        () => scopedWOs.filter((w: any) => w.status === 'Draft'),
         [scopedWOs]
     );
     const getForemanName = (id: string) => staff.find((s: any) => s.id === id)?.name || id;
@@ -1068,6 +1072,13 @@ const DirectorDashboard = () => {
 
             {/* ── Forecast — upcoming planned workload (from foreman-planned draft dates) ── */}
             <ForecastWorkloadCard
+                drafts={planDrafts}
+                getProjectName={getProjectName}
+                getForemanName={getForemanName}
+            />
+
+            {/* ── Cross-table — which foreman has work in which project ── */}
+            <ForecastMatrixCard
                 drafts={planDrafts}
                 getProjectName={getProjectName}
                 getForemanName={getForemanName}
