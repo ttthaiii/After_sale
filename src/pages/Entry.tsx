@@ -150,7 +150,16 @@ const Entry = () => {
             wo.status === 'Draft' && 
             (user?.role === 'Admin' || wo.reporterId === user?.id) &&
             (searchQuery === '' || (wo.locationName || '').toLowerCase().includes(searchQuery.toLowerCase()) || (wo.id || '').toLowerCase().includes(searchQuery.toLowerCase()))
-        );
+        ).sort((a, b) => {
+            // Urgency-first (Phase 2): dated plans ascending — every past (overdue) date sorts
+            // before every future one, so overdue + soonest float to the top; undated drafts last.
+            const ad = a.appointmentDate || '';
+            const bd = b.appointmentDate || '';
+            if (ad && bd) return ad.localeCompare(bd);
+            if (ad) return -1;
+            if (bd) return 1;
+            return 0;
+        });
     }, [workOrders, user, searchQuery]);
 
     const filteredTracking = useMemo(() => {
@@ -298,6 +307,14 @@ const Entry = () => {
         const [expanded, setExpanded] = useState(false);
         const showDetails = !isMobile || expanded;
 
+        // Future-work-plan (Phase 2): a draft whose expected date is already past = a slipped plan.
+        // todayStr is LOCAL YYYY-MM-DD (Thailand +7), matching the planned-date guard in the form.
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const isOverdue = isDraft && !!wo.appointmentDate && wo.appointmentDate < todayStr;
+        const daysOverdue = isOverdue
+            ? Math.floor((Date.parse(todayStr) - Date.parse(wo.appointmentDate!)) / 86400000)
+            : 0;
+
         return (
             <div
                 id={`wo-card-${wo.id}`}
@@ -371,6 +388,16 @@ const Entry = () => {
                             {formatDateTime(wo.submittedAt || wo.createdAt)}
                         </span>
                         {!isDraft && <StatusBadge status={wo.status} />}
+                        {isDraft && wo.appointmentDate && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700, color: isOverdue ? '#ef4444' : '#0891b2' }}>
+                                <Clock size={12} /> คาด: {formatDate(wo.appointmentDate)}
+                            </span>
+                        )}
+                        {isOverdue && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '100px', fontSize: '0.72rem', color: '#ef4444', fontWeight: 800 }}>
+                                <AlertCircle size={12} /> เลยกำหนด {daysOverdue} วัน
+                            </span>
+                        )}
                         
                         {/* Rejection Reason - Following Status */}
                         {rejectionReason && (
