@@ -33,3 +33,29 @@ export const BUCKET_META: Record<Exclude<DraftBucket, 'none'>, { label: string; 
     soon: { label: 'ใกล้ถึง', color: '#d97706', bg: '#fffbeb' },
     ok: { label: 'ยังมีเวลา', color: '#16a34a', bg: '#f0fdf4' },
 };
+
+// ── Forecast lens ────────────────────────────────────────────────────────────
+// A coarser, horizon-based view of the SAME planned dates, for the director
+// forecast card ("which project/foreman has the most upcoming work?"). This is a
+// different question than the foreman filter bar (overdue/soon/ok), so it gets its
+// own 4-bucket scale — but it stays in THIS file and reuses daysUntil/todayLocalStr,
+// so every date rule still lives in one place. "overdue" is identical to
+// draftTimeBucket's (appt < today): the single source never forks.
+export type ForecastHorizon = 'overdue' | 'thisWeek' | 'nextWeek' | 'later';
+
+// Rolling windows anchored on today: thisWeek = within 7 days, nextWeek = day 8–14.
+export function forecastHorizon(appointmentDate: string, todayStr: string = todayLocalStr()): ForecastHorizon {
+    if (appointmentDate < todayStr) return 'overdue';
+    const d = daysUntil(appointmentDate, todayStr);
+    if (d <= 6) return 'thisWeek';
+    if (d <= 13) return 'nextWeek';
+    return 'later';
+}
+
+// Labels + colors for the forecast segments (overdue reuses the shared red).
+export const FORECAST_META: Record<ForecastHorizon, { label: string; color: string; bg: string }> = {
+    overdue: { label: 'เกินกำหนด', color: BUCKET_META.overdue.color, bg: BUCKET_META.overdue.bg },
+    thisWeek: { label: 'สัปดาห์นี้', color: '#d97706', bg: '#fffbeb' },
+    nextWeek: { label: 'สัปดาห์หน้า', color: '#2563eb', bg: '#eff6ff' },
+    later: { label: 'หลังจากนั้น', color: '#64748b', bg: '#f8fafc' },
+};

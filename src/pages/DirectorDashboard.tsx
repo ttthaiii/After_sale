@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import ForecastWorkloadCard from '../components/ForecastWorkloadCard';
 import { useNavigate } from 'react-router-dom';
 import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
@@ -598,6 +599,16 @@ const DirectorDashboard = () => {
         setDrill({ title: `โฟร์แมน · ${fname}${seg ? ` · ${seg === 'late' ? 'ล่าช้า' : 'ปกติ'}` : ''}`, subs });
     };
 
+    // Forecast of UPCOMING planned work — saved drafts that carry a foreman-planned
+    // appointmentDate (the first consumer of that field on this page). Buckets them by
+    // horizon via the single-source forecastHorizon. Respects the page's type/project
+    // scope (scopedWOs), so the top filters re-scope the forecast too.
+    const planDrafts = useMemo(
+        () => scopedWOs.filter((w: any) => w.status === 'Draft' && w.appointmentDate),
+        [scopedWOs]
+    );
+    const getForemanName = (id: string) => staff.find((s: any) => s.id === id)?.name || id;
+
     if (!allowed) {
         return (
             <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b' }}>
@@ -1054,6 +1065,13 @@ const DirectorDashboard = () => {
                     </div>
                 )}
             </div>
+
+            {/* ── Forecast — upcoming planned workload (from foreman-planned draft dates) ── */}
+            <ForecastWorkloadCard
+                drafts={planDrafts}
+                getProjectName={getProjectName}
+                getForemanName={getForemanName}
+            />
 
             <JobListModal data={drill} onClose={() => setDrill(null)} onPick={(s: any) => setSelectedTask(s)} />
             <TaskHistoryModal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} task={selectedTask} />
