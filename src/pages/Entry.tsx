@@ -416,7 +416,7 @@ const Entry = () => {
                         {!isDraft && <StatusBadge status={wo.status} />}
                         {isDraft && wo.appointmentDate && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700, color: isOverdue ? '#ef4444' : '#0891b2' }}>
-                                <Clock size={12} /> คาด: {formatDate(wo.appointmentDate)}
+                                <Clock size={12} /> คาดการณ์: {formatDate(wo.appointmentDate)}
                             </span>
                         )}
                         {isOverdue && (

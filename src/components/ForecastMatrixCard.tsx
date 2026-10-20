@@ -166,7 +166,7 @@ export default function ForecastMatrixCard({ drafts, getProjectName, getForemanN
                                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>{openCell.drafts.length} งาน</div>
                             </div>
                             <button onClick={() => setOpenCell(null)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '8px', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}>
-                                <X size={18} />
+                                <X size={18} style={{ flexShrink: 0 }} />
                             </button>
                         </div>
                         <div style={{ overflowY: 'auto', padding: '0.5rem 0.75rem' }}>

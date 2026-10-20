@@ -31,7 +31,7 @@ export function draftTimeBucket(appointmentDate?: string, todayStr: string = tod
 export const BUCKET_META: Record<Exclude<DraftBucket, 'none'>, { label: string; color: string; bg: string }> = {
     overdue: { label: 'เกินกำหนด', color: '#dc2626', bg: '#fef2f2' },
     soon: { label: 'ใกล้ถึง', color: '#d97706', bg: '#fffbeb' },
-    ok: { label: 'ยังมีเวลา', color: '#16a34a', bg: '#f0fdf4' },
+    ok: { label: 'ตามกำหนด', color: '#16a34a', bg: '#f0fdf4' },
 };
 
 // ── Forecast lens ────────────────────────────────────────────────────────────
