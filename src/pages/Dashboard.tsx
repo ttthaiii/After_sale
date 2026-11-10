@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { ModalCloseButton } from '../components/ui/ModalCloseButton';
 import TaskHistoryModal from '../components/TaskHistoryModal';
+import ExportExcelModal from '../components/ExportExcelModal';
 import {
     TrendingUp,
     AlertTriangle,
@@ -20,6 +21,7 @@ import {
     Edit2,
     Check,
     FileText,
+    FileSpreadsheet,
     MapPin,
     UserCheck
 } from 'lucide-react';
@@ -504,6 +506,9 @@ const Dashboard = () => {
     const isAdminOrManager = (user?.role as any) === 'Admin' || (user?.role as any) === 'Manager' || (user?.role as any) === 'Director' || (user?.role as any) === 'Approver';
     const isForeman = user?.role === 'Foreman';
     const isMobile = useIsMobile();
+    // Export to Excel — Admin/Manager only (not Approver/Director).
+    const canExport = user?.role === 'Admin' || user?.role === 'Manager';
+    const [exportOpen, setExportOpen] = useState(false);
 
     const [adminActiveTab] = useState<'overview' | 'comparison'>(() => {
         if (!isAdminOrManager) return 'overview';
@@ -3350,15 +3355,30 @@ const Dashboard = () => {
                                             จากการทำงานตั้งแต่ช่วงเวลาที่เลือก ({selectedMonth}{selectedWeek > 0 ? ` สัปดาห์ที่ ${selectedWeek}` : ''}), คุณมีความสามารถในการรักษามาตรฐาน SLA ได้ถึง {stats.slaScore}% โดยมีการบริหารจัดการแรงงานรวม {stats.internalCount + stats.outsourceCount} อัตรา สะท้อนถึงประสิทธิภาพในการควบคุมงาน {(categoryData[0] as any)?.name || 'งานซ่อม'} เป็นอันดับหนึ่ง
                                         </p>
                                     </div>
-                                    <button onClick={() => window.print()} style={{ background: '#fff', color: '#0f172a', border: 'none', padding: '12px 24px', borderRadius: '14px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <CheckCircle2 size={18} /> พิมพ์รายงานสรุป
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '12px', flexShrink: 0 }}>
+                                        {canExport && (
+                                            <button onClick={() => setExportOpen(true)} style={{ background: '#4f46e5', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '14px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <FileSpreadsheet size={18} /> ส่งออก Excel
+                                            </button>
+                                        )}
+                                        <button onClick={() => window.print()} style={{ background: '#fff', color: '#0f172a', border: 'none', padding: '12px 24px', borderRadius: '14px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <CheckCircle2 size={18} /> พิมพ์รายงานสรุป
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </>
                     )}
                 </>
             )}
+
+            <ExportExcelModal
+                isOpen={exportOpen}
+                onClose={() => setExportOpen(false)}
+                workOrders={workOrders}
+                projects={projects}
+                staff={staff}
+            />
 
             {/* Labor Detail Modal */}
             {selectedLaborDetail && (
