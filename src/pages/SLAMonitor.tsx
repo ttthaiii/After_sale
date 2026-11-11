@@ -801,6 +801,37 @@ const SLAMonitor = () => {
                                                             <span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{task.startDate ? formatDate(task.startDate) : '-'}</span>
                                                         </div>
 
+                                                        {/* เอกสาร PDF ที่โฟร์แมนแนบตอนเปิดงาน — เห็นเฉพาะ role ที่ไม่ใช่ Foreman (แอดมินขึ้นไป) และเฉพาะงานที่มีไฟล์จริง */}
+                                                        {currentRole !== 'Foreman' && (() => {
+                                                            const woDocs = (parentWO as any)?.categories?.[0]?.tasks?.[0]?.documents
+                                                                || (parentWO as any)?.categories?.[0]?.documents
+                                                                || (parentWO as any)?.documents
+                                                                || [];
+                                                            if (!Array.isArray(woDocs) || woDocs.length === 0) return null;
+                                                            return (
+                                                                <div style={{ marginTop: '4px' }}>
+                                                                    <div style={{ fontWeight: 900, color: '#475569', marginBottom: '6px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <FileText size={13} style={{ color: '#3b82f6' }} />
+                                                                        <span>เอกสารแนบ (PDF) ({woDocs.length})</span>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                        {woDocs.map((docItem: any, i: number) => (
+                                                                            <a
+                                                                                key={i}
+                                                                                href={docItem.url}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}
+                                                                            >
+                                                                                <FileText size={14} style={{ flexShrink: 0 }} />
+                                                                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{docItem.name || `เอกสาร ${i + 1}`}</span>
+                                                                            </a>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
+
                                                         {totalSisterTasksCount > 0 && (
                                                             <div style={{ marginTop: '4px', background: 'rgba(248, 250, 252, 0.8)', backdropFilter: 'blur(8px)', borderRadius: '14px', border: '1px solid rgba(226, 232, 240, 0.8)', overflow: 'hidden', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.02)' }}>
                                                                 <div style={{ padding: '8px 12px', background: 'linear-gradient(90deg, rgba(241, 245, 249, 0.8) 0%, rgba(226, 232, 240, 0.5) 100%)', borderBottom: '1px solid #e2e8f0', fontWeight: 900, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
@@ -1085,6 +1116,37 @@ const SLAMonitor = () => {
                                                         <div><span style={{ fontWeight: 800, color: '#94a3b8' }}>ผู้รับผิดชอบ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{foremanName} ({foremanRole})</span></div>
                                                         <div><span style={{ fontWeight: 800, color: '#94a3b8' }}>เบอร์ติดต่อ:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{foremanPhone}</span></div>
                                                         <div><span style={{ fontWeight: 800, color: '#94a3b8' }}>วันเริ่มงาน:</span> <span style={{ fontWeight: 900, color: '#1e293b' }}>{item._wo.startDate ? formatDate(item._wo.startDate) : '-'}</span></div>
+
+                                                        {/* เอกสาร PDF ที่แนบตอนเปิดงาน — เห็นเฉพาะ role ที่ไม่ใช่ Foreman (แอดมินขึ้นไป) และเฉพาะใบงานที่มีไฟล์จริง */}
+                                                        {currentRole !== 'Foreman' && (() => {
+                                                            const woDocs = (item._wo as any)?.categories?.[0]?.tasks?.[0]?.documents
+                                                                || (item._wo as any)?.categories?.[0]?.documents
+                                                                || (item._wo as any)?.documents
+                                                                || [];
+                                                            if (!Array.isArray(woDocs) || woDocs.length === 0) return null;
+                                                            return (
+                                                                <div style={{ marginTop: '4px' }}>
+                                                                    <div style={{ fontWeight: 900, color: '#475569', marginBottom: '6px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <FileText size={13} style={{ color: '#3b82f6' }} />
+                                                                        <span>เอกสารแนบ (PDF) ({woDocs.length})</span>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                        {woDocs.map((docItem: any, i: number) => (
+                                                                            <a
+                                                                                key={i}
+                                                                                href={docItem.url}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}
+                                                                            >
+                                                                                <FileText size={14} style={{ flexShrink: 0 }} />
+                                                                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{docItem.name || `เอกสาร ${i + 1}`}</span>
+                                                                            </a>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
 
                                                         {/* Categories table — equivalent of sister tasks table */}
                                                         {allCatsInWO.length > 0 && (
