@@ -244,7 +244,12 @@ export const WorkOrderGroupList: React.FC = () => {
     // is not really "done" yet — it must still read/behave as in-progress
     // (clickable, blue ring) until the foreman does a real submit
     // (user-confirmed 2026-07-24).
-    const isReallyDone100 = (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft';
+    // "Done" must track the SAME confirmed value the card shows (confirmedProgress,
+    // which reads the latest SUBMITTED history entry and ignores drafts) — NOT the flat
+    // dailyProgress field. A draft saved at 100% poisons dailyProgress to 100 via the
+    // Math.max in addTaskUpdate and it never clears, which silently blocked opening a
+    // task whose real (confirmed) progress is still < 100 (user-flagged 2026-11-13).
+    const isReallyDone100 = (t: any) => confirmedProgress(t) >= 100 || t.status === 'Complete';
     const progressColor =
       isReallyDone100(task)
         ? "#10b981"
@@ -332,7 +337,7 @@ export const WorkOrderGroupList: React.FC = () => {
                     : "#fff",
           cursor: isTaskDisabledInRejectedWo
             ? "default"
-            : ((task.dailyProgress || 0) === 100 || task.status === 'Complete')
+            : isReallyDone100(task)
               ? "default"
               : isReadOnly
                 ? "not-allowed"
@@ -349,7 +354,7 @@ export const WorkOrderGroupList: React.FC = () => {
           position: "relative",
           opacity: isTaskDisabledInRejectedWo
             ? 0.55
-            : ((task.dailyProgress || 0) === 100 || task.status === 'Complete')
+            : isReallyDone100(task)
               ? 0.55
               : isReadOnly
                 ? 0.75

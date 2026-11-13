@@ -913,7 +913,15 @@ export const WorkOrderProvider = ({ children }: { children: ReactNode }) => {
                 // status:'submitted' (or legacy, status-less) report can complete it.
                 const isDraftReport = (report as any).status === 'draft';
                 const isCompleted = !isDraftReport && (report.progress === 100 || (taskDoc.dailyProgress === 100));
-                const newProgress = Math.max(taskDoc.dailyProgress || 0, report.progress || 0);
+                // A draft must NOT move the authoritative dailyProgress. A draft saved at
+                // 100% used to raise dailyProgress via Math.max and never cleared, so
+                // downstream logic read the task as "done" (its card became un-clickable)
+                // even though the confirmed progress was lower (user-flagged 2026-11-13).
+                // The draft's own progress still lives in its draft report doc + the
+                // "แบบร่าง X%" badge; only a real (submitted) report advances dailyProgress.
+                const newProgress = isDraftReport
+                    ? (taskDoc.dailyProgress || 0)
+                    : Math.max(taskDoc.dailyProgress || 0, report.progress || 0);
                 const progressStatus = (report as any).status || 'submitted';
 
                 // Single source of truth: store the new CamelCase task vocab directly (no LB translation).
