@@ -420,15 +420,25 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       selectedTaskInfo.task;
     const history = currentTask.history || [];
     const filteredHistory = filterHistoryByRevision(history, currentTask.revisionCreatedAt, currentTask.currentRevision);
-    const historyMax =
-      filteredHistory.reduce((max: number, h: any) => Math.max(max, h.progress), 0) || 0;
-    const actualProgress = Math.max(currentTask.dailyProgress || 0, historyMax);
+    // Draft-aware, revision-scoped progress. A draft history entry (status:'draft')
+    // and the poisonable flat dailyProgress must NEVER make a task read as
+    // "finished". The previous code did Math.max over ALL history (drafts included)
+    // AND over the flat dailyProgress, then leaned on a single progressStatus
+    // guard. For a draft saved at 100% that guard didn't hold (the task's flat
+    // progressStatus wasn't 'draft'), so the task read as finished — hiding the
+    // edit button AND the submit footer and trapping the foreman with a 100% draft
+    // they could never confirm (user-flagged 2026-11-16). Take the LATEST non-draft
+    // report in the current revision; fall back to the flat field only when there is
+    // no history and it isn't itself a live draft. Mirrors confirmedProgress
+    // (jobSla.ts:140) / isReallyDone100 (WorkOrderGroupList.tsx:247).
+    const latestConfirmed = filteredHistory
+      .filter((h: any) => (h as any).status !== 'draft')
+      .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))[0];
+    const actualProgress = filteredHistory.length
+      ? (latestConfirmed ? (Number(latestConfirmed.progress) || 0) : 0)
+      : (currentTask.progressStatus === 'draft' ? 0 : (currentTask.dailyProgress || 0));
     return (
-      // A draft-only 100% (progressStatus: 'draft') is NOT finished — it must stay
-      // editable + submittable, mirroring the app-wide isReallyDone100 predicate
-      // (WorkOrderGroupList.tsx:247). Without this check a 100% draft hid the edit
-      // button + submit footer, trapping the foreman with no way forward. (2026-08-14)
-      (actualProgress >= 100 && currentTask.progressStatus !== 'draft') ||
+      actualProgress >= 100 ||
       [
         "Completed",
         "Verified",
