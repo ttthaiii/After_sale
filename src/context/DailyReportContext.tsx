@@ -13,6 +13,7 @@ import { isWoaWop as isWoaWopType } from "../utils/workOrder";
 import { useNavigate, useLocation } from "react-router-dom";
 import { logService } from "../services/logService";
 import { useStableCallbacks } from "../hooks/useStableCallbacks";
+import { confirmedProgress } from "../utils/jobSla";
 import {
   LaborEntry,
   WorkTask,
@@ -902,15 +903,17 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
           if (isAssigned) {
             const filteredHistory = filterHistoryByRevision(task.history || [], task.revisionCreatedAt, task.currentRevision);
-            const historyMax =
-              filteredHistory.reduce(
-                (max: number, h: any) => Math.max(max, h.progress),
-                0,
-              ) || 0;
-            const actualProgress = Math.max(
-              task.dailyProgress || 0,
-              historyMax,
-            );
+            // Draft-aware, revision-scoped progress — a draft (status:'draft')
+            // must NOT count as done, or a 100% draft save would surface the WO
+            // for customer QR/delivery before the foreman finalizes it. Mirrors
+            // confirmedProgress (jobSla.ts) and isTaskFinished. NEVER Math.max over
+            // all history (a 100% draft poisons it) nor the raw flat field.
+            const latestConfirmed = filteredHistory
+              .filter((h: any) => (h as any).status !== 'draft')
+              .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))[0];
+            const actualProgress = filteredHistory.length
+              ? (latestConfirmed ? (Number(latestConfirmed.progress) || 0) : 0)
+              : (task.progressStatus === 'draft' ? 0 : (task.dailyProgress || 0));
             const isWoRejectedAwaitingAdmin2 =
               wo.pendingAdminReassign === true ||
               (wo.pendingAdminReassign === undefined && wo.reviewedByAdmin === false && wo.status === 'Rejected');
@@ -952,7 +955,7 @@ export const DailyReportProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const globalIsAllCompleted =
         globalTasks.length > 0 &&
         globalTasks.every(
-          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft'
+          (t: any) => confirmedProgress(t) >= 100 || t.status === 'Complete'
         );
 
       const isGroupedDelivery =

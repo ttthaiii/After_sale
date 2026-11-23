@@ -1268,7 +1268,7 @@ export const WorkOrderGroupList: React.FC = () => {
                       const globalIsAllCompleted =
                         globalTasks.length > 0 &&
                         globalTasks.every(
-                          (t: any) => (t.dailyProgress ?? t.progress ?? 0) === 100 && t.progressStatus !== 'draft',
+                          (t: any) => confirmedProgress(t) >= 100 || t.status === 'Complete',
                         );
 
                       const isSelected = selectedTaskInfo?.wo.id === wo.id;
