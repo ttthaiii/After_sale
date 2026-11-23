@@ -6,7 +6,7 @@ import { useWorkOrders } from '../context/WorkOrderContext';
 import { useAuth } from '../context/AuthContext';
 import {
     LayoutDashboard, ShieldAlert, ClipboardList, CheckCircle2,
-    AlertTriangle, Timer, LifeBuoy, Bell, ChevronRight, X, Target, Users
+    AlertTriangle, Timer, LifeBuoy, Bell, ChevronRight, X, Target, Users, Star, BarChart3, ChevronUp
 } from 'lucide-react';
 import { computeJobSLA, getCountedSubtasks, confirmedProgress } from '../utils/jobSla';
 import { getSatisfactionAverage } from '../utils/satisfaction';
@@ -113,7 +113,39 @@ const subChip = (t: any): { label: string; color: string; bg: string } => {
 // drill list — consecutive rows of one WO share a stripe, the color flips per WO.
 const WO_STRIPE = ['#6366f1', '#0ea5e9', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6'];
 
+// The 5 CSAT criteria the customer scores per work order (wo.satisfactionSurvey),
+// in display order. Same keys submitCustomerInspection writes.
+const SAT_DIMS: { key: string; label: string }[] = [
+    { key: 'workQuality', label: 'คุณภาพงานซ่อม' },
+    { key: 'siteCleanliness', label: 'ความสะอาดหน้างาน' },
+    { key: 'foremanProfessionalism', label: 'ความเป็นมืออาชีพของโฟร์แมน' },
+    { key: 'specAccuracy', label: 'ความตรงตามสเปก' },
+    { key: 'handoverCare', label: 'การดูแลตอนส่งมอบ' },
+];
+
+// 5 stars filled up to `value` (rounded). Amber filled, slate empty — both modes readable.
+const StarBar = ({ value, size = 13 }: { value: number; size?: number }) => {
+    const n = Math.round(value || 0);
+    return (
+        <span style={{ display: 'inline-flex', gap: '1px' }}>
+            {[1, 2, 3, 4, 5].map((i) => (
+                <Star key={i} size={size} fill={i <= n ? '#f59e0b' : 'none'} style={{ stroke: i <= n ? '#f59e0b' : '#cbd5e1' }} />
+            ))}
+        </span>
+    );
+};
+
+const fmtThaiDate = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 const JobListModal = ({ data, onClose, onPick }: any) => {
+    // Which WO's evaluation panel is expanded (null = all collapsed). Hook BEFORE the
+    // early return so it is called unconditionally (rules-of-hooks).
+    const [openEvalWo, setOpenEvalWo] = useState<string | null>(null);
     if (!data) return null;
     // Order of distinct WO ids as they appear -> gives each group its stripe color index.
     const woOrder: string[] = [...new Set<string>(data.subs.map((s: any) => s._woId))];
@@ -164,7 +196,7 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                             );
                         })()}
                     </div>
-                    <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: '10px', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                    <button onClick={onClose} aria-label="ปิด" style={{ padding: 0, flexShrink: 0, border: 'none', background: '#f1f5f9', borderRadius: '10px', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
                         <X size={18} />
                     </button>
                 </div>
@@ -249,14 +281,64 @@ const JobListModal = ({ data, onClose, onPick }: any) => {
                             </div>
                         );
                         if (!isNewGroup) return row;
+                        // CSAT (⭐) lives per work order in wo.satisfactionSurvey — surface the
+                        // average on the group header + a toggle that reveals the 5-criteria
+                        // breakdown and the customer's comment (wo.notes).
+                        const survey = s.wo?.satisfactionSurvey;
+                        const sat = getSatisfactionAverage(survey);
+                        const hasEval = sat != null;
+                        const isEvalOpen = openEvalWo === s._woId;
                         const header = (
                             <div key={'h_' + rowKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.5rem 1.4rem 0.35rem', marginTop: i === 0 ? 0 : '0.4rem', borderLeft: `3px solid ${stripe}`, background: '#f8fafc' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#334155' }}>{s._woId}</span>
                                 <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', background: '#eef2f7', borderRadius: '6px', padding: '2px 6px' }}>{groupCount} รายการ</span>
                                 {s.locationName && <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>· {s.locationName}</span>}
+                                {hasEval && (
+                                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '2px 8px' }}>
+                                            <Star size={13} fill="#f59e0b" style={{ stroke: 'none' }} />
+                                            <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#b45309' }}>{sat}</span>
+                                        </span>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setOpenEvalWo(isEvalOpen ? null : s._woId); }}
+                                            style={{ padding: '4px 10px', fontFamily: 'inherit', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 800, color: '#4f46e5', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                        >
+                                            {isEvalOpen ? <ChevronUp size={13} /> : <BarChart3 size={13} />}
+                                            {isEvalOpen ? 'ซ่อนผลประเมิน' : 'ดูผลประเมิน'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         );
-                        return [header, row];
+                        const evalPanel = (hasEval && isEvalOpen) ? (
+                            <div key={'e_' + rowKey} style={{ margin: '2px 1.4rem 10px', borderLeft: `3px solid ${stripe}` }}>
+                                <div style={{ margin: '0 0 0 12px', background: '#fafbfc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                        <span style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0f172a' }}>{sat}</span>
+                                        <StarBar value={parseFloat(sat || '0')} size={16} />
+                                        {survey?.submittedAt && (
+                                            <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>ประเมิน {fmtThaiDate(survey.submittedAt)}</span>
+                                        )}
+                                    </div>
+                                    {SAT_DIMS.map((d) => {
+                                        const v = Number(survey?.[d.key]);
+                                        if (!v) return null;
+                                        return (
+                                            <div key={d.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                                                <span style={{ flex: 1, fontSize: '0.78rem', color: '#334155', fontWeight: 600 }}>{d.label}</span>
+                                                <StarBar value={v} />
+                                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#334155', width: '26px', textAlign: 'right' }}>{v.toFixed(1)}</span>
+                                            </div>
+                                        );
+                                    })}
+                                    <div style={{ marginTop: '10px', fontSize: '0.7rem', fontWeight: 800, color: '#64748b' }}>ความคิดเห็นจากลูกค้า</div>
+                                    <div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#334155', fontWeight: 600, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px' }}>
+                                        {s.wo?.notes ? `“${s.wo.notes}”` : 'ไม่มีข้อคิดเห็นเพิ่มเติม'}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null;
+                        return [header, evalPanel, row];
                     })}
                 </div>
             </div>
@@ -906,11 +988,15 @@ const DirectorDashboard = () => {
                                     {/* Bar track — full-width grey rail (right edges align across all rows) */}
                                     <div style={{ width: '100%', height: '22px', background: '#f1f5f9', borderRadius: '7px', overflow: 'hidden', display: 'flex' }}>
                                         <div style={{ display: 'flex', width: `${barPct}%`, minWidth: '8px', height: '100%' }}>
-                                            {segs.map((s) => (
+                                            {segs.map((s) => {
+                                                const segW = (s.v / mag) * 100;      // ความกว้างช่อง = สัดส่วนในโครงการ
+                                                const segPct = Math.round(segW);
+                                                const showPct = segW >= 14;          // ช่องแคบ ซ่อน % เหลือแต่เลข กัน % ล้น
+                                                return (
                                                 <div
                                                     key={s.key}
                                                     onClick={(e) => { e.stopPropagation(); openProject(p.projectId, s.key); }}
-                                                    title={`${SEG_LABEL[s.key] ?? ''} ${s.v} — คลิกดูเฉพาะกลุ่มนี้`}
+                                                    title={`${SEG_LABEL[s.key] ?? ''} ${s.v} (${segPct}%) — คลิกดูเฉพาะกลุ่มนี้`}
                                                     onMouseOver={(e) => {
                                                         const seg = e.currentTarget;
                                                         seg.style.zIndex = '2';
@@ -927,11 +1013,12 @@ const DirectorDashboard = () => {
                                                         if (inner) inner.style.overflow = 'hidden';
                                                         if (track) track.style.overflow = 'hidden';
                                                     }}
-                                                    style={{ width: `${(s.v / mag) * 100}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden', cursor: 'pointer', position: 'relative', transition: 'box-shadow 0.3s ease' }}
+                                                    style={{ width: `${segW}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden', cursor: 'pointer', position: 'relative', transition: 'box-shadow 0.3s ease', whiteSpace: 'nowrap' }}
                                                 >
-                                                    {s.v}
+                                                    {s.v}{showPct && <span style={{ fontWeight: 600, opacity: 0.85 }}>({segPct}%)</span>}
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                     {/* End label (per mode) */}
