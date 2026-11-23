@@ -1012,18 +1012,6 @@ const DirectorDashboard = () => {
                                 <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#6366f1' }}>ตรงเวลา {summaryOnTime != null ? `${summaryOnTime}%` : '—'}</div>
                             </div>
                         </div>
-                        {/* Per-status totals as chips (count + % of the summary total) */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '9px', paddingLeft: '160px' }}>
-                            {summarySegs.map((s) => {
-                                const pct = Math.round((s.v / summaryMag) * 100);
-                                return (
-                                    <span key={s.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', fontWeight: 700, color: '#334155', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '3px 9px' }}>
-                                        <span style={{ width: 9, height: 9, borderRadius: 3, background: s.c }} />
-                                        {SEG_LABEL[s.key] ?? ''} <b style={{ color: '#0f172a' }}>{s.v}</b> <span style={{ color: '#94a3b8' }}>({pct}%)</span>
-                                    </span>
-                                );
-                            })}
-                        </div>
                     </div>
                 )}
                 {projModeRows.length === 0 ? (
