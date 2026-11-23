@@ -626,6 +626,8 @@ const DirectorDashboard = () => {
         customerReject: p.customerReject,   // ลูกค้าตีกลับ
         doneAll: p.doneAll,
         satAvg: p.satAvg,
+        satSum: p.satSum,       // raw CSAT sum/count so the all-projects summary can weight correctly
+        satCount: p.satCount,
         onTimePct: p.onTimePct,
         normal: Math.max(0, p.active - p.overdue),
         overdue: p.overdue,
@@ -642,6 +644,34 @@ const DirectorDashboard = () => {
         .sort((a: any, b: any) => b.overdue - a.overdue || b.active - a.active);
     const projModeRows = projMode === 'done' ? doneRows : openRows;
     const maxProjBar = Math.max(1, ...projModeRows.map((p: any) => (projMode === 'done' ? p.doneAll : p.active)));
+
+    // "รวมทุกโครงการ" — a single summary strip pinned above the per-project rows.
+    // Sums exactly the rows on screen (respects the mode + project/type filter), so the
+    // total always reconciles with the bars below it. ⭐ is weighted by reviewed-WO count,
+    // on-time % by done-bar magnitude.
+    const projSummary = projModeRows.reduce(
+        (a: any, p: any) => {
+            a.awaitingQR += p.awaitingQR || 0;
+            a.pendingCustomer += p.pendingCustomer || 0;
+            a.customerClosed += p.customerClosed || 0;
+            a.customerReject += p.customerReject || 0;
+            a.doneAll += p.doneAll || 0;
+            a.normal += p.normal || 0;
+            a.overdue += p.overdue || 0;
+            a.active += p.active || 0;
+            if (p.satCount > 0) { a.satSum += p.satSum || 0; a.satCount += p.satCount; }
+            if (p.onTimePct != null) { const w = p.doneAll || 0; a.otWeighted += p.onTimePct * w; a.otWeight += w; }
+            return a;
+        },
+        { awaitingQR: 0, pendingCustomer: 0, customerClosed: 0, customerReject: 0, doneAll: 0, normal: 0, overdue: 0, active: 0, satSum: 0, satCount: 0, otWeighted: 0, otWeight: 0 },
+    );
+    const summarySat = projSummary.satCount > 0 ? projSummary.satSum / projSummary.satCount : null;
+    const summaryOnTime = projSummary.otWeight > 0 ? Math.round(projSummary.otWeighted / projSummary.otWeight) : null;
+    const summaryMag = projMode === 'done' ? projSummary.doneAll : (projSummary.normal + projSummary.overdue);
+    const summarySegs = (projMode === 'done'
+        ? [{ key: 'awaitingQR', v: projSummary.awaitingQR, c: LV.watch }, { key: 'pending', v: projSummary.pendingCustomer, c: '#0891b2' }, { key: 'closed', v: projSummary.customerClosed, c: LV.good }, { key: 'reject', v: projSummary.customerReject, c: LV.bad }]
+        : [{ key: 'normal', v: projSummary.normal, c: LV.normal }, { key: 'overdue', v: projSummary.overdue, c: LV.bad }]
+    ).filter((s) => s.v > 0);
 
     // ── Foreman drill-downs + derived views ─────────────────────────────────────
     // Single source for a foreman's IN-HAND jobs (phase in-progress) — used by BOTH
@@ -955,6 +985,47 @@ const DirectorDashboard = () => {
                         </span>
                     ))}
                 </div>
+                {/* "รวมทุกโครงการ" summary strip — totals of the rows on screen, pinned on top.
+                    Same 3-col grid as a project row so it reads as the header total. */}
+                {projModeRows.length > 0 && summaryMag > 0 && (
+                    <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '12px', padding: '10px 12px', margin: '0 0 0.9rem 0' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 120px', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 900, color: '#4338ca', whiteSpace: 'nowrap' }}>
+                                <Target size={15} /> รวมทุกโครงการ
+                            </div>
+                            {/* Full-width stacked bar — the summary IS the total, so it fills the track */}
+                            <div style={{ width: '100%', height: '22px', background: '#e0e7ff', borderRadius: '7px', overflow: 'hidden', display: 'flex' }}>
+                                {summarySegs.map((s) => {
+                                    const w = (s.v / summaryMag) * 100;
+                                    const pct = Math.round(w);
+                                    return (
+                                        <div key={s.key} title={`${SEG_LABEL[s.key] ?? ''} ${s.v} (${pct}%)`} style={{ width: `${w}%`, background: s.c, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', color: '#fff', fontSize: '0.66rem', fontWeight: 800, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                            {s.v}{w >= 14 && <span style={{ fontWeight: 600, opacity: 0.85 }}>({pct}%)</span>}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div style={{ textAlign: 'right', lineHeight: 1.25 }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                                    ⭐ {summarySat != null ? summarySat.toFixed(1) : '—'}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#6366f1' }}>ตรงเวลา {summaryOnTime != null ? `${summaryOnTime}%` : '—'}</div>
+                            </div>
+                        </div>
+                        {/* Per-status totals as chips (count + % of the summary total) */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '9px', paddingLeft: '160px' }}>
+                            {summarySegs.map((s) => {
+                                const pct = Math.round((s.v / summaryMag) * 100);
+                                return (
+                                    <span key={s.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', fontWeight: 700, color: '#334155', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '3px 9px' }}>
+                                        <span style={{ width: 9, height: 9, borderRadius: 3, background: s.c }} />
+                                        {SEG_LABEL[s.key] ?? ''} <b style={{ color: '#0f172a' }}>{s.v}</b> <span style={{ color: '#94a3b8' }}>({pct}%)</span>
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
                 {projModeRows.length === 0 ? (
                     <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>
                         {projMode === 'done' ? 'ยังไม่มีงานที่รับมอบแล้ว' : 'ไม่มีงานค้างในตอนนี้ 🎉'}
